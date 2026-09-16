@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
 import { getMeetings, getUsers, addMeeting, updateMeeting, deleteMeeting, generateId } from '../store';
+import Tooltip from './Tooltip';
+import { exportToICS, exportToJSON, exportToCSV } from '../utils/export';
 
 interface UserPanelProps {
   user: User;
@@ -88,17 +90,49 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex gap-2 flex-wrap">
-          {(['all', 'organized', 'participating', 'upcoming'] as const).map(f => (
-            <button key={f} onClick={() => setFilter(f)}
-              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${filter === f ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'}`}>
-              {f === 'all' ? 'Все' : f === 'organized' ? 'Организованные' : f === 'participating' ? 'Участие' : 'Ближайшие'}
-            </button>
+          {([
+            { id: 'all', label: 'Все', tooltip: 'Показать все конференции' },
+            { id: 'organized', label: 'Организованные', tooltip: 'Конференции, которые вы организовали' },
+            { id: 'participating', label: 'Участие', tooltip: 'Конференции, где вы участник' },
+            { id: 'upcoming', label: 'Ближайшие', tooltip: 'Предстоящие конференции' },
+          ] as const).map(f => (
+            <Tooltip key={f.id} content={f.tooltip}>
+              <button onClick={() => setFilter(f.id)}
+                className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${filter === f.id ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'}`}>
+                {f.label}
+              </button>
+            </Tooltip>
           ))}
         </div>
-        <button onClick={() => { setShowForm(true); setEditingMeeting(null); setFormData(emptyMeeting); }}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2">
-          <i className="fas fa-plus"></i>Создать конференцию
-        </button>
+        <div className="flex gap-2">
+          <Tooltip content="Экспорт расписания">
+            <div className="relative group">
+              <button className="bg-gray-100 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2">
+                <i className="fas fa-download"></i><span className="hidden sm:inline">Экспорт</span>
+              </button>
+              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 hidden group-hover:block z-10 min-w-[150px]">
+                <button onClick={() => exportToICS(filtered, user.name)}
+                  className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2">
+                  <i className="fas fa-calendar text-blue-500"></i>Календарь (ICS)
+                </button>
+                <button onClick={() => exportToJSON(filtered, 'meetings')}
+                  className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2">
+                  <i className="fas fa-code text-green-500"></i>JSON
+                </button>
+                <button onClick={() => exportToCSV(filtered, 'meetings')}
+                  className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2">
+                  <i className="fas fa-file-csv text-orange-500"></i>CSV (Excel)
+                </button>
+              </div>
+            </div>
+          </Tooltip>
+          <Tooltip content="Создать новую видеоконференцию">
+            <button onClick={() => { setShowForm(true); setEditingMeeting(null); setFormData(emptyMeeting); }}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2">
+              <i className="fas fa-plus"></i><span className="hidden sm:inline">Создать</span>
+            </button>
+          </Tooltip>
+        </div>
       </div>
 
       {/* Form Modal */}

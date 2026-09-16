@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import AuthPage from './components/AuthPage';
+import Tour from './components/Tour';
+import Tooltip from './components/Tooltip';
 import Dashboard from './components/Dashboard';
 import Schedule from './components/Schedule';
 import UserPanel from './components/UserPanel';
@@ -7,7 +9,7 @@ import AdminPanel from './components/AdminPanel';
 import Notifications from './components/Notifications';
 import Profile from './components/Profile';
 import { User, Notification as VKSNotification } from './types';
-import { getCurrentUser, logout, getUserNotifications, addNotification, getMeetings, getSettings, saveNotifications, getNotifications } from './store';
+import { getCurrentUser, logout, getUserNotifications, addNotification, getMeetings, getSettings, getNotifications } from './store';
 
 type Page = 'dashboard' | 'schedule' | 'admin' | 'notifications' | 'profile' | 'meetings';
 
@@ -17,14 +19,26 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [showTour, setShowTour] = useState(false);
 
   const handleLogin = () => {
-    setUser(getCurrentUser());
+    const loggedUser = getCurrentUser();
+    setUser(loggedUser);
+    // Show tour for first-time users
+    const hasSeenTour = localStorage.getItem('vks_tour_seen');
+    if (!hasSeenTour) {
+      setShowTour(true);
+    }
   };
 
   const handleLogout = () => {
     logout();
     setUser(null);
+  };
+
+  const handleTourComplete = () => {
+    setShowTour(false);
+    localStorage.setItem('vks_tour_seen', 'true');
   };
 
   // Notification checker
@@ -39,7 +53,6 @@ function App() {
 
     meetings.forEach(meeting => {
       if (meeting.status === 'cancelled' || meeting.status === 'completed') return;
-      // Only notify participants
       if (!meeting.participants.includes(user.id) && meeting.organizerId !== user.id) return;
 
       if (meeting.date === nowStr && meeting.startTime === nowTime) {
@@ -133,7 +146,6 @@ function App() {
     setMobileMenuOpen(false);
   };
 
-  // Not logged in
   if (!user) {
     return <AuthPage onLogin={handleLogin} />;
   }
@@ -142,18 +154,21 @@ function App() {
   const isModerator = user.role === 'moderator';
 
   const navItems = [
-    { id: 'dashboard', label: 'Главная', icon: 'fa-home', roles: ['admin', 'user', 'moderator'] },
-    { id: 'schedule', label: 'Расписание', icon: 'fa-calendar-alt', roles: ['admin', 'user', 'moderator'] },
-    { id: 'meetings', label: 'Мои конференции', icon: 'fa-video', roles: ['admin', 'user', 'moderator'] },
-    { id: 'notifications', label: 'Уведомления', icon: 'fa-bell', roles: ['admin', 'user', 'moderator'], badge: unreadCount },
-    { id: 'profile', label: 'Профиль', icon: 'fa-user', roles: ['admin', 'user', 'moderator'] },
-    { id: 'admin', label: 'Админ-панель', icon: 'fa-shield-alt', roles: ['admin', 'moderator'] },
+    { id: 'dashboard', label: 'Главная', icon: 'fa-home', tooltip: 'Обзор конференций и статистика', roles: ['admin', 'user', 'moderator'] },
+    { id: 'schedule', label: 'Расписание', icon: 'fa-calendar-alt', tooltip: 'Просмотр расписания по дням', roles: ['admin', 'user', 'moderator'] },
+    { id: 'meetings', label: 'Мои конференции', icon: 'fa-video', tooltip: 'Управление вашими встречами', roles: ['admin', 'user', 'moderator'] },
+    { id: 'notifications', label: 'Уведомления', icon: 'fa-bell', tooltip: 'Напоминания о конференциях', roles: ['admin', 'user', 'moderator'], badge: unreadCount },
+    { id: 'profile', label: 'Профиль', icon: 'fa-user', tooltip: 'Настройки аккаунта', roles: ['admin', 'user', 'moderator'] },
+    { id: 'admin', label: 'Админ-панель', icon: 'fa-shield-alt', tooltip: 'Управление системой', roles: ['admin', 'moderator'] },
   ];
 
   const visibleNavItems = navItems.filter(item => item.roles.includes(user.role));
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
+      {/* Tour */}
+      {showTour && <Tour onComplete={handleTourComplete} />}
+
       {/* Sidebar Desktop */}
       <aside className={`hidden md:flex flex-col ${sidebarOpen ? 'w-64' : 'w-20'} bg-white border-r border-gray-200 shadow-sm transition-all duration-300`}>
         <div className="p-4 border-b border-gray-100">
@@ -172,22 +187,23 @@ function App() {
 
         <nav className="flex-1 p-3 space-y-1">
           {visibleNavItems.map(item => (
-            <button key={item.id} onClick={() => navigateTo(item.id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
-                currentPage === item.id ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
-              }`}>
-              <i className={`fas ${item.icon} w-5 text-center ${currentPage === item.id ? 'text-blue-600' : 'text-gray-400'}`}></i>
-              {sidebarOpen && (
-                <>
-                  <span className="flex-1 text-sm font-medium">{item.label}</span>
-                  {item.badge ? <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">{item.badge}</span> : null}
-                </>
-              )}
-            </button>
+            <Tooltip key={item.id} content={item.tooltip} position="right">
+              <button onClick={() => navigateTo(item.id)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
+                  currentPage === item.id ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+                }`}>
+                <i className={`fas ${item.icon} w-5 text-center ${currentPage === item.id ? 'text-blue-600' : 'text-gray-400'}`}></i>
+                {sidebarOpen && (
+                  <>
+                    <span className="flex-1 text-sm font-medium">{item.label}</span>
+                    {item.badge ? <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">{item.badge}</span> : null}
+                  </>
+                )}
+              </button>
+            </Tooltip>
           ))}
         </nav>
 
-        {/* User info in sidebar */}
         {sidebarOpen && (
           <div className="p-3 border-t border-gray-100">
             <div className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
@@ -242,6 +258,11 @@ function App() {
                 </button>
               ))}
               <div className="pt-3 mt-3 border-t border-gray-100">
+                <button onClick={() => { setShowTour(true); setMobileMenuOpen(false); }}
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-lg text-left text-purple-600 hover:bg-purple-50 transition-colors">
+                  <i className="fas fa-question-circle w-5 text-center"></i>
+                  <span className="font-medium">Помощь</span>
+                </button>
                 <button onClick={handleLogout}
                   className="w-full flex items-center gap-3 px-3 py-3 rounded-lg text-left text-red-600 hover:bg-red-50 transition-colors">
                   <i className="fas fa-sign-out-alt w-5 text-center"></i>
@@ -264,29 +285,42 @@ function App() {
               {visibleNavItems.find(n => n.id === currentPage)?.label || 'Главная'}
             </h2>
           </div>
-          <div className="flex items-center gap-3">
-            <button onClick={() => navigateTo('notifications')}
-              className="relative p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
-              <i className="fas fa-bell text-lg"></i>
-              {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-xs w-4 h-4 flex items-center justify-center rounded-full">
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
-              )}
-            </button>
-            <div className="hidden sm:flex items-center gap-2">
-              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                <span className="text-blue-600 font-bold text-sm">{user.name.charAt(0)}</span>
+          <div className="flex items-center gap-2">
+            <Tooltip content="Помощь и подсказки">
+              <button onClick={() => setShowTour(true)}
+                className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors">
+                <i className="fas fa-question-circle text-lg"></i>
+              </button>
+            </Tooltip>
+            <Tooltip content={`Уведомления (${unreadCount} непрочитанных)`}>
+              <button onClick={() => navigateTo('notifications')}
+                className="relative p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
+                <i className="fas fa-bell text-lg"></i>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-xs w-4 h-4 flex items-center justify-center rounded-full animate-pulse">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+            </Tooltip>
+            <Tooltip content={user.name}>
+              <div className="hidden sm:flex items-center gap-2 cursor-pointer hover:bg-gray-50 rounded-lg px-2 py-1 transition-colors"
+                onClick={() => navigateTo('profile')}>
+                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                  <span className="text-blue-600 font-bold text-sm">{user.name.charAt(0)}</span>
+                </div>
+                <div className="hidden lg:block">
+                  <p className="text-sm font-medium text-gray-800">{user.name.split(' ')[0]}</p>
+                  <p className="text-xs text-gray-500 capitalize">{user.role === 'admin' ? 'Админ' : user.role === 'moderator' ? 'Модератор' : 'Пользователь'}</p>
+                </div>
               </div>
-              <div className="hidden lg:block">
-                <p className="text-sm font-medium text-gray-800">{user.name.split(' ')[0]}</p>
-                <p className="text-xs text-gray-500 capitalize">{user.role === 'admin' ? 'Админ' : user.role === 'moderator' ? 'Модератор' : 'Пользователь'}</p>
-              </div>
-            </div>
-            <button onClick={handleLogout}
-              className="hidden sm:flex items-center gap-1 text-gray-400 hover:text-red-500 transition-colors px-2 py-1 rounded">
-              <i className="fas fa-sign-out-alt"></i>
-            </button>
+            </Tooltip>
+            <Tooltip content="Выйти из аккаунта">
+              <button onClick={handleLogout}
+                className="hidden sm:flex items-center gap-1 text-gray-400 hover:text-red-500 transition-colors px-2 py-1 rounded">
+                <i className="fas fa-sign-out-alt"></i>
+              </button>
+            </Tooltip>
           </div>
         </header>
 
