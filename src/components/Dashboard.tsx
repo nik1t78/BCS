@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
 import { getMeetings, getUsers } from '../store';
+import JoinMeetingModal from './JoinMeetingModal';
 
 interface DashboardProps {
   user: User;
@@ -12,6 +13,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [nextMeeting, setNextMeeting] = useState<Meeting | null>(null);
   const [countdown, setCountdown] = useState('');
+  const [joiningMeeting, setJoiningMeeting] = useState<Meeting | null>(null);
 
   useEffect(() => {
     setMeetings(getMeetings());
@@ -142,10 +144,11 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
           </div>
           {nextMeeting.link && (
             <div className="mt-4">
-              <a href={nextMeeting.link} target="_blank" rel="noopener noreferrer"
+              <button
+                onClick={() => setJoiningMeeting(nextMeeting)}
                 className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                <i className="fas fa-external-link-alt"></i>Подключиться
-              </a>
+                <i className="fas fa-video"></i>Подключиться
+              </button>
             </div>
           )}
         </div>
@@ -181,6 +184,14 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
           </div>
         )}
       </div>
+
+      {/* Join Meeting Modal */}
+      {joiningMeeting && (
+        <JoinMeetingModal
+          meeting={joiningMeeting}
+          onClose={() => setJoiningMeeting(null)}
+        />
+      )}
     </div>
   );
 }

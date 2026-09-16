@@ -3,6 +3,7 @@ import { User, Meeting } from '../types';
 import { getMeetings, getUsers, addMeeting, updateMeeting, deleteMeeting, generateId } from '../store';
 import Tooltip from './Tooltip';
 import { exportToICS, exportToJSON, exportToCSV } from '../utils/export';
+import JoinMeetingModal from './JoinMeetingModal';
 
 interface UserPanelProps {
   user: User;
@@ -24,6 +25,7 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
 
   const [formData, setFormData] = useState<Meeting>(emptyMeeting);
   const [emailInput, setEmailInput] = useState('');
+  const [joiningMeeting, setJoiningMeeting] = useState<Meeting | null>(null);
   const allUsers = getUsers();
 
   useEffect(() => { setMeetings(getMeetings()); }, []);
@@ -291,10 +293,11 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
               </div>
               <div className="flex items-center gap-2">
                 {meeting.link && (
-                  <a href={meeting.link} target="_blank" rel="noopener noreferrer"
+                  <button
+                    onClick={() => setJoiningMeeting(meeting)}
                     className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-blue-700 transition-colors">
-                    <i className="fas fa-video mr-1"></i>Войти
-                  </a>
+                    <i className="fas fa-video mr-1"></i>Подключиться
+                  </button>
                 )}
                 {meeting.organizerId === user.id && (
                   <>
@@ -313,6 +316,14 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
           </div>
         )}
       </div>
+
+      {/* Join Meeting Modal */}
+      {joiningMeeting && (
+        <JoinMeetingModal
+          meeting={joiningMeeting}
+          onClose={() => setJoiningMeeting(null)}
+        />
+      )}
     </div>
   );
 }

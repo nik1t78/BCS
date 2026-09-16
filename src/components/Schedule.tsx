@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
 import { getMeetings, getUsers } from '../store';
+import JoinMeetingModal from './JoinMeetingModal';
 
 interface ScheduleProps {
   user: User;
@@ -12,6 +13,7 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
   const [view, setView] = useState<'day' | 'week' | 'month'>('week');
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [filter, setFilter] = useState<'all' | 'my' | 'today' | 'upcoming'>('all');
+  const [joiningMeeting, setJoiningMeeting] = useState<Meeting | null>(null);
   const allUsers = getUsers();
 
   useEffect(() => { setMeetings(getMeetings()); }, []);
@@ -99,8 +101,11 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
                     <p className="text-xs text-gray-400 mt-1">Организатор: {getUserName(meeting.organizerId)}</p>
                   </div>
                   {meeting.link && (
-                    <a href={meeting.link} target="_blank" rel="noopener noreferrer"
-                      className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"><i className="fas fa-video mr-1"></i>Войти</a>
+                    <button
+                      onClick={() => setJoiningMeeting(meeting)}
+                      className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">
+                      <i className="fas fa-video mr-1"></i>Подключиться
+                    </button>
                   )}
                 </div>
               </div>
@@ -163,6 +168,14 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
             })}
           </div>
         </div>
+      )}
+
+      {/* Join Meeting Modal */}
+      {joiningMeeting && (
+        <JoinMeetingModal
+          meeting={joiningMeeting}
+          onClose={() => setJoiningMeeting(null)}
+        />
       )}
     </div>
   );
