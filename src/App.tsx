@@ -1,21 +1,35 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import AuthPage from './components/AuthPage';
 import Dashboard from './components/Dashboard';
 import Schedule from './components/Schedule';
+import UserPanel from './components/UserPanel';
 import AdminPanel from './components/AdminPanel';
 import Notifications from './components/Notifications';
-import { Meeting, Notification as VKSNotification } from './types';
-import { getMeetings, getNotifications, saveNotifications, addNotification, getSettings } from './store';
+import Profile from './components/Profile';
+import { User, Notification as VKSNotification } from './types';
+import { getCurrentUser, logout, getUserNotifications, addNotification, getMeetings, getSettings, saveNotifications, getNotifications } from './store';
 
-type Page = 'dashboard' | 'schedule' | 'admin' | 'notifications';
+type Page = 'dashboard' | 'schedule' | 'admin' | 'notifications' | 'profile' | 'meetings';
 
 function App() {
+  const [user, setUser] = useState<User | null>(getCurrentUser());
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  // Notification system
+  const handleLogin = () => {
+    setUser(getCurrentUser());
+  };
+
+  const handleLogout = () => {
+    logout();
+    setUser(null);
+  };
+
+  // Notification checker
   const checkNotifications = useCallback(() => {
+    if (!user) return;
     const meetings = getMeetings();
     const existingNotifications = getNotifications();
     const settings = getSettings();
@@ -25,16 +39,17 @@ function App() {
 
     meetings.forEach(meeting => {
       if (meeting.status === 'cancelled' || meeting.status === 'completed') return;
+      // Only notify participants
+      if (!meeting.participants.includes(user.id) && meeting.organizerId !== user.id) return;
 
-      // Check if meeting is starting now
       if (meeting.date === nowStr && meeting.startTime === nowTime) {
         const alreadyNotified = existingNotifications.some(
-          n => n.meetingId === meeting.id && n.type === 'starting' &&
-          n.timestamp.startsWith(nowStr)
+          n => n.userId === user.id && n.meetingId === meeting.id && n.type === 'starting' && n.timestamp.startsWith(nowStr)
         );
         if (!alreadyNotified) {
           const notification: VKSNotification = {
             id: Date.now().toString(36) + Math.random().toString(36).substr(2),
+            userId: user.id,
             meetingId: meeting.id,
             message: `🔴 Конференция "${meeting.title}" начинается сейчас!`,
             type: 'starting',
@@ -47,24 +62,21 @@ function App() {
         }
       }
 
-      // Check reminder
       if (meeting.date === nowStr) {
         const [startH, startM] = meeting.startTime.split(':').map(Number);
         const reminderTime = new Date(now);
         reminderTime.setHours(startH, startM - meeting.reminderMinutes, 0, 0);
-        
         const diff = now.getTime() - reminderTime.getTime();
-        // Within 1 minute window
         if (diff >= 0 && diff < 60000) {
           const alreadyReminded = existingNotifications.some(
-            n => n.meetingId === meeting.id && n.type === 'reminder' &&
-            n.timestamp.startsWith(nowStr)
+            n => n.userId === user.id && n.meetingId === meeting.id && n.type === 'reminder' && n.timestamp.startsWith(nowStr)
           );
           if (!alreadyReminded) {
             const notification: VKSNotification = {
               id: Date.now().toString(36) + Math.random().toString(36).substr(2),
+              userId: user.id,
               meetingId: meeting.id,
-              message: `⏰ Напоминание: через ${meeting.reminderMinutes} мин. начнётся "${meeting.title}"`,
+              message: `⏰ Напоминание: через ${meeting.reminderMinutes} мин. — "${meeting.title}"`,
               type: 'reminder',
               timestamp: new Date().toISOString(),
               read: false,
@@ -77,18 +89,17 @@ function App() {
       }
     });
 
-    // Update unread count
-    const notifications = getNotifications();
-    setUnreadCount(notifications.filter(n => !n.read).length);
-  }, []);
+    const userNotifs = getUserNotifications(user.id);
+    setUnreadCount(userNotifs.filter(n => !n.read).length);
+  }, [user]);
 
   useEffect(() => {
+    if (!user) return;
     checkNotifications();
-    const interval = setInterval(checkNotifications, 30000); // Check every 30 seconds
+    const interval = setInterval(checkNotifications, 30000);
     return () => clearInterval(interval);
-  }, [checkNotifications]);
+  }, [checkNotifications, user]);
 
-  // Request notification permission
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
@@ -98,38 +109,23 @@ function App() {
   const triggerBrowserNotification = (title: string, body: string) => {
     const settings = getSettings();
     if (settings.browserNotifications && 'Notification' in window && Notification.permission === 'granted') {
-      new Notification(title, {
-        body,
-        icon: '📹',
-        tag: 'vks-reminder',
-      });
+      new Notification(title, { body, tag: 'vks-reminder' });
     }
   };
 
   const playNotificationSound = () => {
     try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      oscillator.frequency.value = 800;
-      oscillator.type = 'sine';
-      gainNode.gain.value = 0.3;
-      oscillator.start();
-      setTimeout(() => {
-        oscillator.frequency.value = 600;
-        setTimeout(() => {
-          oscillator.frequency.value = 800;
-          setTimeout(() => {
-            oscillator.stop();
-            audioContext.close();
-          }, 200);
-        }, 200);
-      }, 200);
-    } catch (e) {
-      // Audio not supported
-    }
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 800;
+      osc.type = 'sine';
+      gain.gain.value = 0.3;
+      osc.start();
+      setTimeout(() => { osc.frequency.value = 600; setTimeout(() => { osc.frequency.value = 800; setTimeout(() => { osc.stop(); ctx.close(); }, 200); }, 200); }, 200);
+    } catch (e) {}
   };
 
   const navigateTo = (page: string) => {
@@ -137,16 +133,28 @@ function App() {
     setMobileMenuOpen(false);
   };
 
+  // Not logged in
+  if (!user) {
+    return <AuthPage onLogin={handleLogin} />;
+  }
+
+  const isAdmin = user.role === 'admin';
+  const isModerator = user.role === 'moderator';
+
   const navItems = [
-    { id: 'dashboard', label: 'Главная', icon: 'fa-home' },
-    { id: 'schedule', label: 'Расписание', icon: 'fa-calendar-alt' },
-    { id: 'admin', label: 'Админ-панель', icon: 'fa-cogs' },
-    { id: 'notifications', label: 'Уведомления', icon: 'fa-bell', badge: unreadCount },
+    { id: 'dashboard', label: 'Главная', icon: 'fa-home', roles: ['admin', 'user', 'moderator'] },
+    { id: 'schedule', label: 'Расписание', icon: 'fa-calendar-alt', roles: ['admin', 'user', 'moderator'] },
+    { id: 'meetings', label: 'Мои конференции', icon: 'fa-video', roles: ['admin', 'user', 'moderator'] },
+    { id: 'notifications', label: 'Уведомления', icon: 'fa-bell', roles: ['admin', 'user', 'moderator'], badge: unreadCount },
+    { id: 'profile', label: 'Профиль', icon: 'fa-user', roles: ['admin', 'user', 'moderator'] },
+    { id: 'admin', label: 'Админ-панель', icon: 'fa-shield-alt', roles: ['admin', 'moderator'] },
   ];
+
+  const visibleNavItems = navItems.filter(item => item.roles.includes(user.role));
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar - Desktop */}
+      {/* Sidebar Desktop */}
       <aside className={`hidden md:flex flex-col ${sidebarOpen ? 'w-64' : 'w-20'} bg-white border-r border-gray-200 shadow-sm transition-all duration-300`}>
         <div className="p-4 border-b border-gray-100">
           <div className="flex items-center gap-3">
@@ -163,25 +171,36 @@ function App() {
         </div>
 
         <nav className="flex-1 p-3 space-y-1">
-          {navItems.map(item => (
+          {visibleNavItems.map(item => (
             <button key={item.id} onClick={() => navigateTo(item.id)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
-                currentPage === item.id
-                  ? 'bg-blue-50 text-blue-600'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+                currentPage === item.id ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
               }`}>
               <i className={`fas ${item.icon} w-5 text-center ${currentPage === item.id ? 'text-blue-600' : 'text-gray-400'}`}></i>
               {sidebarOpen && (
                 <>
                   <span className="flex-1 text-sm font-medium">{item.label}</span>
-                  {item.badge ? (
-                    <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">{item.badge}</span>
-                  ) : null}
+                  {item.badge ? <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">{item.badge}</span> : null}
                 </>
               )}
             </button>
           ))}
         </nav>
+
+        {/* User info in sidebar */}
+        {sidebarOpen && (
+          <div className="p-3 border-t border-gray-100">
+            <div className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
+              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                <span className="text-blue-600 font-bold text-sm">{user.name.charAt(0)}</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-800 truncate">{user.name.split(' ')[0]}</p>
+                <p className="text-xs text-gray-500 capitalize">{user.role === 'admin' ? 'Администратор' : user.role === 'moderator' ? 'Модератор' : 'Пользователь'}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="p-3 border-t border-gray-100">
           <button onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -192,7 +211,7 @@ function App() {
         </div>
       </aside>
 
-      {/* Mobile Menu Overlay */}
+      {/* Mobile Menu */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={() => setMobileMenuOpen(false)}></div>
@@ -203,7 +222,8 @@ function App() {
                   <i className="fas fa-video text-white text-lg"></i>
                 </div>
                 <div>
-                  <h1 className="font-bold text-gray-800 text-lg">ВКС Расписание</h1>
+                  <h1 className="font-bold text-gray-800">ВКС Расписание</h1>
+                  <p className="text-xs text-gray-500">{user.name.split(' ')[0]}</p>
                 </div>
               </div>
               <button onClick={() => setMobileMenuOpen(false)} className="text-gray-400 hover:text-gray-600">
@@ -211,20 +231,23 @@ function App() {
               </button>
             </div>
             <nav className="p-3 space-y-1">
-              {navItems.map(item => (
+              {visibleNavItems.map(item => (
                 <button key={item.id} onClick={() => navigateTo(item.id)}
                   className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-left transition-colors ${
-                    currentPage === item.id
-                      ? 'bg-blue-50 text-blue-600'
-                      : 'text-gray-600 hover:bg-gray-100'
+                    currentPage === item.id ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-100'
                   }`}>
                   <i className={`fas ${item.icon} w-5 text-center`}></i>
                   <span className="flex-1 font-medium">{item.label}</span>
-                  {item.badge ? (
-                    <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">{item.badge}</span>
-                  ) : null}
+                  {item.badge ? <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">{item.badge}</span> : null}
                 </button>
               ))}
+              <div className="pt-3 mt-3 border-t border-gray-100">
+                <button onClick={handleLogout}
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-lg text-left text-red-600 hover:bg-red-50 transition-colors">
+                  <i className="fas fa-sign-out-alt w-5 text-center"></i>
+                  <span className="font-medium">Выйти</span>
+                </button>
+              </div>
             </nav>
           </aside>
         </div>
@@ -232,14 +255,13 @@ function App() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-h-screen overflow-hidden">
-        {/* Top Bar */}
         <header className="bg-white border-b border-gray-200 px-4 md:px-6 py-3 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-3">
             <button onClick={() => setMobileMenuOpen(true)} className="md:hidden text-gray-600 hover:text-gray-800">
               <i className="fas fa-bars text-xl"></i>
             </button>
             <h2 className="text-lg font-bold text-gray-800">
-              {navItems.find(n => n.id === currentPage)?.label || 'Главная'}
+              {visibleNavItems.find(n => n.id === currentPage)?.label || 'Главная'}
             </h2>
           </div>
           <div className="flex items-center gap-3">
@@ -252,19 +274,29 @@ function App() {
                 </span>
               )}
             </button>
-            <div className="hidden sm:flex items-center gap-2 bg-gray-100 rounded-lg px-3 py-1.5">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-sm text-gray-600">Система активна</span>
+            <div className="hidden sm:flex items-center gap-2">
+              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                <span className="text-blue-600 font-bold text-sm">{user.name.charAt(0)}</span>
+              </div>
+              <div className="hidden lg:block">
+                <p className="text-sm font-medium text-gray-800">{user.name.split(' ')[0]}</p>
+                <p className="text-xs text-gray-500 capitalize">{user.role === 'admin' ? 'Админ' : user.role === 'moderator' ? 'Модератор' : 'Пользователь'}</p>
+              </div>
             </div>
+            <button onClick={handleLogout}
+              className="hidden sm:flex items-center gap-1 text-gray-400 hover:text-red-500 transition-colors px-2 py-1 rounded">
+              <i className="fas fa-sign-out-alt"></i>
+            </button>
           </div>
         </header>
 
-        {/* Page Content */}
         <div className="flex-1 overflow-y-auto p-4 md:p-6">
-          {currentPage === 'dashboard' && <Dashboard onNavigate={navigateTo} />}
-          {currentPage === 'schedule' && <Schedule onNavigate={navigateTo} />}
-          {currentPage === 'admin' && <AdminPanel />}
-          {currentPage === 'notifications' && <Notifications />}
+          {currentPage === 'dashboard' && <Dashboard user={user} onNavigate={navigateTo} />}
+          {currentPage === 'schedule' && <Schedule user={user} onNavigate={navigateTo} />}
+          {currentPage === 'meetings' && <UserPanel user={user} onNavigate={navigateTo} />}
+          {currentPage === 'admin' && (isAdmin || isModerator) && <AdminPanel user={user} />}
+          {currentPage === 'notifications' && <Notifications user={user} />}
+          {currentPage === 'profile' && <Profile user={user} onUpdate={() => setUser(getCurrentUser())} />}
         </div>
       </main>
     </div>
