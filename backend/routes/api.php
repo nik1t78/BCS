@@ -59,6 +59,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/admin/users/{id}', [UserController::class, 'destroy']);
         Route::put('/admin/users/{id}/role', [UserController::class, 'changeRole']);
         Route::get('/admin/stats', [UserController::class, 'getStats']);
+        
+        // Password management
+        Route::put('/admin/users/{id}/reset-password', [\App\Http\Controllers\Api\AdminController::class, 'resetPassword']);
+        Route::post('/admin/users/bulk-reset-passwords', [\App\Http\Controllers\Api\AdminController::class, 'bulkResetPasswords']);
+        Route::post('/admin/users/{id}/generate-temporary-password', [\App\Http\Controllers\Api\AdminController::class, 'generateTemporaryPassword']);
     });
 });
 

@@ -15,6 +15,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [showMeetingForm, setShowMeetingForm] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordUserId, setPasswordUserId] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   const emptyUser: User = {
     id: '', name: '', email: '', password: '', role: 'user',
@@ -64,6 +68,38 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     setEditingUser(u);
     setUserForm(u);
     setShowUserForm(true);
+  };
+
+  const handleOpenPasswordModal = (userId: string) => {
+    setPasswordUserId(userId);
+    setNewPassword('');
+    setConfirmPassword('');
+    setShowPasswordModal(true);
+  };
+
+  const handleResetPassword = () => {
+    if (!passwordUserId) return;
+    
+    if (newPassword.length < 6) {
+      alert('Пароль должен быть не менее 6 символов');
+      return;
+    }
+    
+    if (newPassword !== confirmPassword) {
+      alert('Пароли не совпадают');
+      return;
+    }
+    
+    const userToUpdate = users.find(u => u.id === passwordUserId);
+    if (userToUpdate) {
+      updateUser({ ...userToUpdate, password: newPassword });
+      setUsers(getUsers());
+      setShowPasswordModal(false);
+      setPasswordUserId(null);
+      setNewPassword('');
+      setConfirmPassword('');
+      alert('Пароль успешно изменён');
+    }
   };
 
   const handleDeleteUser = (id: string) => {
@@ -323,8 +359,9 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
-                          <button onClick={() => handleEditUser(u)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"><i className="fas fa-edit"></i></button>
-                          <button onClick={() => handleDeleteUser(u.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"><i className="fas fa-trash"></i></button>
+                          <button onClick={() => handleEditUser(u)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="Редактировать"><i className="fas fa-edit"></i></button>
+                          <button onClick={() => handleOpenPasswordModal(u.id)} className="p-1.5 text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 rounded" title="Сменить пароль"><i className="fas fa-key"></i></button>
+                          <button onClick={() => handleDeleteUser(u.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded" title="Удалить"><i className="fas fa-trash"></i></button>
                         </div>
                       </td>
                     </tr>
@@ -559,6 +596,69 @@ export default function AdminPanel({ user }: AdminPanelProps) {
               <div className="flex items-center gap-2 p-2 bg-gray-50 rounded">
                 <span className="text-blue-600 font-bold">POST</span>
                 <span className="text-gray-700">/api/auth/login</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Password Reset Modal */}
+      {showPasswordModal && passwordUserId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <i className="fas fa-key text-yellow-500"></i>
+                  Смена пароля
+                </h2>
+                <button onClick={() => setShowPasswordModal(false)} className="text-gray-400 hover:text-gray-600">
+                  <i className="fas fa-times text-xl"></i>
+                </button>
+              </div>
+
+              <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-700">
+                  <i className="fas fa-info-circle mr-1"></i>
+                  Пользователь: <strong>{users.find(u => u.id === passwordUserId)?.name}</strong>
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Новый пароль *</label>
+                  <input 
+                    type="password" 
+                    value={newPassword} 
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
+                    placeholder="Минимум 6 символов"
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Подтвердите пароль *</label>
+                  <input 
+                    type="password" 
+                    value={confirmPassword} 
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
+                    placeholder="Повторите пароль"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t">
+                  <button 
+                    onClick={() => setShowPasswordModal(false)} 
+                    className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+                    Отмена
+                  </button>
+                  <button 
+                    onClick={handleResetPassword} 
+                    className="px-6 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors">
+                    <i className="fas fa-save mr-2"></i>Изменить пароль
+                  </button>
+                </div>
               </div>
             </div>
           </div>
