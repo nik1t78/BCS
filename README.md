@@ -70,6 +70,30 @@ docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder
 
 📖 **Подробная инструкция**: [SECURITY_CLEANUP.md](./SECURITY_CLEANUP.md)
 
+### 🐧 Развёртывание на Linux
+
+📖 **Полная инструкция**: [LINUX_DEPLOYMENT.md](./LINUX_DEPLOYMENT.md)
+
+Быстрый старт:
+```bash
+# 1. Установка Docker
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+
+# 2. Клонирование проекта
+git clone <repo-url> vks-schedule && cd vks-schedule
+
+# 3. Создание Laravel
+cd backend && composer create-project laravel/laravel . && cd ..
+
+# 4. Запуск
+docker compose up -d --build
+
+# 5. Инициализация
+docker compose exec backend php artisan key:generate
+docker compose exec backend php artisan migrate
+```
+
 ---
 
 ## 📚 Документация
