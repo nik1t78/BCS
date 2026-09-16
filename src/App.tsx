@@ -9,10 +9,13 @@ import AdminPanel from './components/AdminPanel';
 import Notifications from './components/Notifications';
 import Profile from './components/Profile';
 import Stats from './components/Stats';
+import ThemeToggle from './components/ThemeToggle';
+import Templates from './components/Templates';
+import TagsManager from './components/TagsManager';
 import { User, Notification as VKSNotification } from './types';
-import { getCurrentUser, logout, getUserNotifications, addNotification, getMeetings, getSettings, getNotifications } from './store';
+import { getCurrentUser, logout, getUserNotifications, addNotification, getMeetings, getSettings, getNotifications, getTheme } from './store';
 
-type Page = 'dashboard' | 'schedule' | 'admin' | 'notifications' | 'profile' | 'meetings' | 'stats';
+type Page = 'dashboard' | 'schedule' | 'admin' | 'notifications' | 'profile' | 'meetings' | 'stats' | 'templates' | 'tags';
 
 function App() {
   const [user, setUser] = useState<User | null>(getCurrentUser());
@@ -21,6 +24,12 @@ function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showTour, setShowTour] = useState(false);
+
+  // Initialize theme
+  useEffect(() => {
+    const theme = getTheme();
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+  }, []);
 
   const handleLogin = () => {
     const loggedUser = getCurrentUser();
@@ -158,6 +167,8 @@ function App() {
     { id: 'dashboard', label: 'Главная', icon: 'fa-home', tooltip: 'Обзор конференций и статистика', roles: ['admin', 'user', 'moderator'] },
     { id: 'schedule', label: 'Расписание', icon: 'fa-calendar-alt', tooltip: 'Просмотр расписания по дням', roles: ['admin', 'user', 'moderator'] },
     { id: 'meetings', label: 'Мои конференции', icon: 'fa-video', tooltip: 'Управление вашими встречами', roles: ['admin', 'user', 'moderator'] },
+    { id: 'templates', label: 'Шаблоны', icon: 'fa-copy', tooltip: 'Шаблоны конференций', roles: ['admin', 'user', 'moderator'] },
+    { id: 'tags', label: 'Теги', icon: 'fa-tags', tooltip: 'Управление тегами', roles: ['admin', 'user', 'moderator'] },
     { id: 'stats', label: 'Статистика', icon: 'fa-chart-bar', tooltip: 'Аналитика и отчёты', roles: ['admin', 'user', 'moderator'] },
     { id: 'notifications', label: 'Уведомления', icon: 'fa-bell', tooltip: 'Напоминания о конференциях', roles: ['admin', 'user', 'moderator'], badge: unreadCount },
     { id: 'profile', label: 'Профиль', icon: 'fa-user', tooltip: 'Настройки аккаунта', roles: ['admin', 'user', 'moderator'] },
@@ -288,6 +299,7 @@ function App() {
             </h2>
           </div>
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <Tooltip content="Помощь и подсказки">
               <button onClick={() => setShowTour(true)}
                 className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors">
@@ -330,6 +342,8 @@ function App() {
           {currentPage === 'dashboard' && <Dashboard user={user} onNavigate={navigateTo} />}
           {currentPage === 'schedule' && <Schedule user={user} onNavigate={navigateTo} />}
           {currentPage === 'meetings' && <UserPanel user={user} onNavigate={navigateTo} />}
+          {currentPage === 'templates' && <Templates userId={user.id} />}
+          {currentPage === 'tags' && <TagsManager userId={user.id} />}
           {currentPage === 'stats' && <Stats user={user} />}
           {currentPage === 'admin' && (isAdmin || isModerator) && <AdminPanel user={user} />}
           {currentPage === 'notifications' && <Notifications user={user} />}

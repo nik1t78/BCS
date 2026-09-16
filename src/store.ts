@@ -1,4 +1,4 @@
-import { User, Meeting, Notification, Settings } from './types';
+import { User, Meeting, Notification, Settings, MeetingTemplate, Tag, Attachment, MeetingHistory } from './types';
 
 const USERS_KEY = 'vks_users';
 const MEETINGS_KEY = 'vks_meetings';
@@ -187,6 +187,130 @@ export function saveSettings(settings: Settings): void {
 
 export function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substr(2);
+}
+
+// ============ THEME ============
+export function getTheme(): 'light' | 'dark' {
+  return (localStorage.getItem('vks_theme') as 'light' | 'dark') || 'light';
+}
+
+export function setTheme(theme: 'light' | 'dark'): void {
+  localStorage.setItem('vks_theme', theme);
+  document.documentElement.classList.toggle('dark', theme === 'dark');
+}
+
+// ============ TEMPLATES ============
+export function getTemplates(): MeetingTemplate[] {
+  const data = localStorage.getItem('vks_templates');
+  return data ? JSON.parse(data) : [];
+}
+
+export function saveTemplates(templates: MeetingTemplate[]): void {
+  localStorage.setItem('vks_templates', JSON.stringify(templates));
+}
+
+export function addTemplate(template: MeetingTemplate): void {
+  const templates = getTemplates();
+  templates.push(template);
+  saveTemplates(templates);
+}
+
+export function updateTemplate(updated: MeetingTemplate): void {
+  const templates = getTemplates();
+  const index = templates.findIndex(t => t.id === updated.id);
+  if (index !== -1) {
+    templates[index] = updated;
+    saveTemplates(templates);
+  }
+}
+
+export function deleteTemplate(id: string): void {
+  const templates = getTemplates().filter(t => t.id !== id);
+  saveTemplates(templates);
+}
+
+// ============ TAGS ============
+export function getTags(): Tag[] {
+  const data = localStorage.getItem('vks_tags');
+  return data ? JSON.parse(data) : [];
+}
+
+export function saveTags(tags: Tag[]): void {
+  localStorage.setItem('vks_tags', JSON.stringify(tags));
+}
+
+export function addTag(tag: Tag): void {
+  const tags = getTags();
+  tags.push(tag);
+  saveTags(tags);
+}
+
+export function updateTag(updated: Tag): void {
+  const tags = getTags();
+  const index = tags.findIndex(t => t.id === updated.id);
+  if (index !== -1) {
+    tags[index] = updated;
+    saveTags(tags);
+  }
+}
+
+export function deleteTag(id: string): void {
+  const tags = getTags().filter(t => t.id !== id);
+  saveTags(tags);
+}
+
+// ============ FAVORITES ============
+export function toggleFavorite(meetingId: string): void {
+  const meetings = getMeetings();
+  const index = meetings.findIndex(m => m.id === meetingId);
+  if (index !== -1) {
+    meetings[index].isFavorite = !meetings[index].isFavorite;
+    saveMeetings(meetings);
+  }
+}
+
+export function getFavorites(): Meeting[] {
+  return getMeetings().filter(m => m.isFavorite);
+}
+
+// ============ ATTACHMENTS ============
+export function getAttachments(meetingId?: string): Attachment[] {
+  const data = localStorage.getItem('vks_attachments');
+  const attachments: Attachment[] = data ? JSON.parse(data) : [];
+  return meetingId ? attachments.filter((a: Attachment) => a.meetingId === meetingId) : attachments;
+}
+
+export function saveAttachments(attachments: Attachment[]): void {
+  localStorage.setItem('vks_attachments', JSON.stringify(attachments));
+}
+
+export function addAttachment(attachment: Attachment): void {
+  const attachments = getAttachments();
+  attachments.push(attachment);
+  saveAttachments(attachments);
+}
+
+export function deleteAttachment(id: string): void {
+  const attachments = getAttachments().filter(a => a.id !== id);
+  saveAttachments(attachments);
+}
+
+// ============ HISTORY ============
+export function getHistory(meetingId?: string): MeetingHistory[] {
+  const data = localStorage.getItem('vks_history');
+  const history: MeetingHistory[] = data ? JSON.parse(data) : [];
+  return meetingId ? history.filter((h: MeetingHistory) => h.meetingId === meetingId) : history;
+}
+
+export function saveHistory(history: MeetingHistory[]): void {
+  localStorage.setItem('vks_history', JSON.stringify(history));
+}
+
+export function addHistoryEntry(entry: MeetingHistory): void {
+  const history = getHistory();
+  history.unshift(entry);
+  if (history.length > 500) history.length = 500;
+  saveHistory(history);
 }
 
 // ============ DEMO DATA ============

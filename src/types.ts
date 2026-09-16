@@ -31,6 +31,55 @@ export interface Meeting {
   priority: 'low' | 'medium' | 'high';
   createdAt: string;
   isPrivate: boolean;
+  tags?: string[];
+  isFavorite?: boolean;
+}
+
+export interface MeetingTemplate {
+  id: string;
+  userId: string;
+  name: string;
+  description: string;
+  durationMinutes: number;
+  room: string;
+  link: string;
+  priority: 'low' | 'medium' | 'high';
+  reminderMinutes: number;
+  recurring: 'none' | 'daily' | 'weekly' | 'monthly';
+  isPrivate: boolean;
+  defaultParticipants: string[];
+  createdAt: string;
+}
+
+export interface Tag {
+  id: string;
+  userId: string;
+  name: string;
+  color: string;
+  createdAt: string;
+}
+
+export interface Attachment {
+  id: string;
+  meetingId: string;
+  userId: string;
+  fileName: string;
+  filePath: string;
+  fileSize: number;
+  mimeType: string;
+  createdAt: string;
+}
+
+export interface MeetingHistory {
+  id: string;
+  meetingId: string;
+  userId: string;
+  action: 'created' | 'updated' | 'status_changed' | 'deleted';
+  oldValues: any;
+  newValues: any;
+  ipAddress: string;
+  userAgent: string;
+  createdAt: string;
 }
 
 export interface Notification {
