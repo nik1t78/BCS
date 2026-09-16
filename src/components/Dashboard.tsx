@@ -167,9 +167,9 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
               <p className="text-lg font-bold text-gray-800 mt-1">
                 {nextMeeting.room || 'Онлайн'}
               </p>
-              {nextMeeting.room && (
-                <p className="text-xs text-gray-500 mt-1">Кабинет/переговорная</p>
-              )}
+              <p className="text-xs text-gray-500 mt-1">
+                {nextMeeting.room ? '📍 Кабинет / Переговорная' : '🌐 Виртуальная встреча'}
+              </p>
             </div>
           </div>
 
@@ -255,7 +255,15 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
                       <div className="flex items-center gap-2 text-gray-600">
                         <i className="fas fa-map-marker-alt text-orange-500 w-4"></i>
                         <span>
-                          <strong>Место:</strong> {meeting.room || 'Онлайн'}
+                          {meeting.room ? (
+                            <>
+                              <strong>📍 Кабинет:</strong> {meeting.room}
+                            </>
+                          ) : (
+                            <>
+                              <strong>🌐 Онлайн</strong>
+                            </>
+                          )}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 text-gray-600">
