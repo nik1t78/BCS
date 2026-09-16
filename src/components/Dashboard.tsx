@@ -175,7 +175,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
 
           {/* Дополнительная информация */}
           <div className="bg-gray-50 rounded-lg p-4 mb-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <p className="text-sm text-gray-600 font-medium flex items-center gap-1 mb-1">
                   <i className="fas fa-user-tie"></i> Организатор
@@ -188,8 +188,20 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
                 </p>
                 <p className="text-gray-800">{nextMeeting.participants.length} чел.</p>
               </div>
+              <div>
+                <p className="text-sm text-gray-600 font-medium flex items-center gap-1 mb-1">
+                  <i className="fas fa-door-open"></i> Кабинет
+                </p>
+                <p className="text-gray-800 font-semibold">
+                  {nextMeeting.room ? (
+                    <span className="text-orange-600">📍 {nextMeeting.room}</span>
+                  ) : (
+                    <span className="text-blue-600">🌐 Онлайн</span>
+                  )}
+                </p>
+              </div>
               {nextMeeting.description && (
-                <div className="md:col-span-2">
+                <div className="md:col-span-3">
                   <p className="text-sm text-gray-600 font-medium flex items-center gap-1 mb-1">
                     <i className="fas fa-info-circle"></i> Описание
                   </p>
