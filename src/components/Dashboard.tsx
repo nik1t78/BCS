@@ -21,12 +21,16 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
     return () => clearInterval(timer);
   }, []);
 
+  // Модераторы и админы видят все конференции, обычные пользователи - только свои
+  const visibleMeetings = (user.role === 'admin' || user.role === 'moderator') 
+    ? meetings 
+    : meetings.filter(m => m.participants.includes(user.id) || m.organizerId === user.id);
+
   useEffect(() => {
     const today = currentTime.toISOString().split('T')[0];
     const now = currentTime.toTimeString().slice(0, 5);
-    const myMeetings = meetings.filter(m => m.participants.includes(user.id) || m.organizerId === user.id);
     
-    const upcoming = myMeetings
+    const upcoming = visibleMeetings
       .filter(m => {
         if (m.status === 'cancelled' || m.status === 'completed') return false;
         if (m.date > today) return true;
@@ -47,10 +51,10 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
         setCountdown(`${hours}ч ${minutes}м ${seconds}с`);
       }
     }
-  }, [currentTime, meetings, user]);
+  }, [currentTime, visibleMeetings]);
 
-  const myMeetings = meetings.filter(m => m.participants.includes(user.id) || m.organizerId === user.id);
-  const todayMeetings = myMeetings.filter(m => m.date === currentTime.toISOString().split('T')[0]);
+  const myMeetings = visibleMeetings.filter(m => m.participants.includes(user.id) || m.organizerId === user.id);
+  const todayMeetings = visibleMeetings.filter(m => m.date === currentTime.toISOString().split('T')[0]);
   const users = getUsers();
   const getUserName = (id: string) => users.find(u => u.id === id)?.name || 'Неизвестный';
 
@@ -122,42 +126,104 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
 
       {/* Next Meeting */}
       {nextMeeting && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
-            <i className="fas fa-arrow-right text-blue-500"></i>Следующая конференция
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white rounded-xl shadow-lg border-2 border-blue-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+              <i className="fas fa-arrow-right text-blue-500"></i>
+              Следующая конференция
+            </h2>
+            <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getPriorityColor(nextMeeting.priority)}`}>
+              {nextMeeting.priority === 'high' ? '🔴 Высокий приоритет' : nextMeeting.priority === 'medium' ? '🟡 Средний' : '🟢 Низкий'}
+            </span>
+          </div>
+          
+          {/* Основная информация */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             <div className="bg-blue-50 rounded-lg p-4">
-              <p className="text-sm text-blue-600 font-medium">Название</p>
+              <p className="text-sm text-blue-600 font-medium flex items-center gap-1">
+                <i className="fas fa-video"></i> Название
+              </p>
               <p className="text-lg font-bold text-gray-800 mt-1">{nextMeeting.title}</p>
             </div>
             <div className="bg-purple-50 rounded-lg p-4">
-              <p className="text-sm text-purple-600 font-medium">Дата и время</p>
-              <p className="text-lg font-bold text-gray-800 mt-1">
-                {new Date(nextMeeting.date).toLocaleDateString('ru-RU')} • {nextMeeting.startTime}
+              <p className="text-sm text-purple-600 font-medium flex items-center gap-1">
+                <i className="far fa-calendar"></i> Дата и время
               </p>
+              <p className="text-lg font-bold text-gray-800 mt-1">
+                {new Date(nextMeeting.date).toLocaleDateString('ru-RU')}
+              </p>
+              <p className="text-sm text-gray-600">{nextMeeting.startTime} - {nextMeeting.endTime}</p>
             </div>
             <div className="bg-emerald-50 rounded-lg p-4">
-              <p className="text-sm text-emerald-600 font-medium">До начала</p>
+              <p className="text-sm text-emerald-600 font-medium flex items-center gap-1">
+                <i className="far fa-clock"></i> До начала
+              </p>
               <p className="text-lg font-bold text-gray-800 mt-1">{countdown}</p>
             </div>
+            <div className="bg-orange-50 rounded-lg p-4">
+              <p className="text-sm text-orange-600 font-medium flex items-center gap-1">
+                <i className="fas fa-map-marker-alt"></i> Место проведения
+              </p>
+              <p className="text-lg font-bold text-gray-800 mt-1">
+                {nextMeeting.room || 'Онлайн'}
+              </p>
+              {nextMeeting.room && (
+                <p className="text-xs text-gray-500 mt-1">Кабинет/переговорная</p>
+              )}
+            </div>
           </div>
-          {nextMeeting.link && (
-            <div className="mt-4">
+
+          {/* Дополнительная информация */}
+          <div className="bg-gray-50 rounded-lg p-4 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-gray-600 font-medium flex items-center gap-1 mb-1">
+                  <i className="fas fa-user-tie"></i> Организатор
+                </p>
+                <p className="text-gray-800">{getUserName(nextMeeting.organizerId)}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600 font-medium flex items-center gap-1 mb-1">
+                  <i className="fas fa-users"></i> Участники
+                </p>
+                <p className="text-gray-800">{nextMeeting.participants.length} чел.</p>
+              </div>
+              {nextMeeting.description && (
+                <div className="md:col-span-2">
+                  <p className="text-sm text-gray-600 font-medium flex items-center gap-1 mb-1">
+                    <i className="fas fa-info-circle"></i> Описание
+                  </p>
+                  <p className="text-gray-800 text-sm">{nextMeeting.description}</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Действия */}
+          <div className="flex flex-wrap gap-3">
+            {nextMeeting.link && (
               <button
                 onClick={() => setJoiningMeeting(nextMeeting)}
-                className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                <i className="fas fa-video"></i>Подключиться
+                className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-md">
+                <i className="fas fa-video"></i>
+                Подключиться к ВКС
               </button>
-            </div>
-          )}
+            )}
+            <button
+              onClick={() => onNavigate('schedule')}
+              className="inline-flex items-center gap-2 bg-gray-200 text-gray-700 px-4 py-3 rounded-lg hover:bg-gray-300 transition-colors">
+              <i className="fas fa-calendar-alt"></i>
+              Открыть расписание
+            </button>
+          </div>
         </div>
       )}
 
       {/* Today's Schedule */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
         <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-          <i className="fas fa-calendar-day text-purple-500"></i>Сегодня
+          <i className="fas fa-calendar-day text-purple-500"></i>
+          Сегодня ({todayMeetings.length} {todayMeetings.length === 1 ? 'конференция' : 'конференций'})
         </h2>
         {todayMeetings.length === 0 ? (
           <div className="text-center py-8 text-gray-400">
@@ -167,18 +233,62 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
         ) : (
           <div className="space-y-3">
             {todayMeetings.sort((a, b) => a.startTime.localeCompare(b.startTime)).map(meeting => (
-              <div key={meeting.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg border border-gray-100 hover:border-blue-200 transition-colors">
-                <div className="text-center min-w-[60px]">
-                  <p className="text-lg font-bold text-blue-600">{meeting.startTime}</p>
-                  <p className="text-xs text-gray-500">{meeting.endTime}</p>
+              <div key={meeting.id} className="p-4 bg-gray-50 rounded-lg border border-gray-100 hover:border-blue-200 transition-colors">
+                <div className="flex items-start gap-4">
+                  {/* Время */}
+                  <div className="text-center min-w-[80px] bg-white rounded-lg p-3 shadow-sm">
+                    <p className="text-xl font-bold text-blue-600">{meeting.startTime}</p>
+                    <p className="text-xs text-gray-500">до {meeting.endTime}</p>
+                  </div>
+                  
+                  {/* Основная информация */}
+                  <div className="flex-1">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <h3 className="font-bold text-gray-800 text-lg">{meeting.title}</h3>
+                      <span className={`px-2 py-1 rounded text-xs font-medium border whitespace-nowrap ${getPriorityColor(meeting.priority)}`}>
+                        {meeting.priority === 'high' ? '🔴 Высокий' : meeting.priority === 'medium' ? '🟡 Средний' : '🟢 Низкий'}
+                      </span>
+                    </div>
+                    
+                    {/* Детальная информация */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                      <div className="flex items-center gap-2 text-gray-600">
+                        <i className="fas fa-map-marker-alt text-orange-500 w-4"></i>
+                        <span>
+                          <strong>Место:</strong> {meeting.room || 'Онлайн'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-gray-600">
+                        <i className="fas fa-user-tie text-purple-500 w-4"></i>
+                        <span>
+                          <strong>Организатор:</strong> {getUserName(meeting.organizerId)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-gray-600">
+                        <i className="fas fa-users text-blue-500 w-4"></i>
+                        <span>
+                          <strong>Участники:</strong> {meeting.participants.length} чел.
+                        </span>
+                      </div>
+                      {meeting.description && (
+                        <div className="flex items-center gap-2 text-gray-600">
+                          <i className="fas fa-info-circle text-gray-500 w-4"></i>
+                          <span className="truncate">{meeting.description}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Кнопка подключения */}
+                  {meeting.link && (
+                    <button
+                      onClick={() => setJoiningMeeting(meeting)}
+                      className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 whitespace-nowrap shadow-md">
+                      <i className="fas fa-video"></i>
+                      <span className="hidden md:inline">Подключиться</span>
+                    </button>
+                  )}
                 </div>
-                <div className="flex-1">
-                  <p className="font-semibold text-gray-800">{meeting.title}</p>
-                  <p className="text-sm text-gray-500">{meeting.room} • Организовал: {getUserName(meeting.organizerId)}</p>
-                </div>
-                <span className={`px-2 py-1 rounded text-xs font-medium border ${getPriorityColor(meeting.priority)}`}>
-                  {meeting.priority === 'high' ? 'Высокий' : meeting.priority === 'medium' ? 'Средний' : 'Низкий'}
-                </span>
               </div>
             ))}
           </div>
