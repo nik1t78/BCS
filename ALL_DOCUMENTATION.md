@@ -54,11 +54,10 @@ docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder
 ### Доступ
 
 - **Приложение**: http://localhost
-- **MailHog**: http://localhost:8025
 
 ### Демо-аккаунты
 
-| Роль | Email | Пароль |
+| Роль | Логин | Пароль |
 |------|-------|--------|
 | 👑 Админ | admin@vks.local | admin123 |
 | 🔧 Модератор | sidorov@vks.local | mod123 |
@@ -71,14 +70,14 @@ docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder
 ### 1. Регистрация пользователей
 **Описание**: Создание нового аккаунта  
 **Доступ**: Публичный  
-**Поля**: ФИО, Email, Пароль, Телефон, Отдел  
-**Валидация**: Уникальный email, пароль от 6 символов  
+**Поля**: ФИО, Логин, Пароль, Телефон, Отдел  
+**Валидация**: Уникальный логин, пароль от 6 символов  
 **API**: `POST /api/auth/register`
 
 ### 2. Вход в систему
 **Описание**: Аутентификация пользователя  
 **Доступ**: Публичный  
-**Проверки**: Email/пароль, статус аккаунта  
+**Проверки**: Логин/пароль, статус аккаунта  
 **API**: `POST /api/auth/login`
 
 ### 3. Выход из системы
@@ -96,7 +95,7 @@ docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder
 
 ### 5. Просмотр профиля
 **Описание**: Отображение личных данных  
-**Данные**: ФИО, Email, Телефон, Отдел, Должность, Аватар  
+**Данные**: ФИО, Логин, Телефон, Отдел, Должность, Аватар  
 **API**: `GET /api/auth/user`
 
 ### 6. Редактирование профиля
@@ -133,7 +132,6 @@ docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder
 - Напоминание за N минут
 - Повторение (ежедневно/еженедельно/ежемесячно)
 - Участники (пользователи системы)
-- Внешние участники (email)
 - Приватность (публичная/приватная)  
 **API**: `POST /api/meetings`
 
@@ -687,7 +685,7 @@ vks-schedule/
 ```sql
 - id (BIGINT, PRIMARY KEY)
 - name (VARCHAR 255)
-- email (VARCHAR 255, UNIQUE)
+- login (VARCHAR 255, UNIQUE)
 - password (VARCHAR 255, hashed)
 - role (ENUM: admin, moderator, user)
 - phone (VARCHAR 20, nullable)
@@ -709,7 +707,6 @@ vks-schedule/
 - end_time (TIME)
 - organizer_id (BIGINT, FOREIGN KEY → users.id)
 - participants (JSON, array of user IDs)
-- participant_emails (JSON, array of emails)
 - link (VARCHAR 500, nullable)
 - room (VARCHAR 255, nullable)
 - status (ENUM: scheduled, in-progress, completed, cancelled)
@@ -1010,7 +1007,7 @@ maxretry = 5
 ```php
 $request->validate([
     'title' => 'required|string|max:255',
-    'email' => 'required|email|unique:users,email,' . $id,
+    'login' => 'required|unique:users,login,' . $id,
     'date' => 'required|date|after_or_equal:today',
 ]);
 ```
@@ -1018,10 +1015,10 @@ $request->validate([
 #### Защита от SQL инъекций
 ```php
 // ✅ ПРАВИЛЬНО
-$user = User::where('email', $request->email)->first();
+$user = User::where('login', $request->login)->first();
 
 // ❌ НЕПРАВИЛЬНО
-$user = DB::select("SELECT * FROM users WHERE email = '{$request->email}'");
+$user = DB::select("SELECT * FROM users WHERE login = '{$request->login}'");
 ```
 
 #### Защита от XSS

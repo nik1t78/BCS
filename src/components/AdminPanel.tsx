@@ -21,7 +21,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [confirmPassword, setConfirmPassword] = useState('');
 
   const emptyUser: User = {
-    id: '', name: '', email: '', password: '', role: 'user',
+    id: '', name: '', login: '', password: '', role: 'user',
     phone: '', department: '', position: '', createdAt: '', isActive: true,
   };
   const [userForm, setUserForm] = useState<User>(emptyUser);
@@ -45,12 +45,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     if (editingUser) {
       updateUser({ ...userForm, id: editingUser.id });
     } else {
-      if (!userForm.name || !userForm.email || !userForm.password) {
+      if (!userForm.name || !userForm.login || !userForm.password) {
         alert('Заполните обязательные поля');
         return;
       }
-      if (users.find(u => u.email === userForm.email)) {
-        alert('Email уже используется');
+      if (users.find(u => u.login === userForm.login)) {
+        alert('Логин уже используется');
         return;
       }
       const newUser = { ...userForm, id: generateId(), createdAt: new Date().toISOString() };
@@ -160,7 +160,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
   const filteredUsers = users.filter(u =>
     u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    u.login.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (u.department || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -260,8 +260,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500" />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
-                      <input type="email" required value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Логин *</label>
+                      <input type="text" required value={userForm.login} onChange={(e) => setUserForm({ ...userForm, login: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500" />
                     </div>
                     <div>
@@ -338,7 +338,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                           </div>
                           <div>
                             <p className="font-medium text-gray-800 text-sm">{u.name}</p>
-                            <p className="text-xs text-gray-500">{u.email}</p>
+                            <p className="text-xs text-gray-500">@{u.login}</p>
                           </div>
                         </div>
                       </td>

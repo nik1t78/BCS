@@ -29,10 +29,10 @@ export function getToken(): string | null {
   return JSON.parse(data).token;
 }
 
-export function login(email: string, password: string): { success: boolean; user?: User; error?: string } {
+export function login(login: string, password: string): { success: boolean; user?: User; error?: string } {
   const users = getUsers();
-  const user = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
-  if (!user) return { success: false, error: 'Неверный email или пароль' };
+  const user = users.find(u => u.login.toLowerCase() === login.toLowerCase() && u.password === password);
+  if (!user) return { success: false, error: 'Неверный логин или пароль' };
   if (!user.isActive) return { success: false, error: 'Аккаунт заблокирован. Обратитесь к администратору.' };
 
   const token = 'tok_' + Date.now().toString(36) + Math.random().toString(36).substr(2);
@@ -46,16 +46,16 @@ export function login(email: string, password: string): { success: boolean; user
   return { success: true, user: updatedUser };
 }
 
-export function register(name: string, email: string, password: string, phone?: string, department?: string): { success: boolean; user?: User; error?: string } {
+export function register(name: string, login: string, password: string, phone?: string, department?: string): { success: boolean; user?: User; error?: string } {
   const users = getUsers();
-  if (users.find(u => u.email.toLowerCase() === email.toLowerCase())) {
-    return { success: false, error: 'Пользователь с таким email уже существует' };
+  if (users.find(u => u.login.toLowerCase() === login.toLowerCase())) {
+    return { success: false, error: 'Пользователь с таким логином уже существует' };
   }
 
   const newUser: User = {
     id: generateId(),
     name,
-    email,
+    login,
     password,
     role: 'user',
     phone: phone || '',
@@ -328,7 +328,7 @@ export function initializeDemoData(): void {
     {
       id: adminId,
       name: 'Администратор Системы',
-      email: 'admin@vks.local',
+      login: 'admin',
       password: 'admin123',
       role: 'admin',
       phone: '+7 (999) 000-00-01',
@@ -340,7 +340,7 @@ export function initializeDemoData(): void {
     {
       id: userId1,
       name: 'Иванов Алексей Сергеевич',
-      email: 'ivanov@vks.local',
+      login: 'ivanov',
       password: 'user123',
       role: 'user',
       phone: '+7 (999) 111-22-33',
@@ -352,7 +352,7 @@ export function initializeDemoData(): void {
     {
       id: userId2,
       name: 'Петрова Мария Владимировна',
-      email: 'petrova@vks.local',
+      login: 'petrova',
       password: 'user123',
       role: 'user',
       phone: '+7 (999) 222-33-44',
@@ -364,7 +364,7 @@ export function initializeDemoData(): void {
     {
       id: userId3,
       name: 'Сидоров Константин Львович',
-      email: 'sidorov@vks.local',
+      login: 'sidorov',
       password: 'mod123',
       role: 'moderator',
       phone: '+7 (999) 333-44-55',
