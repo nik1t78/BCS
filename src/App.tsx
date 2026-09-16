@@ -8,10 +8,11 @@ import UserPanel from './components/UserPanel';
 import AdminPanel from './components/AdminPanel';
 import Notifications from './components/Notifications';
 import Profile from './components/Profile';
+import Stats from './components/Stats';
 import { User, Notification as VKSNotification } from './types';
 import { getCurrentUser, logout, getUserNotifications, addNotification, getMeetings, getSettings, getNotifications } from './store';
 
-type Page = 'dashboard' | 'schedule' | 'admin' | 'notifications' | 'profile' | 'meetings';
+type Page = 'dashboard' | 'schedule' | 'admin' | 'notifications' | 'profile' | 'meetings' | 'stats';
 
 function App() {
   const [user, setUser] = useState<User | null>(getCurrentUser());
@@ -157,6 +158,7 @@ function App() {
     { id: 'dashboard', label: 'Главная', icon: 'fa-home', tooltip: 'Обзор конференций и статистика', roles: ['admin', 'user', 'moderator'] },
     { id: 'schedule', label: 'Расписание', icon: 'fa-calendar-alt', tooltip: 'Просмотр расписания по дням', roles: ['admin', 'user', 'moderator'] },
     { id: 'meetings', label: 'Мои конференции', icon: 'fa-video', tooltip: 'Управление вашими встречами', roles: ['admin', 'user', 'moderator'] },
+    { id: 'stats', label: 'Статистика', icon: 'fa-chart-bar', tooltip: 'Аналитика и отчёты', roles: ['admin', 'user', 'moderator'] },
     { id: 'notifications', label: 'Уведомления', icon: 'fa-bell', tooltip: 'Напоминания о конференциях', roles: ['admin', 'user', 'moderator'], badge: unreadCount },
     { id: 'profile', label: 'Профиль', icon: 'fa-user', tooltip: 'Настройки аккаунта', roles: ['admin', 'user', 'moderator'] },
     { id: 'admin', label: 'Админ-панель', icon: 'fa-shield-alt', tooltip: 'Управление системой', roles: ['admin', 'moderator'] },
@@ -328,6 +330,7 @@ function App() {
           {currentPage === 'dashboard' && <Dashboard user={user} onNavigate={navigateTo} />}
           {currentPage === 'schedule' && <Schedule user={user} onNavigate={navigateTo} />}
           {currentPage === 'meetings' && <UserPanel user={user} onNavigate={navigateTo} />}
+          {currentPage === 'stats' && <Stats user={user} />}
           {currentPage === 'admin' && (isAdmin || isModerator) && <AdminPanel user={user} />}
           {currentPage === 'notifications' && <Notifications user={user} />}
           {currentPage === 'profile' && <Profile user={user} onUpdate={() => setUser(getCurrentUser())} />}
