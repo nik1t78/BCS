@@ -179,18 +179,6 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
               </button>
             </form>
           )}
-
-          {/* Demo credentials */}
-          <div className="mt-6 p-3 bg-blue-50 rounded-lg border border-blue-100">
-            <p className="text-xs font-medium text-blue-700 mb-2">
-              <i className="fas fa-info-circle mr-1"></i>Демо-аккаунты:
-            </p>
-            <div className="space-y-1 text-xs text-blue-600">
-              <p><span className="font-medium">Админ:</span> admin@vks.local / admin123</p>
-              <p><span className="font-medium">Пользователь:</span> ivanov@vks.local / user123</p>
-              <p><span className="font-medium">Модератор:</span> sidorov@vks.local / mod123</p>
-            </div>
-          </div>
         </div>
       </div>
     </div>

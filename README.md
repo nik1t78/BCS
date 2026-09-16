@@ -62,16 +62,6 @@ docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder
 
 ---
 
-## 👤 Демо-аккаунты
-
-| Роль | Логин | Пароль |
-|------|-------|--------|
-| 👑 Админ | admin@vks.local | admin123 |
-| 🔧 Модератор | sidorov@vks.local | mod123 |
-| 👤 Пользователь | ivanov@vks.local | user123 |
-
----
-
 ## 📚 Документация
 
 **📖 [ALL_DOCUMENTATION.md](./ALL_DOCUMENTATION.md)** — полная документация проекта
@@ -362,7 +352,7 @@ MIT License - свободное использование с указание�
 
 **Сделано с ❤️ для удобного управления видеоконференциями**
 
-[📖 Полная документация](./ALL_DOCUMENTATION.md) • [🚀 Быстрый старт](#🚀-быстрый-старт) • [👤 Демо-аккаунты](#👤-демо-аккаунты)
+[📖 Полная документация](./ALL_DOCUMENTATION.md) • [🚀 Быстрый старт](#🚀-быстрый-старт)
 
 **Версия**: 1.0 | **Статус**: ✅ Production Ready
 
