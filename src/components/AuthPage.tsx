@@ -7,7 +7,7 @@ interface AuthPageProps {
 
 export default function AuthPage({ onLogin }: AuthPageProps) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState('');
+  const [loginValue, setLoginValue] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -21,7 +21,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
     setLoading(true);
     
     setTimeout(() => {
-      const result = login(email, password);
+      const result = login(loginValue, password);
       if (result.success) {
         onLogin();
       } else {
@@ -35,7 +35,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
     e.preventDefault();
     setError('');
     
-    if (!name || !email || !password) {
+    if (!name || !loginValue || !password) {
       setError('Заполните все обязательные поля');
       return;
     }
@@ -46,7 +46,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
 
     setLoading(true);
     setTimeout(() => {
-      const result = register(name, email, password, phone, department);
+      const result = register(name, loginValue, password, phone, department);
       if (result.success) {
         onLogin();
       } else {
@@ -102,12 +102,12 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
           {mode === 'login' ? (
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Логин</label>
                 <div className="relative">
-                  <i className="fas fa-envelope absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                  <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                  <i className="fas fa-user absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                  <input type="text" required value={loginValue} onChange={(e) => setLoginValue(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    placeholder="email@example.com" />
+                    placeholder="ivanov" />
                 </div>
               </div>
               <div>
@@ -137,12 +137,12 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Логин *</label>
                 <div className="relative">
-                  <i className="fas fa-envelope absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                  <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                  <i className="fas fa-user absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                  <input type="text" required value={loginValue} onChange={(e) => setLoginValue(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    placeholder="email@example.com" />
+                    placeholder="ivanov" />
                 </div>
               </div>
               <div>

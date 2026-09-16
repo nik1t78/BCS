@@ -129,17 +129,6 @@ services:
     networks:
       - vks-network
 
-  # MailHog (для тестирования email)
-  mailhog:
-    image: mailhog/mailhog:latest
-    container_name: vks-mailhog
-    restart: unless-stopped
-    ports:
-      - "1025:1025"
-      - "8025:8025"
-    networks:
-      - vks-network
-
 networks:
   vks-network:
     driver: bridge

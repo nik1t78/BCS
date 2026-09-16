@@ -1,7 +1,7 @@
 export interface User {
   id: string;
   name: string;
-  email: string;
+  login: string;
   password: string; // In real Laravel this would be hashed on server
   role: 'admin' | 'user' | 'moderator';
   avatar?: string;

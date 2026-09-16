@@ -80,8 +80,8 @@ export default function Profile({ user, onUpdate }: ProfileProps) {
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-              <input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              <label className="block text-sm font-medium text-gray-700 mb-1">Логин</label>
+              <input type="text" value={formData.login} onChange={(e) => setFormData({ ...formData, login: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500" />
             </div>
             <div>

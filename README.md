@@ -17,7 +17,7 @@
 
 - 🔐 **Регистрация и авторизация** с ролевой моделью (Admin/Moderator/User)
 - 📅 **Удобное расписание** с просмотром по дням/неделям/месяцам
-- 🔔 **Умные уведомления** (звуковые + браузерные + email)
+- 🔔 **Умные уведомления** (звуковые + браузерные)
 - 👥 **Управление пользователями** с гибкими правами доступа
 - 📊 **Статистика и аналитика** конференций
 - 🎨 **Современный интерфейс** с подсказками и анимациями
@@ -59,13 +59,12 @@ docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder
 ### Доступ
 
 - **Приложение**: http://localhost
-- **MailHog**: http://localhost:8025
 
 ---
 
 ## 👤 Демо-аккаунты
 
-| Роль | Email | Пароль |
+| Роль | Логин | Пароль |
 |------|-------|--------|
 | 👑 Админ | admin@vks.local | admin123 |
 | 🔧 Модератор | sidorov@vks.local | mod123 |
@@ -132,7 +131,6 @@ docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder
 ### Infrastructure
 - **Docker** — контейнеризация
 - **Nginx** — web сервер
-- **MailHog** — тестирование email
 
 ---
 
