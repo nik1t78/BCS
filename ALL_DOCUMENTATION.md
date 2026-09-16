@@ -48,12 +48,21 @@ docker compose up -d --build
 ```bash
 docker compose exec backend php artisan key:generate
 docker compose exec backend php artisan migrate
-docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder
 ```
 
 ### Доступ
 
 - **Приложение**: http://localhost
+
+### 📥 Что нужно скачать
+
+Перед запуском установите:
+- **Docker Desktop** - [docker.com](https://www.docker.com/products/docker-desktop/)
+- **Git** - [git-scm.com](https://git-scm.com/downloads)
+- **Composer** - [getcomposer.org](https://getcomposer.org/download/)
+- **Node.js** - [nodejs.org](https://nodejs.org/)
+
+📖 **Полная инструкция по установке**: [INSTALLATION.md](./INSTALLATION.md)
 
 ### 🔒 Безопасность
 
