@@ -167,15 +167,15 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
               <p className="text-lg font-bold text-gray-800 mt-1">
                 {nextMeeting.room || 'Онлайн'}
               </p>
-              {nextMeeting.room && (
-                <p className="text-xs text-gray-500 mt-1">Кабинет/переговорная</p>
-              )}
+              <p className="text-xs text-gray-500 mt-1">
+                {nextMeeting.room ? '📍 Кабинет / Переговорная' : '🌐 Виртуальная встреча'}
+              </p>
             </div>
           </div>
 
           {/* Дополнительная информация */}
           <div className="bg-gray-50 rounded-lg p-4 mb-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <p className="text-sm text-gray-600 font-medium flex items-center gap-1 mb-1">
                   <i className="fas fa-user-tie"></i> Организатор
@@ -188,8 +188,20 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
                 </p>
                 <p className="text-gray-800">{nextMeeting.participants.length} чел.</p>
               </div>
+              <div>
+                <p className="text-sm text-gray-600 font-medium flex items-center gap-1 mb-1">
+                  <i className="fas fa-door-open"></i> Кабинет
+                </p>
+                <p className="text-gray-800 font-semibold">
+                  {nextMeeting.room ? (
+                    <span className="text-orange-600">📍 {nextMeeting.room}</span>
+                  ) : (
+                    <span className="text-blue-600">🌐 Онлайн</span>
+                  )}
+                </p>
+              </div>
               {nextMeeting.description && (
-                <div className="md:col-span-2">
+                <div className="md:col-span-3">
                   <p className="text-sm text-gray-600 font-medium flex items-center gap-1 mb-1">
                     <i className="fas fa-info-circle"></i> Описание
                   </p>
@@ -201,14 +213,16 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
 
           {/* Действия */}
           <div className="flex flex-wrap gap-3">
-            {nextMeeting.link && (
-              <button
-                onClick={() => setJoiningMeeting(nextMeeting)}
-                className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-md">
-                <i className="fas fa-video"></i>
-                Подключиться к ВКС
-              </button>
-            )}
+            <button
+              onClick={() => setJoiningMeeting(nextMeeting)}
+              className={`inline-flex items-center gap-2 px-6 py-3 rounded-lg font-medium shadow-md transition-colors ${
+                nextMeeting.link 
+                  ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                  : 'bg-gray-400 text-gray-100 cursor-not-allowed'
+              }`}>
+              <i className="fas fa-video"></i>
+              {nextMeeting.link ? 'Подключиться к конференции' : 'Ссылка не указана'}
+            </button>
             <button
               onClick={() => onNavigate('schedule')}
               className="inline-flex items-center gap-2 bg-gray-200 text-gray-700 px-4 py-3 rounded-lg hover:bg-gray-300 transition-colors">
@@ -255,7 +269,15 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
                       <div className="flex items-center gap-2 text-gray-600">
                         <i className="fas fa-map-marker-alt text-orange-500 w-4"></i>
                         <span>
-                          <strong>Место:</strong> {meeting.room || 'Онлайн'}
+                          {meeting.room ? (
+                            <>
+                              <strong>📍 Кабинет:</strong> {meeting.room}
+                            </>
+                          ) : (
+                            <>
+                              <strong>🌐 Онлайн</strong>
+                            </>
+                          )}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 text-gray-600">

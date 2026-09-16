@@ -12,6 +12,7 @@ import Stats from './components/Stats';
 import ThemeToggle from './components/ThemeToggle';
 import Templates from './components/Templates';
 import TagsManager from './components/TagsManager';
+import ResetData from './components/ResetData';
 import { User, Notification as VKSNotification } from './types';
 import { getCurrentUser, logout, getUserNotifications, addNotification, getMeetings, getSettings, getNotifications, getTheme } from './store';
 
@@ -181,6 +182,9 @@ function App() {
     <div className="min-h-screen bg-gray-50 flex">
       {/* Tour */}
       {showTour && <Tour onComplete={handleTourComplete} />}
+
+      {/* Reset Data Button */}
+      {user && <ResetData />}
 
       {/* Sidebar Desktop */}
       <aside className={`hidden md:flex flex-col ${sidebarOpen ? 'w-64' : 'w-20'} bg-white border-r border-gray-200 shadow-sm transition-all duration-300`}>
