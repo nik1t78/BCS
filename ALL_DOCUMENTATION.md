@@ -48,20 +48,56 @@ docker compose up -d --build
 ```bash
 docker compose exec backend php artisan key:generate
 docker compose exec backend php artisan migrate
-docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder
 ```
 
 ### Доступ
 
 - **Приложение**: http://localhost
 
-### Демо-аккаунты
+### 📥 Что нужно скачать
 
-| Роль | Логин | Пароль |
-|------|-------|--------|
-| 👑 Админ | admin@vks.local | admin123 |
-| 🔧 Модератор | sidorov@vks.local | mod123 |
-| 👤 Пользователь | ivanov@vks.local | user123 |
+Перед запуском установите:
+- **Docker Desktop** - [docker.com](https://www.docker.com/products/docker-desktop/)
+- **Git** - [git-scm.com](https://git-scm.com/downloads)
+- **Composer** - [getcomposer.org](https://getcomposer.org/download/)
+- **Node.js** - [nodejs.org](https://nodejs.org/)
+
+📖 **Полная инструкция по установке**: [INSTALLATION.md](./INSTALLATION.md)
+
+### 🔒 Безопасность
+
+**Демо-аккаунты удалены из проекта!** 
+
+Для начала работы:
+1. Зарегистрируйте первого пользователя через форму регистрации
+2. Назначьте роль администратора через базу данных или Tinker
+3. Создайте дополнительных пользователей через админ-панель
+
+📖 **Подробная инструкция**: [SECURITY_CLEANUP.md](./SECURITY_CLEANUP.md)
+
+### 🐧 Развёртывание на Linux
+
+📖 **Полная инструкция**: [LINUX_DEPLOYMENT.md](./LINUX_DEPLOYMENT.md)
+
+Быстрый старт:
+```bash
+# 1. Установка Docker
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+
+# 2. Клонирование проекта
+git clone <repo-url> vks-schedule && cd vks-schedule
+
+# 3. Создание Laravel
+cd backend && composer create-project laravel/laravel . && cd ..
+
+# 4. Запуск
+docker compose up -d --build
+
+# 5. Инициализация
+docker compose exec backend php artisan key:generate
+docker compose exec backend php artisan migrate
+```
 
 ---
 
