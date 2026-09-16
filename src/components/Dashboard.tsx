@@ -201,14 +201,16 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
 
           {/* Действия */}
           <div className="flex flex-wrap gap-3">
-            {nextMeeting.link && (
-              <button
-                onClick={() => setJoiningMeeting(nextMeeting)}
-                className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-md">
-                <i className="fas fa-video"></i>
-                Подключиться к ВКС
-              </button>
-            )}
+            <button
+              onClick={() => setJoiningMeeting(nextMeeting)}
+              className={`inline-flex items-center gap-2 px-6 py-3 rounded-lg font-medium shadow-md transition-colors ${
+                nextMeeting.link 
+                  ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                  : 'bg-gray-400 text-gray-100 cursor-not-allowed'
+              }`}>
+              <i className="fas fa-video"></i>
+              {nextMeeting.link ? 'Подключиться к конференции' : 'Ссылка не указана'}
+            </button>
             <button
               onClick={() => onNavigate('schedule')}
               className="inline-flex items-center gap-2 bg-gray-200 text-gray-700 px-4 py-3 rounded-lg hover:bg-gray-300 transition-colors">
