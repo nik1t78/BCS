@@ -9,18 +9,6 @@ interface JoinMeetingModalProps {
 export default function JoinMeetingModal({ meeting, onClose }: JoinMeetingModalProps) {
   const [copied, setCopied] = useState(false);
 
-  const detectPlatform = (link: string): { name: string; icon: string; color: string } => {
-    if (link.includes('zoom.us')) return { name: 'Zoom', icon: 'fa-video', color: 'bg-blue-600' };
-    if (link.includes('teams.microsoft.com')) return { name: 'Microsoft Teams', icon: 'fa-users', color: 'bg-purple-600' };
-    if (link.includes('meet.google.com')) return { name: 'Google Meet', icon: 'fa-video', color: 'bg-green-600' };
-    if (link.includes('webex.com')) return { name: 'Cisco Webex', icon: 'fa-video', color: 'bg-orange-600' };
-    if (link.includes('gotomeeting.com')) return { name: 'GoToMeeting', icon: 'fa-video', color: 'bg-red-600' };
-    if (link.includes('skype.com')) return { name: 'Skype', icon: 'fa-skype', color: 'bg-blue-500' };
-    return { name: 'Видеоконференция', icon: 'fa-video', color: 'bg-gray-600' };
-  };
-
-  const platform = meeting.link ? detectPlatform(meeting.link) : null;
-
   const copyLink = () => {
     if (meeting.link) {
       navigator.clipboard.writeText(meeting.link);
@@ -31,12 +19,9 @@ export default function JoinMeetingModal({ meeting, onClose }: JoinMeetingModalP
 
   const joinMeeting = () => {
     if (meeting.link) {
-      window.open(meeting.link, '_blank');
+      // Открываем ссылку, которую предоставил пользователь
+      window.open(meeting.link, '_blank', 'noopener,noreferrer');
     }
-  };
-
-  const formatTime = (time: string) => {
-    return time;
   };
 
   return (
@@ -67,18 +52,12 @@ export default function JoinMeetingModal({ meeting, onClose }: JoinMeetingModalP
               </div>
               <div>
                 <i className="far fa-clock mr-2"></i>
-                <span className="font-medium">{formatTime(meeting.startTime)} - {formatTime(meeting.endTime)}</span>
+                <span className="font-medium">{meeting.startTime} - {meeting.endTime}</span>
               </div>
               {meeting.room && (
                 <div>
                   <i className="fas fa-map-marker-alt mr-2"></i>
                   <span className="font-medium">{meeting.room}</span>
-                </div>
-              )}
-              {platform && (
-                <div>
-                  <i className={`fas ${platform.icon} mr-2`}></i>
-                  <span className="font-medium">{platform.name}</span>
                 </div>
               )}
             </div>
@@ -90,10 +69,10 @@ export default function JoinMeetingModal({ meeting, onClose }: JoinMeetingModalP
               {/* Join Button */}
               <button
                 onClick={joinMeeting}
-                className={`w-full ${platform?.color || 'bg-blue-600'} text-white py-4 rounded-xl font-bold text-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-3 shadow-lg`}
+                className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-3 shadow-lg"
               >
-                <i className={`fas ${platform?.icon || 'fa-video'} text-2xl`}></i>
-                <span>Подключиться к {platform?.name || 'конференции'}</span>
+                <i className="fas fa-external-link-alt text-2xl"></i>
+                <span>Открыть ссылку на конференцию</span>
               </button>
 
               {/* Link Info */}
@@ -135,49 +114,30 @@ export default function JoinMeetingModal({ meeting, onClose }: JoinMeetingModalP
               <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
                 <h4 className="font-bold text-blue-900 dark:text-blue-100 mb-2 flex items-center gap-2">
                   <i className="fas fa-info-circle"></i>
-                  Инструкция по подключению
+                  Как подключиться
                 </h4>
                 <ol className="text-sm text-blue-800 dark:text-blue-200 space-y-2 list-decimal list-inside">
-                  <li>Нажмите кнопку "{platform?.name || 'Подключиться'}" выше</li>
-                  <li>Разрешите доступ к камере и микрофону</li>
+                  <li>Нажмите кнопку "Открыть ссылку на конференцию" выше</li>
+                  <li>Откроется новая вкладка с конференцией</li>
+                  <li>Разрешите доступ к камере и микрофону (если потребуется)</li>
                   <li>Дождитесь подключения к конференции</li>
                   <li>Если требуется, введите имя участника</li>
-                  <li>Проверьте настройки звука и видео</li>
                 </ol>
               </div>
 
-              {/* Platform Specific Tips */}
-              {platform && (
-                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4">
-                  <h4 className="font-bold text-yellow-900 dark:text-yellow-100 mb-2 flex items-center gap-2">
-                    <i className="fas fa-lightbulb"></i>
-                    Советы для {platform.name}
-                  </h4>
-                  <ul className="text-sm text-yellow-800 dark:text-yellow-200 space-y-1">
-                    {platform.name === 'Zoom' && (
-                      <>
-                        <li>• Убедитесь, что у вас установлен Zoom клиент</li>
-                        <li>• Проверьте настройки микрофона и камеры</li>
-                        <li>• Используйте "Виртуальный фон" при необходимости</li>
-                      </>
-                    )}
-                    {platform.name === 'Microsoft Teams' && (
-                      <>
-                        <li>• Войдите в свой Microsoft аккаунт</li>
-                        <li>• Проверьте разрешения для Teams</li>
-                        <li>• Используйте "Фоновые эффекты" для размытия</li>
-                      </>
-                    )}
-                    {platform.name === 'Google Meet' && (
-                      <>
-                        <li>• Используйте Chrome для лучшей совместимости</li>
-                        <li>• Проверьте доступ к камере и микрофону</li>
-                        <li>• Включите "Шумоподавление" при необходимости</li>
-                      </>
-                    )}
-                  </ul>
-                </div>
-              )}
+              {/* Tips */}
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4">
+                <h4 className="font-bold text-yellow-900 dark:text-yellow-100 mb-2 flex items-center gap-2">
+                  <i className="fas fa-lightbulb"></i>
+                  Полезные советы
+                </h4>
+                <ul className="text-sm text-yellow-800 dark:text-yellow-200 space-y-1">
+                  <li>• Убедитесь, что у вас стабильное интернет-соединение</li>
+                  <li>• Проверьте настройки микрофона и камеры перед подключением</li>
+                  <li>• Используйте наушники для лучшего качества звука</li>
+                  <li>• Выберите тихое место для проведения конференции</li>
+                </ul>
+              </div>
             </div>
           ) : (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-6 text-center">
@@ -225,8 +185,8 @@ export default function JoinMeetingModal({ meeting, onClose }: JoinMeetingModalP
                 onClick={joinMeeting}
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
               >
-                <i className="fas fa-video"></i>
-                Подключиться
+                <i className="fas fa-external-link-alt"></i>
+                Открыть ссылку
               </button>
             )}
           </div>
