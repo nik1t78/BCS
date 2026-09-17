@@ -194,6 +194,8 @@ export function initializeDemoData(): void {
 
   createAdminUser();
   createModeratorUser();
+  createTestUsers();
+  createTestMeetings();
 }
 
 export function createAdminUser(): void {
@@ -242,10 +244,280 @@ export function createModeratorUser(): void {
   users.push(moderatorUser);
   localStorage.setItem('vks_users', JSON.stringify(users));
 }
+
+export function createTestUsers(): void {
+  // Тестовые сотрудники для демонстрации
+  const testUsers: User[] = [
+    {
+      id: generateId(),
+      name: 'Иванов Иван Иванович',
+      login: 'ivanov',
+      password: 'user123',
+      role: 'user',
+      phone: '+7 (999) 123-45-67',
+      department: 'Разработка',
+      position: 'Frontend Developer',
+      createdAt: new Date().toISOString(),
+      isActive: true,
+    },
+    {
+      id: generateId(),
+      name: 'Петрова Мария Сергеевна',
+      login: 'petrova',
+      password: 'user123',
+      role: 'user',
+      phone: '+7 (999) 234-56-78',
+      department: 'Разработка',
+      position: 'Backend Developer',
+      createdAt: new Date().toISOString(),
+      isActive: true,
+    },
+    {
+      id: generateId(),
+      name: 'Сидоров Алексей Петрович',
+      login: 'sidorov',
+      password: 'user123',
+      role: 'user',
+      phone: '+7 (999) 345-67-89',
+      department: 'Дизайн',
+      position: 'UI/UX Designer',
+      createdAt: new Date().toISOString(),
+      isActive: true,
+    },
+    {
+      id: generateId(),
+      name: 'Козлова Анна Владимировна',
+      login: 'kozlova',
+      password: 'user123',
+      role: 'user',
+      phone: '+7 (999) 456-78-90',
+      department: 'Менеджмент',
+      position: 'Project Manager',
+      createdAt: new Date().toISOString(),
+      isActive: true,
+    },
+    {
+      id: generateId(),
+      name: 'Николаев Дмитрий Сергеевич',
+      login: 'nikolaev',
+      password: 'user123',
+      role: 'user',
+      phone: '+7 (999) 567-89-01',
+      department: 'Маркетинг',
+      position: 'Marketing Specialist',
+      createdAt: new Date().toISOString(),
+      isActive: true,
+    },
+    {
+      id: generateId(),
+      name: 'Федорова Елена Александровна',
+      login: 'fedorova',
+      password: 'user123',
+      role: 'user',
+      phone: '+7 (999) 678-90-12',
+      department: 'HR',
+      position: 'HR Manager',
+      createdAt: new Date().toISOString(),
+      isActive: true,
+    },
+    {
+      id: generateId(),
+      name: 'Морозов Сергей Иванович',
+      login: 'morozov',
+      password: 'user123',
+      role: 'user',
+      phone: '+7 (999) 789-01-23',
+      department: 'Финансы',
+      position: 'Financial Analyst',
+      createdAt: new Date().toISOString(),
+      isActive: true,
+    },
+    {
+      id: generateId(),
+      name: 'Волкова Ольга Дмитриевна',
+      login: 'volkova',
+      password: 'user123',
+      role: 'user',
+      phone: '+7 (999) 890-12-34',
+      department: 'Продажи',
+      position: 'Sales Manager',
+      createdAt: new Date().toISOString(),
+      isActive: true,
+    },
+  ];
+
+  const users = getUsers();
+  users.push(...testUsers);
+  localStorage.setItem('vks_users', JSON.stringify(users));
+}
+
+export function createTestMeetings(): void {
+  const users = getUsers();
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const nextWeek = new Date(today);
+  nextWeek.setDate(nextWeek.getDate() + 7);
+
+  const formatDate = (date: Date): string => {
+    return date.toISOString().split('T')[0];
+  };
+
+  // Получаем ID пользователей для демонстрации
+  const adminUser = users.find(u => u.login === 'admin');
+  const moderatorUser = users.find(u => u.login === 'moderator');
+  const ivanov = users.find(u => u.login === 'ivanov');
+  const petrova = users.find(u => u.login === 'petrova');
+  const sidorov = users.find(u => u.login === 'sidorov');
+  const kozlova = users.find(u => u.login === 'kozlova');
+  const nikolaev = users.find(u => u.login === 'nikolaev');
+  const fedorova = users.find(u => u.login === 'fedorova');
+
+  const testMeetings: Meeting[] = [
+    {
+      id: generateId(),
+      title: 'Еженедельный стендап команды разработки',
+      description: 'Обсуждение прогресса за неделю, планирование задач на следующую неделю',
+      date: formatDate(today),
+      startTime: '10:00',
+      endTime: '10:30',
+      organizerId: kozlova?.id || '',
+      participants: [ivanov?.id || '', petrova?.id || '', sidorov?.id || ''],
+      participantEmails: [],
+      link: 'https://meet.google.com/abc-defg-hij',
+      room: 'Переговорная №1',
+      status: 'scheduled',
+      reminderMinutes: 15,
+      recurring: 'weekly',
+      priority: 'high',
+      createdAt: new Date().toISOString(),
+      isPrivate: false,
+    },
+    {
+      id: generateId(),
+      title: 'Обзор проекта Q4',
+      description: 'Презентация результатов квартала для руководства',
+      date: formatDate(today),
+      startTime: '14:00',
+      endTime: '15:30',
+      organizerId: adminUser?.id || '',
+      participants: [kozlova?.id || '', nikolaev?.id || '', fedorova?.id || ''],
+      participantEmails: [],
+      link: 'https://zoom.us/j/123456789',
+      room: 'Конференц-зал А',
+      status: 'scheduled',
+      reminderMinutes: 30,
+      recurring: 'none',
+      priority: 'high',
+      createdAt: new Date().toISOString(),
+      isPrivate: false,
+    },
+    {
+      id: generateId(),
+      title: 'Дизайн-ревью нового интерфейса',
+      description: 'Обсуждение макетов и пользовательского опыта',
+      date: formatDate(tomorrow),
+      startTime: '11:00',
+      endTime: '12:00',
+      organizerId: sidorov?.id || '',
+      participants: [ivanov?.id || '', petrova?.id || '', kozlova?.id || ''],
+      participantEmails: [],
+      link: 'https://teams.microsoft.com/meet/123',
+      room: 'Онлайн',
+      status: 'scheduled',
+      reminderMinutes: 15,
+      recurring: 'none',
+      priority: 'medium',
+      createdAt: new Date().toISOString(),
+      isPrivate: false,
+    },
+    {
+      id: generateId(),
+      title: 'Планирование маркетинговой кампании',
+      description: 'Стратегия продвижения нового продукта',
+      date: formatDate(tomorrow),
+      startTime: '15:00',
+      endTime: '16:30',
+      organizerId: nikolaev?.id || '',
+      participants: [kozlova?.id || '', fedorova?.id || ''],
+      participantEmails: [],
+      link: 'https://meet.google.com/xyz-uvwx-rst',
+      room: 'Переговорная №2',
+      status: 'scheduled',
+      reminderMinutes: 15,
+      recurring: 'none',
+      priority: 'medium',
+      createdAt: new Date().toISOString(),
+      isPrivate: false,
+    },
+    {
+      id: generateId(),
+      title: 'Собеседование с кандидатом',
+      description: 'Техническое собеседование на позицию Senior Developer',
+      date: formatDate(nextWeek),
+      startTime: '10:00',
+      endTime: '11:00',
+      organizerId: fedorova?.id || '',
+      participants: [ivanov?.id || '', petrova?.id || ''],
+      participantEmails: ['candidate@example.com'],
+      link: 'https://zoom.us/j/987654321',
+      room: 'Онлайн',
+      status: 'scheduled',
+      reminderMinutes: 30,
+      recurring: 'none',
+      priority: 'high',
+      createdAt: new Date().toISOString(),
+      isPrivate: true,
+    },
+    {
+      id: generateId(),
+      title: 'Финансовый отчёт за месяц',
+      description: 'Анализ финансовых показателей и бюджетирование',
+      date: formatDate(nextWeek),
+      startTime: '14:00',
+      endTime: '15:00',
+      organizerId: moderatorUser?.id || '',
+      participants: [kozlova?.id || ''],
+      participantEmails: [],
+      link: 'https://teams.microsoft.com/meet/456',
+      room: 'Кабинет директора',
+      status: 'scheduled',
+      reminderMinutes: 15,
+      recurring: 'monthly',
+      priority: 'high',
+      createdAt: new Date().toISOString(),
+      isPrivate: false,
+    },
+    {
+      id: generateId(),
+      title: 'Тренинг по новым технологиям',
+      description: 'Обучение команды работе с новыми инструментами',
+      date: formatDate(nextWeek),
+      startTime: '16:00',
+      endTime: '17:30',
+      organizerId: adminUser?.id || '',
+      participants: [ivanov?.id || '', petrova?.id || '', sidorov?.id || '', kozlova?.id || ''],
+      participantEmails: [],
+      link: 'https://meet.google.com/training-123',
+      room: 'Учебный класс',
+      status: 'scheduled',
+      reminderMinutes: 60,
+      recurring: 'none',
+      priority: 'low',
+      createdAt: new Date().toISOString(),
+      isPrivate: false,
+    },
+  ];
+
+  localStorage.setItem('vks_meetings', JSON.stringify(testMeetings));
+}
+
 export function forceReset(): void {
   localStorage.clear();
   createAdminUser();
   createModeratorUser();
+  createTestUsers();
+  createTestMeetings();
 }
 
 export function getAdminTempPassword(): string | null {

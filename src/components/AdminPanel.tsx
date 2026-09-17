@@ -372,6 +372,140 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             </button>
           </div>
 
+          {/* Meeting Form Modal */}
+          {showMeetingForm && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                <div className="p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">
+                      {editingMeeting ? 'Редактировать конференцию' : 'Новая конференция'}
+                    </h2>
+                    <button onClick={() => setShowMeetingForm(false)} className="text-gray-400 hover:text-gray-600">
+                      <i className="fas fa-times text-xl"></i>
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleSaveMeeting} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Название *</label>
+                        <input type="text" required value={meetingForm.title}
+                          onChange={(e) => setMeetingForm({ ...meetingForm, title: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                          placeholder="Название конференции" />
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Описание</label>
+                        <textarea value={meetingForm.description}
+                          onChange={(e) => setMeetingForm({ ...meetingForm, description: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                          rows={3} placeholder="Описание конференции" />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Дата *</label>
+                        <input type="date" required value={meetingForm.date}
+                          onChange={(e) => setMeetingForm({ ...meetingForm, date: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500" />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Комната</label>
+                        <input type="text" value={meetingForm.room}
+                          onChange={(e) => setMeetingForm({ ...meetingForm, room: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                          placeholder="Переговорная №1" />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Начало *</label>
+                        <input type="time" required value={meetingForm.startTime}
+                          onChange={(e) => setMeetingForm({ ...meetingForm, startTime: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500" />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Конец *</label>
+                        <input type="time" required value={meetingForm.endTime}
+                          onChange={(e) => setMeetingForm({ ...meetingForm, endTime: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500" />
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ссылка на ВКС</label>
+                        <input type="url" value={meetingForm.link}
+                          onChange={(e) => setMeetingForm({ ...meetingForm, link: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                          placeholder="https://zoom.us/j/..." />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Приоритет</label>
+                        <select value={meetingForm.priority}
+                          onChange={(e) => setMeetingForm({ ...meetingForm, priority: e.target.value as Meeting['priority'] })}
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500">
+                          <option value="low">Низкий</option>
+                          <option value="medium">Средний</option>
+                          <option value="high">Высокий</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Напоминание (мин)</label>
+                        <input type="number" value={meetingForm.reminderMinutes}
+                          onChange={(e) => setMeetingForm({ ...meetingForm, reminderMinutes: parseInt(e.target.value) })}
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                          min="5" max="1440" />
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Участники</label>
+                        <div className="flex flex-wrap gap-2">
+                          {users.filter(u => u.isActive).map(u => (
+                            <button key={u.id} type="button"
+                              onClick={() => {
+                                const participants = meetingForm.participants.includes(u.id)
+                                  ? meetingForm.participants.filter(p => p !== u.id)
+                                  : [...meetingForm.participants, u.id];
+                                setMeetingForm({ ...meetingForm, participants });
+                              }}
+                              className={`px-3 py-1 rounded-full text-sm border transition-colors ${
+                                meetingForm.participants.includes(u.id)
+                                  ? 'bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
+                                  : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
+                              }`}>
+                              {u.name.split(' ').slice(0, 2).join(' ')}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 md:col-span-2">
+                        <input type="checkbox" id="isPrivate" checked={meetingForm.isPrivate}
+                          onChange={(e) => setMeetingForm({ ...meetingForm, isPrivate: e.target.checked })}
+                          className="w-4 h-4" />
+                        <label htmlFor="isPrivate" className="text-sm text-gray-700 dark:text-gray-300">Приватная конференция</label>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-4 border-t dark:border-gray-600">
+                      <button type="button" onClick={() => setShowMeetingForm(false)}
+                        className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                        Отмена
+                      </button>
+                      <button type="submit"
+                        className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                        {editingMeeting ? 'Сохранить' : 'Создать'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Meetings Table */}
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
@@ -409,8 +543,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
-                          <button onClick={() => handleEditMeeting(m)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-gray-600 rounded"><i className="fas fa-edit"></i></button>
-                          <button onClick={() => handleDeleteMeeting(m.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-gray-600 rounded"><i className="fas fa-trash"></i></button>
+                          <button onClick={() => handleEditMeeting(m)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-gray-600 rounded" title="Редактировать"><i className="fas fa-edit"></i></button>
+                          <button onClick={() => handleDeleteMeeting(m.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-gray-600 rounded" title="Удалить"><i className="fas fa-trash"></i></button>
                         </div>
                       </td>
                     </tr>
