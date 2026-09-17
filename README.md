@@ -41,6 +41,7 @@
 |------------|----------|-------|
 | [**QUICK_START_WINDOWS.md**](./QUICK_START_WINDOWS.md) | Быстрый запуск на Windows | 5 мин |
 | [**LOCAL_RUN_WINDOWS.md**](./LOCAL_RUN_WINDOWS.md) | Подробная инструкция для Windows | 15 мин |
+| [**AUTOSTART_GUIDE.md**](./AUTOSTART_GUIDE.md) | Настройка автозапуска | 5 мин |
 | [**HOW_TO_SHARE.md**](./HOW_TO_SHARE.md) | Как поделиться с командой | 5 мин |
 
 ### ⚡ Самый быстрый способ (Windows)

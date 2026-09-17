@@ -138,7 +138,7 @@ function App() {
         </div>
       </main>
 
-      <ResetData />
+      {isAdmin && <ResetData />}
     </div>
   );
 }
