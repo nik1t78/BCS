@@ -192,28 +192,37 @@ export function initializeDemoData(): void {
   const existing = getUsers();
   if (existing.length > 0) return;
 
+  createAdminUser();
+}
+
+export function createAdminUser(): void {
   const adminId = generateId();
 
   // Создаём администратора со статическим паролем
-  const demoUsers: User[] = [
-    {
-      id: adminId,
-      name: 'Администратор Системы',
-      login: 'admin',
-      password: 'admin123', // Статический пароль - смените после первого входа!
-      role: 'admin',
-      phone: '',
-      department: 'IT',
-      position: 'Системный администратор',
-      createdAt: new Date().toISOString(),
-      isActive: true,
-    },
-  ];
+  const adminUser: User = {
+    id: adminId,
+    name: 'Администратор Системы',
+    login: 'admin',
+    password: 'admin123', // Статический пароль - смените после первого входа!
+    role: 'admin',
+    phone: '',
+    department: 'IT',
+    position: 'Системный администратор',
+    createdAt: new Date().toISOString(),
+    isActive: true,
+  };
 
-  localStorage.setItem('vks_users', JSON.stringify(demoUsers));
+  const users = getUsers();
+  users.push(adminUser);
+  localStorage.setItem('vks_users', JSON.stringify(users));
 
   // Пустой список конференций при первом запуске
   localStorage.setItem('vks_meetings', JSON.stringify([]));
+}
+
+export function forceReset(): void {
+  localStorage.clear();
+  createAdminUser();
 }
 
 export function getAdminTempPassword(): string | null {
