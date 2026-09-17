@@ -1424,3 +1424,2018 @@ docker compose up -d --build
 **Сделано с ❤️ для удобного управления видеоконференциями**
 
 </div>
+# 🎥 ВКС Расписание
+
+> Полнофункциональная система управления видеоконференциями с ролевой моделью доступа, уведомлениями и админ-панелью
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Laravel](https://img.shields.io/badge/Laravel-10.x-red.svg)](https://laravel.com)
+[![React](https://img.shields.io/badge/React-18.x-blue.svg)](https://reactjs.org)
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://docker.com)
+
+---
+
+## 📖 О проекте
+
+**ВКС Расписание** — это современная веб-система для планирования и управления видеоконференциями. Идеально подходит для организаций любого размера.
+
+### ✨ Ключевые возможности
+
+- 🔐 **Регистрация и авторизация** с ролевой моделью (Admin/Moderator/User)
+- 📅 **Удобное расписание** с просмотром по дням/неделям/месяцам
+- 🔔 **Умные уведомления** (звуковые + браузерные)
+- 👥 **Управление пользователями** с гибкими правами доступа
+- 📊 **Статистика и аналитика** конференций
+- 🎨 **Современный интерфейс** с подсказками и анимациями
+- 🌙 **Тёмная тема** для комфортной работы
+- 📋 **Шаблоны конференций** для быстрого создания
+- 🏷️ **Теги и категории** для организации
+- ⭐ **Избранные конференции** для быстрого доступа
+- 📎 **Вложения файлов** к конференциям
+- 📜 **История изменений** для аудита
+- 📱 **Адаптивный дизайн** для всех устройств
+- 💾 **Экспорт данных** в ICS, JSON, CSV
+- 🌐 **Доступ из сети** (LAN + интернет)
+
+---
+
+## 🚀 Быстрый старт
+
+### Запуск за 3 команды
+
+```bash
+# 1. Клонирование
+git clone <your-repo-url> vks-schedule && cd vks-schedule
+
+# 2. Создание Laravel backend
+cd backend && composer create-project laravel/laravel . && cd ..
+
+# 3. Запуск
+docker compose up -d --build
+```
+
+### Инициализация
+
+```bash
+docker compose exec backend php artisan key:generate
+docker compose exec backend php artisan migrate
+```
+
+### Доступ
+
+- **Приложение**: http://localhost
+
+### 📥 Что нужно скачать
+
+Перед запуском установите:
+- **Docker Desktop** - [docker.com](https://www.docker.com/products/docker-desktop/)
+- **Git** - [git-scm.com](https://git-scm.com/downloads)
+- **Composer** - [getcomposer.org](https://getcomposer.org/download/)
+- **Node.js** - [nodejs.org](https://nodejs.org/)
+
+📖 **Полная инструкция по установке**: [INSTALLATION.md](./INSTALLATION.md)
+
+### 🔒 Безопасность
+
+**Демо-аккаунты удалены!** Для начала работы:
+
+1. Зарегистрируйте первого пользователя через форму регистрации
+2. Назначьте роль администратора через базу данных или Tinker
+3. Создайте дополнительных пользователей через админ-панель
+
+📖 **Подробная инструкция**: [SECURITY_CLEANUP.md](./SECURITY_CLEANUP.md)
+
+### 🐧 Развёртывание на Linux
+
+📖 **Полная инструкция**: [LINUX_DEPLOYMENT.md](./LINUX_DEPLOYMENT.md)
+
+Быстрый старт:
+```bash
+# 1. Установка Docker
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+
+# 2. Клонирование проекта
+git clone <repo-url> vks-schedule && cd vks-schedule
+
+# 3. Создание Laravel
+cd backend && composer create-project laravel/laravel . && cd ..
+
+# 4. Запуск
+docker compose up -d --build
+
+# 5. Инициализация
+docker compose exec backend php artisan key:generate
+docker compose exec backend php artisan migrate
+```
+
+---
+
+## 📚 Документация
+
+**📖 [ALL_DOCUMENTATION.md](./ALL_DOCUMENTATION.md)** — полная документация проекта
+
+В одном файле содержится:
+- ✅ Описание всех 59 функций
+- ✅ Структура проекта и базы данных
+- ✅ API Endpoints
+- ✅ Инструкция по установке и развёртыванию
+- ✅ Безопасность и настройка
+- ✅ Подключение к БД
+- ✅ Доступ из сети
+- ✅ Устранение неполадок
+- ✅ Полезные команды
+
+---
+
+## 👥 Роли и права
+
+### 👑 Администратор (admin)
+- ✅ Полный доступ ко всем функциям
+- ✅ Управление пользователями (CRUD)
+- ✅ Назначение ролей
+- ✅ Смена паролей всех пользователей
+- ✅ Доступ к приватным конференциям
+
+### 🔧 Модератор (moderator)
+- ✅ Все конференции (включая приватные)
+- ✅ Блокировка пользователей
+- ✅ Редактирование любых конференций
+- ❌ Создание/удаление пользователей
+- ❌ Изменение ролей
+
+### 👤 Пользователь (user)
+- ✅ Свои конференции
+- ✅ Публичные конференции
+- ✅ Профиль и настройки
+- ❌ Админ-панель
+- ❌ Приватные конференции (если не участник)
+
+---
+
+## 🏗️ Технологии
+
+### Frontend
+- **React 18** — UI библиотека
+- **TypeScript** — типизация
+- **Tailwind CSS** — стилизация
+- **Vite** — сборщик
+
+### Backend
+- **Laravel 10** — PHP фреймворк
+- **MySQL 8.0** — база данных
+- **Redis** — кэш и очереди
+- **Sanctum** — API аутентификация
+
+### Infrastructure
+- **Docker** — контейнеризация
+- **Nginx** — web сервер
+
+---
+
+## 📊 Статистика проекта
+
+- **Функций реализовано**: 59
+- **Компонентов React**: 16
+- **Контроллеров Laravel**: 5
+- **Моделей**: 4
+- **Файлов документации**: 1
+- **Строк кода**: ~10,000+
+
+---
+
+## 📁 Структура проекта
+
+```
+vks-schedule/
+├── 📄 ALL_DOCUMENTATION.md    # Полная документация
+├── 📄 docker-compose.yml      # Docker конфигурация
+│
+├── 📂 backend/                # Laravel backend
+│   ├── app/
+│   │   ├── Console/Commands/  # Artisan команды
+│   │   ├── Http/Controllers/  # Контроллеры
+│   │   ├── Http/Middleware/   # Middleware
+│   │   └── Models/            # Eloquent модели
+│   ├── database/
+│   │   ├── migrations/        # Миграции БД
+│   │   └── seeders/           # Seeders
+│   └── routes/                # Маршруты
+│
+├── 📂 frontend/               # React frontend
+│   ├── Dockerfile
+│   └── nginx.conf
+│
+├── 📂 src/                    # Исходный код React
+│   ├── components/            # React компоненты
+│   ├── utils/                 # Утилиты
+│   ├── App.tsx                # Главный компонент
+│   ├── store.ts               # LocalStorage API
+│   └── types.ts               # TypeScript типы
+│
+└── 📂 docker/                 # Docker конфигурации
+    ├── nginx/
+    └── mysql/
+```
+
+---
+
+## 📡 API Endpoints
+
+### Авторизация
+```
+POST   /api/auth/register     # Регистрация
+POST   /api/auth/login        # Вход
+POST   /api/auth/logout       # Выход
+GET    /api/auth/user         # Текущий пользователь
+```
+
+### Конференции
+```
+GET    /api/meetings          # Список
+POST   /api/meetings          # Создать
+GET    /api/meetings/{id}     # Получить
+PUT    /api/meetings/{id}     # Обновить
+DELETE /api/meetings/{id}     # Удалить
+```
+
+### Уведомления
+```
+GET    /api/notifications              # Список
+PUT    /api/notifications/{id}/read    # Прочитать
+PUT    /api/notifications/read-all     # Прочитать все
+DELETE /api/notifications/clear        # Очистить
+```
+
+### Админ-панель
+```
+GET    /api/admin/users                # Список пользователей
+POST   /api/admin/users                # Создать
+PUT    /api/admin/users/{id}/role      # Изменить роль
+PUT    /api/admin/users/{id}/reset-password # Сменить пароль
+```
+
+📖 **Полный список API**: [ALL_DOCUMENTATION.md](./ALL_DOCUMENTATION.md)
+
+---
+
+## 🔐 Безопасность
+
+### Реализовано
+- ✅ Хеширование паролей (bcrypt)
+- ✅ Laravel Sanctum токены
+- ✅ CORS настройки
+- ✅ Валидация входных данных
+- ✅ Защита от CSRF
+- ✅ Защита от XSS
+- ✅ Rate limiting
+- ✅ Ролевая модель доступа
+
+### Рекомендации для production
+- ⚠️ SSL сертификат (Let's Encrypt)
+- ⚠️ Firewall (UFW/firewalld)
+- ⚠️ Fail2Ban
+- ⚠️ Регулярные backups
+- ⚠️ Мониторинг
+- ⚠️ 2FA для админов
+
+📖 **Полная инструкция**: [ALL_DOCUMENTATION.md](./ALL_DOCUMENTATION.md#🔐-безопасность)
+
+---
+
+## 🗄️ База данных
+
+### Таблицы
+- `users` — Пользователи системы
+- `meetings` — Конференции
+- `notifications` — Уведомления
+- `user_settings` — Настройки пользователей
+- `personal_access_tokens` — API токены
+
+### Подключение
+```bash
+# Через Docker
+docker compose exec mysql mysql -u vks_user -p vks_schedule
+
+# Прямое подключение
+mysql -h localhost -P 3306 -u vks_user -p vks_schedule
+```
+
+📖 **Подробная документация**: [ALL_DOCUMENTATION.md](./ALL_DOCUMENTATION.md#🗄️-структура-базы-данных)
+
+---
+
+## 🌐 Доступ из сети
+
+### Локальная сеть (LAN)
+```bash
+# Узнать IP сервера
+ip addr show
+
+# Открыть порт
+sudo ufw allow 80/tcp
+
+# Пользователи открывают:
+http://192.168.1.100
+```
+
+### Интернет
+- **Вариант 1**: VPS + домен + SSL (рекомендуется)
+- **Вариант 2**: Cloudflare Tunnel (бесплатно)
+- **Вариант 3**: Ngrok (тестирование)
+
+📖 **Подробная инструкция**: [ALL_DOCUMENTATION.md](./ALL_DOCUMENTATION.md#🌐-доступ-из-сети)
+
+---
+
+## 🔧 Полезные команды
+
+### Docker
+```bash
+docker compose up -d              # Запуск
+docker compose down               # Остановка
+docker compose logs -f            # Логи
+docker compose exec backend bash  # Вход в контейнер
+```
+
+### Laravel
+```bash
+docker compose exec backend php artisan migrate          # Миграции
+docker compose exec backend php artisan cache:clear      # Кэш
+docker compose exec backend php artisan tinker           # Tinker
+docker compose exec backend php artisan meetings:send-reminders # Напоминания
+```
+
+### База данных
+```bash
+docker compose exec mysql mysql -u vks_user -p vks_schedule  # Подключение к БД
+```
+
+---
+
+## 🐛 Устранение неполадок
+
+### Порт 80 занят
+```bash
+sudo lsof -i :80
+sudo kill -9 <PID>
+```
+
+### Ошибки прав доступа
+```bash
+docker compose exec backend chown -R www-www-data storage bootstrap/cache
+docker compose exec backend chmod -R 775 storage bootstrap/cache
+```
+
+### Не вижу изменений
+Используйте кнопку **"Сброс данных"** в правом нижнем углу экрана
+
+📖 **Полный список проблем**: [ALL_DOCUMENTATION.md](./ALL_DOCUMENTATION.md#🐛-устранение-неполадок)
+
+---
+
+## 📝 Лицензия
+
+MIT License - свободное использование с указанием авторства
+
+---
+
+## 📞 Поддержка
+
+- 📖 **Полная документация**: [ALL_DOCUMENTATION.md](./ALL_DOCUMENTATION.md)
+- 🐛 **Баги и предложения**: Создайте issue в репозитории
+- 💬 **Вопросы**: Обсуждение в issues
+
+---
+
+## 🎉 Благодарности
+
+- [Laravel](https://laravel.com) — PHP фреймворк
+- [React](https://reactjs.org) — UI библиотека
+- [Tailwind CSS](https://tailwindcss.com) — CSS фреймворк
+- [Docker](https://docker.com) — Контейнеризация
+
+---
+
+<div align="center">
+
+**Сделано с ❤️ для удобного управления видеоконференциями**
+
+[📖 Полная документация](./ALL_DOCUMENTATION.md) • [🚀 Быстрый старт](#🚀-быстрый-старт)
+
+**Версия**: 1.0 | **Статус**: ✅ Production Ready
+
+</div>
+# 🚀 ПОЛНАЯ ИНСТРУКЦИЯ ПО УСТАНОВКЕ И ЗАПУСКУ
+
+## 📋 Что нужно скачать
+
+### Обязательные программы:
+
+| Программа | Версия | Размер | Для чего | Скачать |
+|-----------|--------|--------|----------|---------|
+| **Docker Desktop** | 20.10+ | ~500 MB | Запуск контейнеров | [docker.com](https://www.docker.com/products/docker-desktop/) |
+| **Git** | 2.30+ | ~50 MB | Клонирование проекта | [git-scm.com](https://git-scm.com/downloads) |
+| **Composer** | 2.5+ | ~10 MB | PHP пакеты (для Laravel) | [getcomposer.org](https://getcomposer.org/download/) |
+| **Node.js** | 20+ | ~100 MB | Frontend разработка | [nodejs.org](https://nodejs.org/) |
+
+### Опциональные программы:
+
+| Программа | Размер | Для чего | Скачать |
+|-----------|--------|----------|---------|
+| **VS Code** | ~200 MB | Редактор кода | [code.visualstudio.com](https://code.visualstudio.com/) |
+| **MySQL Workbench** | ~300 MB | Управление БД | [mysql.com](https://www.mysql.com/products/workbench/) |
+| **Postman** | ~150 MB | Тестирование API | [postman.com](https://www.postman.com/downloads/) |
+
+---
+
+## 📥 Пошаговая установка
+
+### Шаг 1: Установка Docker Desktop
+
+#### Windows:
+1. Скачайте [Docker Desktop for Windows](https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe)
+2. Запустите установщик
+3. Следуйте инструкциям
+4. Перезагрузите компьютер
+5. Запустите Docker Desktop
+6. Дождитесь запуска (иконка кита в трее станет зелёной)
+
+**Проверка:**
+```powershell
+docker --version
+docker compose version
+```
+
+#### macOS:
+1. Скачайте [Docker Desktop for Mac](https://desktop.docker.com/mac/main/arm64/Docker.dmg)
+2. Откройте DMG файл
+3. Перетащите Docker в Applications
+4. Запустите Docker из Applications
+
+**Проверка:**
+```bash
+docker --version
+docker compose version
+```
+
+#### Linux (Ubuntu/Debian):
+```bash
+# Установка Docker
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+
+# Добавление пользователя в группу docker
+sudo usermod -aG docker $USER
+newgrp docker
+
+# Проверка
+docker --version
+docker compose version
+```
+
+---
+
+### Шаг 2: Установка Git
+
+#### Windows:
+1. Скачайте [Git for Windows](https://git-scm.com/download/win)
+2. Установите с настройками по умолчанию
+3. Откройте Git Bash
+
+**Проверка:**
+```bash
+git --version
+```
+
+#### macOS:
+```bash
+# Через Homebrew
+brew install git
+
+# Или скачайте с git-scm.com
+git --version
+```
+
+#### Linux:
+```bash
+sudo apt install -y git
+git --version
+```
+
+---
+
+### Шаг 3: Установка Composer (для Laravel)
+
+#### Windows:
+1. Скачайте [Composer-Setup.exe](https://getcomposer.org/Composer-Setup.exe)
+2. Установите (автоматически найдёт PHP)
+
+**Проверка:**
+```powershell
+composer --version
+```
+
+#### macOS/Linux:
+```bash
+# Установка Composer
+curl -sS https://getcomposer.org/installer | php
+sudo mv composer.phar /usr/local/bin/composer
+
+# Проверка
+composer --version
+```
+
+---
+
+### Шаг 4: Установка Node.js
+
+#### Все платформы:
+1. Скачайте [Node.js LTS](https://nodejs.org/) (версия 20+)
+2. Установите с настройками по умолчанию
+
+**Проверка:**
+```bash
+node --version  # Должно быть v20.x.x
+npm --version   # Должно быть 10.x.x
+```
+
+---
+
+## 🚀 Запуск проекта
+
+### Шаг 1: Клонирование проекта
+
+```bash
+# Создайте папку для проектов
+mkdir projects
+cd projects
+
+# Клонируйте репозиторий
+git clone https://github.com/your-username/vks-schedule.git
+cd vks-schedule
+```
+
+**Или создайте проект с нуля:**
+```bash
+mkdir vks-schedule
+cd vks-schedule
+git init
+```
+
+---
+
+### Шаг 2: Создание Laravel Backend
+
+```bash
+# Создайте папку backend
+mkdir backend
+cd backend
+
+# Создайте Laravel проект
+composer create-project laravel/laravel . --prefer-dist --no-interaction
+
+# Вернитесь в корень проекта
+cd ..
+```
+
+---
+
+### Шаг 3: Запуск Docker
+
+```bash
+# Сборка и запуск всех контейнеров
+docker compose up -d --build
+```
+
+**Проверка статуса:**
+```bash
+docker compose ps
+```
+
+**Должны быть запущены:**
+- ✅ vks-frontend
+- ✅ vks-backend
+- ✅ vks-nginx
+- ✅ vks-mysql
+- ✅ vks-redis
+- ✅ vks-queue
+- ✅ vks-scheduler
+
+---
+
+### Шаг 4: Инициализация базы данных
+
+```bash
+# Генерация ключа приложения
+docker compose exec backend php artisan key:generate
+
+# Создание таблиц
+docker compose exec backend php artisan migrate
+```
+
+---
+
+### Шаг 5: Создание первого администратора
+
+**Вариант 1: Через Tinker (рекомендуется)**
+```bash
+docker compose exec backend php artisan tinker
+```
+
+**В tinker выполните:**
+```php
+$user = new App\Models\User();
+$user->name = 'Ваше Имя Фамилия';
+$user->login = 'admin';
+$user->password = bcrypt('YourStrongPassword123!');
+$user->role = 'admin';
+$user->phone = '+7 (999) 123-45-67';
+$user->department = 'IT';
+$user->position = 'Системный администратор';
+$user->is_active = true;
+$user->save();
+
+echo "Пользователь создан с ID: " . $user->id;
+exit
+```
+
+**Вариант 2: Через регистрацию + изменение роли**
+1. Откройте http://localhost
+2. Зарегистрируйтесь через форму
+3. Измените роль на admin:
+```bash
+docker compose exec backend php artisan tinker
+$user = App\Models\User::where('login', 'your_login')->first();
+$user->role = 'admin';
+$user->save();
+exit
+```
+
+---
+
+### Шаг 6: Открытие приложения
+
+Откройте браузер и перейдите:
+
+```
+http://localhost
+```
+
+**Войдите с созданным администратором:**
+- Логин: `admin`
+- Пароль: `YourStrongPassword123!`
+
+---
+
+## ✅ Проверка работоспособности
+
+### Чек-лист:
+
+- [ ] Docker запущен (`docker compose ps`)
+- [ ] Все контейнеры в статусе "Up"
+- [ ] Приложение открывается по http://localhost
+- [ ] Можно войти в систему
+- [ ] Можно создать конференцию
+- [ ] Уведомления работают
+
+### Тест API:
+```bash
+curl http://localhost/api/health
+```
+
+**Ожидаемый ответ:**
+```json
+{
+  "status": "ok",
+  "timestamp": "2024-01-15T10:00:00+00:00",
+  "version": "1.0.0"
+}
+```
+
+---
+
+## 🔧 Полезные команды
+
+### Docker:
+```bash
+# Запуск
+docker compose up -d
+
+# Остановка
+docker compose down
+
+# Перезапуск
+docker compose restart
+
+# Логи
+docker compose logs -f
+docker compose logs -f backend
+
+# Статус
+docker compose ps
+
+# Вход в контейнер
+docker compose exec backend bash
+docker compose exec mysql mysql -u vks_user -p vks_schedule
+```
+
+### Laravel:
+```bash
+# Миграции
+docker compose exec backend php artisan migrate
+docker compose exec backend php artisan migrate:fresh
+
+# Кэш
+docker compose exec backend php artisan cache:clear
+docker compose exec backend php artisan config:clear
+
+# Tinker
+docker compose exec backend php artisan tinker
+```
+
+### База данных:
+```bash
+# Подключение
+docker compose exec mysql mysql -u vks_user -p vks_schedule
+
+# Backup
+docker compose exec mysql mysqldump -u vks_user -pvks_password_2024 vks_schedule > backup.sql
+
+# Restore
+docker compose exec -T mysql mysql -u vks_user -pvks_password_2024 vks_schedule < backup.sql
+```
+
+---
+
+## 🐛 Решение проблем
+
+### Порт 80 занят
+```bash
+# Проверка
+sudo lsof -i :80
+
+# Остановка процесса
+sudo kill -9 <PID>
+
+# Или измените порт в docker-compose.yml
+ports:
+  - "8080:80"
+```
+
+### Ошибки прав доступа
+```bash
+docker compose exec backend chown -R www-www-data storage bootstrap/cache
+docker compose exec backend chmod -R 775 storage bootstrap/cache
+```
+
+### Ошибки БД
+```bash
+# Пересоздание БД
+docker compose down -v
+docker compose up -d
+docker compose exec backend php artisan migrate:fresh
+```
+
+### Контейнер не запускается
+```bash
+# Просмотр логов
+docker compose logs backend
+docker compose logs nginx
+
+# Перезапуск
+docker compose restart backend
+```
+
+### Полный сброс
+```bash
+# Остановка и удаление всех данных
+docker compose down -v
+
+# Начало заново
+docker compose up -d --build
+docker compose exec backend php artisan key:generate
+docker compose exec backend php artisan migrate:fresh
+```
+
+---
+
+## 📊 Структура проекта
+
+```
+vks-schedule/
+│
+├── 📄 README.md                    # Главная документация
+├── 📄 ALL_DOCUMENTATION.md         # Полная документация
+├── 📄 INSTALLATION.md              # Этот файл
+├── 📄 SECURITY_CLEANUP.md          # Безопасность
+├── 📄 LINUX_DEPLOYMENT.md          # Развёртывание на Linux
+│
+├── 📄 docker-compose.yml           # Docker конфигурация
+│
+├── 📂 backend/                     # Laravel backend
+│   ├── Dockerfile
+│   ├── .env                        # Переменные окружения
+│   ├── app/
+│   │   ├── Console/Commands/       # Artisan команды
+│   │   ├── Http/Controllers/Api/   # Контроллеры
+│   │   ├── Http/Middleware/        # Middleware
+│   │   └── Models/                 # Eloquent модели
+│   ├── database/
+│   │   ├── migrations/             # Миграции БД
+│   │   └── seeders/                # Seeders
+│   └── routes/                     # Маршруты
+│
+├── 📂 frontend/                    # React frontend
+│   ├── Dockerfile
+│   └── nginx.conf
+│
+├── 📂 src/                         # Исходный код React
+│   ├── components/                 # React компоненты
+│   ├── utils/                      # Утилиты
+│   ├── App.tsx                     # Главный компонент
+│   ├── store.ts                    # LocalStorage API
+│   └── types.ts                    # TypeScript типы
+│
+└── 📂 docker/                      # Docker конфигурации
+    ├── nginx/
+    └── mysql/
+```
+
+---
+
+## 📚 Документация
+
+| Файл | Описание | Время чтения |
+|------|----------|--------------|
+| **README.md** | Главная документация | 5 мин |
+| **ALL_DOCUMENTATION.md** | Полная документация | 30 мин |
+| **INSTALLATION.md** | Этот файл - установка и запуск | 10 мин |
+| **SECURITY_CLEANUP.md** | Безопасность | 10 мин |
+| **LINUX_DEPLOYMENT.md** | Развёртывание на Linux | 20 мин |
+
+---
+
+## 🎯 Быстрый старт (для опытных)
+
+Если вы уже знакомы с Docker и Laravel:
+
+```bash
+# 1. Клонирование
+git clone <repo-url> vks-schedule && cd vks-schedule
+
+# 2. Создание Laravel
+cd backend && composer create-project laravel/laravel . && cd ..
+
+# 3. Запуск
+docker compose up -d --build
+
+# 4. Инициализация
+docker compose exec backend php artisan key:generate
+docker compose exec backend php artisan migrate
+
+# 5. Создание админа
+docker compose exec backend php artisan tinker
+# В tinker: создайте пользователя с role = 'admin'
+
+# 6. Открытие
+open http://localhost
+```
+
+---
+
+## ✅ Финальный чек-лист
+
+### Установка:
+- [ ] Docker Desktop установлен
+- [ ] Git установлен
+- [ ] Composer установлен
+- [ ] Node.js установлен
+
+### Проект:
+- [ ] Проект клонирован
+- [ ] Laravel backend создан
+- [ ] Docker запущен
+- [ ] Миграции выполнены
+
+### Настройка:
+- [ ] Первый администратор создан
+- [ ] Можно войти в систему
+- [ ] Можно создать конференцию
+- [ ] Уведомления работают
+
+---
+
+<div align="center">
+
+## 🎉 Готово к использованию!
+
+**Приложение доступно по адресу:** http://localhost
+
+**Версия**: 1.0  
+**Статус**: ✅ Production Ready
+
+</div>
+# 🐧 Развёртывание на Linux (Ubuntu/Debian)
+
+## 📋 Полная пошаговая инструкция
+
+---
+
+## 1️⃣ Требования к серверу
+
+### Минимальные:
+- **OS**: Ubuntu 22.04 LTS / Debian 12
+- **CPU**: 2 vCPU
+- **RAM**: 2 GB
+- **Disk**: 20 GB SSD
+- **Сеть**: Открытые порты 22, 80, 443
+
+### Рекомендуемые:
+- **CPU**: 4 vCPU
+- **RAM**: 4 GB
+- **Disk**: 40 GB SSD
+- **Сеть**: Статический IP, домен
+
+---
+
+## 2️⃣ Подготовка сервера
+
+### Подключение к серверу:
+```bash
+ssh root@your_server_ip
+```
+
+### Обновление системы:
+```bash
+sudo apt update && sudo apt upgrade -y
+```
+
+### Создание пользователя (не работайте под root):
+```bash
+adduser deploy
+usermod -aG sudo deploy
+su - deploy
+```
+
+### Установка базовых утилит:
+```bash
+sudo apt install -y curl wget git unzip htop nano
+```
+
+---
+
+## 3️⃣ Установка Docker
+
+### Удаление старых версий:
+```bash
+sudo apt remove -y docker docker-engine docker.io containerd runc
+```
+
+### Установка зависимостей:
+```bash
+sudo apt install -y ca-certificates curl gnupg lsb-release
+```
+
+### Добавление GPG ключа Docker:
+```bash
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+```
+
+### Добавление репозитория:
+```bash
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+```
+
+### Установка Docker:
+```bash
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+```
+
+### Добавление пользователя в группу docker:
+```bash
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
+### Проверка:
+```bash
+docker --version
+docker compose version
+```
+
+---
+
+## 4️⃣ Установка дополнительных инструментов
+
+### Git:
+```bash
+sudo apt install -y git
+git --version
+```
+
+### Composer (для Laravel):
+```bash
+cd ~
+curl -sS https://getcomposer.org/installer -o composer-setup.php
+sudo php composer-setup.php --install-dir=/usr/local/bin --filename=composer
+rm composer-setup.php
+composer --version
+```
+
+### Node.js (опционально, для разработки):
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+node --version
+npm --version
+```
+
+---
+
+## 5️⃣ Клонирование проекта
+
+```bash
+# Создайте директорию
+mkdir -p ~/projects
+cd ~/projects
+
+# Клонируйте репозиторий
+git clone https://github.com/your-username/vks-schedule.git
+cd vks-schedule
+```
+
+**Или загрузите файлы вручную:**
+```bash
+# Создайте структуру
+mkdir -p vks-schedule
+cd vks-schedule
+
+# Загрузите файлы через scp, rsync или FTP
+scp -r ./vks-schedule deploy@your_server_ip:~/projects/
+```
+
+---
+
+## 6️⃣ Настройка Laravel Backend
+
+### Создание проекта Laravel:
+```bash
+cd ~/projects/vks-schedule
+mkdir -p backend
+cd backend
+
+# Создайте Laravel проект
+composer create-project laravel/laravel . --prefer-dist --no-interaction
+```
+
+### Настройка .env:
+```bash
+nano .env
+```
+
+**Измените следующие параметры:**
+```env
+APP_NAME="ВКС Расписание"
+APP_ENV=production
+APP_KEY=
+APP_DEBUG=false
+APP_URL=http://your_domain.com
+
+DB_CONNECTION=mysql
+DB_HOST=mysql
+DB_PORT=3306
+DB_DATABASE=vks_schedule
+DB_USERNAME=vks_user
+DB_PASSWORD=YourStrongPassword123!
+
+REDIS_HOST=redis
+REDIS_PASSWORD=YourRedisPassword456!
+REDIS_PORT=6379
+
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.yourdomain.com
+MAIL_PORT=587
+MAIL_USERNAME=noreply@yourdomain.com
+MAIL_PASSWORD=YourEmailPassword
+MAIL_ENCRYPTION=tls
+MAIL_FROM_ADDRESS=noreply@yourdomain.com
+MAIL_FROM_NAME="${APP_NAME}"
+```
+
+### Копирование файлов из проекта:
+```bash
+cd ~/projects/vks-schedule
+
+# Модели
+cp backend-examples/*.php backend/app/Models/ 2>/dev/null || echo "Модели уже на месте"
+
+# Контроллеры
+mkdir -p backend/app/Http/Controllers/Api
+cp backend-examples/*Controller.php backend/app/Http/Controllers/Api/ 2>/dev/null || echo "Контроллеры уже на месте"
+
+# Маршруты
+cp backend-examples/api.php backend/routes/ 2>/dev/null || echo "Маршруты уже на месте"
+
+# Миграции
+cp backend-examples/create_meetings_table.php backend/database/migrations/ 2>/dev/null || echo "Миграции уже на месте"
+
+# Команды
+mkdir -p backend/app/Console/Commands
+cp backend-examples/SendMeetingReminders.php backend/app/Console/Commands/ 2>/dev/null || echo "Команды уже на месте"
+cp backend-examples/Kernel.php backend/app/Console/ 2>/dev/null || echo "Kernel уже на месте"
+```
+
+---
+
+## 7️⃣ Запуск Docker
+
+### Сборка и запуск:
+```bash
+cd ~/projects/vks-schedule
+docker compose up -d --build
+```
+
+### Проверка статуса:
+```bash
+docker compose ps
+```
+
+**Должны быть запущены:**
+- ✅ vks-frontend
+- ✅ vks-backend
+- ✅ vks-nginx
+- ✅ vks-mysql
+- ✅ vks-redis
+- ✅ vks-queue
+- ✅ vks-scheduler
+
+### Просмотр логов:
+```bash
+# Все логи
+docker compose logs -f
+
+# Логи backend
+docker compose logs -f backend
+
+# Логи nginx
+docker compose logs -f nginx
+```
+
+---
+
+## 8️⃣ Инициализация базы данных
+
+### Генерация ключа приложения:
+```bash
+docker compose exec backend php artisan key:generate
+```
+
+### Запуск миграций:
+```bash
+docker compose exec backend php artisan migrate
+```
+
+### Проверка подключения к БД:
+```bash
+docker compose exec mysql mysql -u vks_user -pYourStrongPassword123! vks_schedule -e "SHOW TABLES;"
+```
+
+---
+
+## 9️⃣ Создание первого администратора
+
+### Вариант 1: Через Tinker (рекомендуется)
+```bash
+docker compose exec backend php artisan tinker
+```
+
+**В tinker выполните:**
+```php
+$user = new App\Models\User();
+$user->name = 'Ваше Имя Фамилия';
+$user->login = 'admin';
+$user->password = bcrypt('YourStrongPassword123!');
+$user->role = 'admin';
+$user->phone = '+7 (999) 123-45-67';
+$user->department = 'IT';
+$user->position = 'Системный администратор';
+$user->is_active = true;
+$user->save();
+
+echo "Пользователь создан с ID: " . $user->id;
+exit
+```
+
+### Вариант 2: Через SQL
+```bash
+docker compose exec mysql mysql -u vks_user -pYourStrongPassword123! vks_schedule
+```
+
+**В MySQL выполните:**
+```sql
+INSERT INTO users (name, login, password, role, phone, department, position, is_active, created_at, updated_at)
+VALUES (
+    'Ваше Имя Фамилия',
+    'admin',
+    '$2y$10$...', -- Используйте bcrypt хеш
+    'admin',
+    '+7 (999) 123-45-67',
+    'IT',
+    'Системный администратор',
+    1,
+    NOW(),
+    NOW()
+);
+```
+
+### Вариант 3: Через регистрацию + изменение роли
+1. Зарегистрируйтесь через веб-интерфейс
+2. Измените роль на admin:
+```bash
+docker compose exec backend php artisan tinker
+$user = App\Models\User::where('login', 'your_login')->first();
+$user->role = 'admin';
+$user->save();
+exit
+```
+
+---
+
+## 🔟 Настройка Firewall
+
+### Установка UFW:
+```bash
+sudo apt install -y ufw
+```
+
+### Настройка правил:
+```bash
+# Сброс правил
+sudo ufw reset
+
+# Разрешить SSH
+sudo ufw allow 22/tcp
+
+# Разрешить HTTP
+sudo ufw allow 80/tcp
+
+# Разрешить HTTPS
+sudo ufw allow 443/tcp
+
+# Запретить всё остальное
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+
+# Включить firewall
+sudo ufw enable
+
+# Проверка статуса
+sudo ufw status verbose
+```
+
+---
+
+## 1️⃣1️⃣ Настройка домена и SSL
+
+### Покупка домена:
+Зарегистрируйте домен у любого регистратора:
+- reg.ru
+- nic.ru
+- beget.com
+- name.com
+
+### Настройка DNS:
+Добавьте A запись:
+```
+Тип: A
+Имя: vks.yourdomain.com (или @)
+Значение: ваш_IP_сервера
+TTL: 3600
+```
+
+**Ожидание распространения DNS:** 15 минут - 24 часа
+
+### Проверка DNS:
+```bash
+dig vks.yourdomain.com
+# или
+nslookup vks.yourdomain.com
+```
+
+### Установка Certbot:
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+```
+
+### Получение SSL сертификата:
+```bash
+sudo certbot --nginx -d vks.yourdomain.com
+```
+
+**Следуйте инструкциям:**
+- Email для уведомлений
+- Согласие с условиями
+- Перенаправление HTTP → HTTPS (Yes)
+
+### Проверка автообновления:
+```bash
+sudo certbot renew --dry-run
+```
+
+---
+
+## 1️⃣2️⃣ Обновление конфигурации Nginx
+
+### Отредактируйте конфигурацию:
+```bash
+nano docker/nginx/default.conf
+```
+
+**Замените `server_name localhost;` на:**
+```nginx
+server_name vks.yourdomain.com;
+```
+
+### Перезапуск Nginx:
+```bash
+docker compose restart nginx
+```
+
+### Обновите APP_URL в .env:
+```bash
+nano backend/.env
+```
+
+**Измените:**
+```env
+APP_URL=https://vks.yourdomain.com
+```
+
+### Перезапуск backend:
+```bash
+docker compose restart backend
+```
+
+---
+
+## 1️⃣3️⃣ Настройка резервного копирования
+
+### Создание скрипта backup:
+```bash
+sudo mkdir -p /opt/scripts
+sudo nano /opt/scripts/vks-backup.sh
+```
+
+**Содержимое скрипта:**
+```bash
+#!/bin/bash
+
+# Конфигурация
+BACKUP_DIR="/backups/vks"
+DATE=$(date +%Y%m%d_%H%M%S)
+RETENTION_DAYS=30
+PROJECT_DIR="/home/deploy/projects/vks-schedule"
+
+# Создание директории
+mkdir -p $BACKUP_DIR
+
+cd $PROJECT_DIR
+
+# Backup базы данных
+docker compose exec -T mysql mysqldump \
+    -u vks_user -pYourStrongPassword123! \
+    --single-transaction \
+    --routines \
+    --triggers \
+    vks_schedule > "$BACKUP_DIR/db_$DATE.sql"
+
+# Сжатие
+gzip "$BACKUP_DIR/db_$DATE.sql"
+
+# Backup файлов
+tar -czf "$BACKUP_DIR/files_$DATE.tar.gz" \
+    -C $PROJECT_DIR \
+    backend/storage \
+    backend/.env
+
+# Удаление старых backup
+find $BACKUP_DIR -name "*.sql.gz" -mtime +$RETENTION_DAYS -delete
+find $BACKUP_DIR -name "*.tar.gz" -mtime +$RETENTION_DAYS -delete
+
+# Логирование
+echo "[$DATE] Backup completed successfully" >> /var/log/vks-backup.log
+```
+
+**Сделайте скрипт исполняемым:**
+```bash
+sudo chmod +x /opt/scripts/vks-backup.sh
+```
+
+### Добавление в crontab:
+```bash
+crontab -e
+```
+
+**Добавьте строку:**
+```bash
+# Backup каждый день в 2:00
+0 2 * * * /opt/scripts/vks-backup.sh
+```
+
+### Тестовый запуск:
+```bash
+sudo /opt/scripts/vks-backup.sh
+```
+
+### Проверка backup:
+```bash
+ls -lh /backups/vks/
+```
+
+---
+
+## 1️⃣4️⃣ Настройка мониторинга
+
+### Установка Fail2Ban:
+```bash
+sudo apt install -y fail2ban
+```
+
+### Конфигурация:
+```bash
+sudo nano /etc/fail2ban/jail.local
+```
+
+**Содержимое:**
+```ini
+[DEFAULT]
+bantime = 3600
+findtime = 600
+maxretry = 5
+
+[sshd]
+enabled = true
+port = ssh
+filter = sshd
+logpath = /var/log/auth.log
+
+[nginx-http-auth]
+enabled = true
+port = http,https
+filter = nginx-http-auth
+logpath = /var/log/nginx/error.log
+```
+
+**Перезапуск:**
+```bash
+sudo systemctl restart fail2ban
+sudo systemctl enable fail2ban
+```
+
+### Мониторинг ресурсов:
+```bash
+# Установка htop
+sudo apt install -y htop
+
+# Запуск
+htop
+```
+
+### Uptime мониторинг (бесплатно):
+1. Зарегистрируйтесь на https://uptimerobot.com
+2. Добавьте мониторинг:
+   - URL: https://vks.yourdomain.com/api/health
+   - Интервал: 5 минут
+   - Email для уведомлений
+
+---
+
+## 1️⃣5️⃣ Полезные команды
+
+### Управление Docker:
+```bash
+# Запуск
+docker compose up -d
+
+# Остановка
+docker compose down
+
+# Перезапуск
+docker compose restart
+
+# Логи
+docker compose logs -f
+docker compose logs -f backend
+docker compose logs -f nginx
+
+# Статус
+docker compose ps
+
+# Вход в контейнер
+docker compose exec backend bash
+docker compose exec mysql mysql -u vks_user -p vks_schedule
+```
+
+### Laravel команды:
+```bash
+# Миграции
+docker compose exec backend php artisan migrate
+docker compose exec backend php artisan migrate:fresh --seed
+
+# Кэш
+docker compose exec backend php artisan cache:clear
+docker compose exec backend php artisan config:clear
+docker compose exec backend php artisan route:clear
+
+# Tinker
+docker compose exec backend php artisan tinker
+
+# Напоминания
+docker compose exec backend php artisan meetings:send-reminders
+```
+
+### База данных:
+```bash
+# Подключение
+docker compose exec mysql mysql -u vks_user -pYourStrongPassword123! vks_schedule
+
+# Backup
+docker compose exec mysql mysqldump -u vks_user -pYourStrongPassword123! vks_schedule > backup.sql
+
+# Restore
+docker compose exec -T mysql mysql -u vks_user -pYourStrongPassword123! vks_schedule < backup.sql
+```
+
+### Обновление:
+```bash
+# Получение изменений
+git pull origin main
+
+# Пересборка
+docker compose down
+docker compose up -d --build
+
+# Миграции
+docker compose exec backend php artisan migrate
+
+# Очистка кэша
+docker compose exec backend php artisan cache:clear
+docker compose exec backend php artisan config:clear
+```
+
+---
+
+## 1️⃣6️⃣ Проверка работоспособности
+
+### Чек-лист:
+
+- [ ] Docker запущен (`docker compose ps`)
+- [ ] Все контейнеры в статусе "Up"
+- [ ] Приложение доступно по http://your_server_ip
+- [ ] SSL сертификат работает (https://vks.yourdomain.com)
+- [ ] Firewall настроен (`sudo ufw status`)
+- [ ] Fail2Ban работает (`sudo systemctl status fail2ban`)
+- [ ] Backup настроен (`crontab -l`)
+- [ ] Первый администратор создан
+- [ ] Можно войти в систему
+- [ ] Можно создать конференцию
+- [ ] Уведомления работают
+
+### Тест API:
+```bash
+curl https://vks.yourdomain.com/api/health
+```
+
+**Ожидаемый ответ:**
+```json
+{
+  "status": "ok",
+  "timestamp": "2024-01-15T10:00:00+00:00",
+  "version": "1.0.0"
+}
+```
+
+---
+
+## 1️⃣7️⃣ Устранение неполадок
+
+### Контейнер не запускается:
+```bash
+# Просмотр логов
+docker compose logs backend
+docker compose logs nginx
+
+# Перезапуск
+docker compose restart backend
+```
+
+### Ошибки прав доступа:
+```bash
+docker compose exec backend chown -R www-www-data storage bootstrap/cache
+docker compose exec backend chmod -R 775 storage bootstrap/cache
+```
+
+### Порт занят:
+```bash
+sudo lsof -i :80
+sudo kill -9 <PID>
+```
+
+### Ошибки БД:
+```bash
+# Пересоздание БД
+docker compose down -v
+docker compose up -d
+docker compose exec backend php artisan migrate:fresh
+```
+
+### SSL проблемы:
+```bash
+# Проверка сертификата
+sudo certbot certificates
+
+# Обновление
+sudo certbot renew --force-renewal
+```
+
+---
+
+## 📊 Итоговая структура
+
+```
+/home/deploy/projects/vks-schedule/
+├── 📄 README.md
+├── 📄 ALL_DOCUMENTATION.md
+├── 📄 SECURITY_CLEANUP.md
+├── 📄 LINUX_DEPLOYMENT.md (этот файл)
+├── 📄 docker-compose.yml
+│
+├── 📂 backend/
+│   ├── 📄 Dockerfile
+│   ├── 📄 .env
+│   ├── 📂 app/
+│   ├── 📂 database/
+│   └── 📂 routes/
+│
+├── 📂 frontend/
+│   ├── 📄 Dockerfile
+│   └── 📄 nginx.conf
+│
+├── 📂 src/
+│   ├── 📂 components/
+│   └── 📄 App.tsx
+│
+└── 📂 docker/
+    ├── 📂 nginx/
+    └── 📂 mysql/
+```
+
+---
+
+## ✅ Финальный чек-лист
+
+### Установка:
+- [ ] Ubuntu/Debian установлен
+- [ ] Docker установлен
+- [ ] Docker Compose установлен
+- [ ] Git установлен
+- [ ] Composer установлен
+
+### Проект:
+- [ ] Проект клонирован
+- [ ] Laravel backend создан
+- [ ] .env настроен
+- [ ] Docker запущен
+- [ ] Миграции выполнены
+
+### Безопасность:
+- [ ] Firewall настроен
+- [ ] SSL сертификат получен
+- [ ] Fail2Ban установлен
+- [ ] Первый администратор создан
+- [ ] Демо-аккаунты удалены
+
+### Мониторинг:
+- [ ] Backup настроен
+- [ ] Uptime мониторинг настроен
+- [ ] Логи проверяются
+
+### Функциональность:
+- [ ] Вход работает
+- [ ] Создание конференций работает
+- [ ] Уведомления работают
+- [ ] Подключение к ВКС работает
+
+---
+
+<div align="center">
+
+## 🎉 Развёртывание завершено!
+
+**Ваше приложение доступно по адресу:** https://vks.yourdomain.com
+
+**Версия**: 1.0  
+**Статус**: ✅ Production Ready
+
+</div>
+# 🔒 Удаление демо-аккаунтов
+
+## 📋 Что было удалено
+
+Из проекта полностью удалены все демо-аккаунты и предустановленные данные:
+
+### Удалённые данные:
+
+1. **Демо-пользователи:**
+   - ❌ admin@vks.local / admin123 (Администратор)
+   - ❌ ivanov@vks.local / user123 (Пользователь)
+   - ❌ petrova@vks.local / user123 (Пользователь)
+   - ❌ sidorov@vks.local / mod123 (Модератор)
+
+2. **Демо-конференции:**
+   - ❌ Еженедельный стендап
+   - ❌ Обзор проекта Q4
+   - ❌ Собеседование
+   - ❌ Демо продукта
+   - ❌ Ретроспектива
+   - ❌ Обучение: Новый стек
+   - ❌ Планёрка с клиентом
+   - ❌ Архитектурный комитет
+
+3. **Демо-уведомления:**
+   - ❌ Все предустановленные уведомления
+
+### Изменённые файлы:
+
+1. **src/components/AuthPage.tsx**
+   - ❌ Удалён блок с демо-аккаунтами
+   - ✅ Страница входа теперь чистая
+
+2. **src/main.tsx**
+   - ❌ Удалён вызов `initializeDemoData()`
+   - ✅ Приложение запускается без демо-данных
+
+3. **README.md**
+   - ❌ Удалена таблица с демо-аккаунтами
+   - ❌ Удалена ссылка на демо-аккаунты в футере
+
+4. **ALL_DOCUMENTATION.md**
+   - ❌ Удалена таблица с демо-аккаунтами
+
+---
+
+## 🚀 Как начать работу
+
+### Первый запуск:
+
+1. **Зарегистрируйте первого пользователя:**
+   - Откройте приложение
+   - Нажмите "Регистрация"
+   - Заполните форму:
+     - ФИО
+     - Логин
+     - Пароль
+     - Телефон (опционально)
+     - Отдел (опционально)
+
+2. **Назначьте роль администратора:**
+   
+   **Вариант 1: Через базу данных**
+   ```bash
+   # Подключитесь к базе данных
+   docker compose exec mysql mysql -u vks_user -p vks_schedule
+   
+   # Выполните SQL запрос
+   UPDATE users SET role = 'admin' WHERE id = 1;
+   ```
+
+   **Вариант 2: Через Laravel Tinker**
+   ```bash
+   docker compose exec backend php artisan tinker
+   
+   # В tinker выполните:
+   $user = App\Models\User::first();
+   $user->role = 'admin';
+   $user->save();
+   exit
+   ```
+
+3. **Создайте дополнительных пользователей:**
+   - Войдите как администратор
+   - Перейдите в "Админ-панель"
+   - Создайте новых пользователей
+   - Назначьте роли (admin/moderator/user)
+
+---
+
+## 🔐 Рекомендации по безопасности
+
+### Для первого пользователя:
+
+1. **Используйте сложный пароль:**
+   - Минимум 12 символов
+   - Смешанные регистры (a-z, A-Z)
+   - Цифры (0-9)
+   - Специальные символы (!@#$%^&*)
+
+2. **Не используйте простые логины:**
+   - ❌ admin, administrator, root
+   - ✅ Используйте уникальные логины
+
+3. **Сохраните учётные данные:**
+   - Запишите логин и пароль в надёжное место
+   - Используйте менеджер паролей
+
+### Для production:
+
+1. **Измените все пароли по умолчанию:**
+   ```bash
+   # В .env файле
+   DB_PASSWORD=your_strong_password_here
+   REDIS_PASSWORD=your_redis_password_here
+   ```
+
+2. **Включите двухфакторную аутентификацию:**
+   - Для всех администраторов
+   - Для модераторов (рекомендуется)
+
+3. **Ограничьте доступ:**
+   - Настройте firewall
+   - Используйте VPN для доступа
+   - Ограничьте IP-адреса для админки
+
+4. **Регулярно проверяйте логи:**
+   ```bash
+   docker compose logs backend
+   docker compose logs nginx
+   ```
+
+---
+
+## 📊 Структура ролей
+
+### 👑 Администратор (admin)
+**Права:**
+- ✅ Полный доступ ко всем функциям
+- ✅ Управление пользователями (CRUD)
+- ✅ Назначение ролей
+- ✅ Смена паролей всех пользователей
+- ✅ Доступ к приватным конференциям
+- ✅ Просмотр всех конференций
+- ✅ Удаление любых данных
+
+**Используйте для:**
+- Системных администраторов
+- Руководителей проекта
+- IT-директоров
+
+### 🔧 Модератор (moderator)
+**Права:**
+- ✅ Все конференции (включая приватные)
+- ✅ Блокировка пользователей
+- ✅ Редактирование любых конференций
+- ✅ Просмотр статистики
+- ❌ Создание/удаление пользователей
+- ❌ Изменение ролей
+- ❌ Смена паролей других пользователей
+
+**Используйте для:**
+- Менеджеров проектов
+- Тимлидов
+- HR-менеджеров
+
+### 👤 Пользователь (user)
+**Права:**
+- ✅ Свои конференции
+- ✅ Публичные конференции
+- ✅ Профиль и настройки
+- ✅ Создание конференций
+- ❌ Админ-панель
+- ❌ Приватные конференции (если не участник)
+
+**Используйте для:**
+- Обычных сотрудников
+- Участников команды
+
+---
+
+## 🎯 Первые шаги после установки
+
+### 1. Создайте структуру организации:
+
+```
+Администратор (1-2 человека)
+├── Модераторы (по отделам)
+│   ├── Модератор разработки
+│   ├── Модератор HR
+│   └── Модератор продаж
+└── Пользователи
+    ├── Разработчики
+    ├── Менеджеры
+    └── Другие сотрудники
+```
+
+### 2. Настройте отделы:
+
+- Разработка
+- Менеджмент
+- HR
+- Продажи
+- Маркетинг
+- Финансы
+- Поддержка
+
+### 3. Создайте шаблоны конференций:
+
+- Еженедельный стендап
+- Планирование спринта
+- Ретроспектива
+- Собеседование
+- Демо продукта
+- Обучение
+
+### 4. Настройте теги:
+
+- Важное 🔴
+- Обучение 🟡
+- Клиенты 🟢
+- Внутреннее 🔵
+- Срочное 🟣
+
+---
+
+## 🔧 Полезные команды
+
+### Создание первого администратора:
+
+```bash
+# Через Tinker
+docker compose exec backend php artisan tinker
+
+$user = new App\Models\User();
+$user->name = 'Ваше Имя';
+$user->login = 'your_login';
+$user->password = bcrypt('YourStrongPassword123!');
+$user->role = 'admin';
+$user->is_active = true;
+$user->save();
+
+exit
+```
+
+### Массовое создание пользователей:
+
+```bash
+# Создайте CSV файл users.csv
+name,login,password,role,department
+Иванов Иван,ivanov,Password123!,user,Разработка
+Петров Пётр,petrov,Password123!,user,Продажи
+```
+
+```bash
+# Импортируйте через artisan команду
+docker compose exec backend php artisan users:import users.csv
+```
+
+### Сброс пароля пользователя:
+
+```bash
+docker compose exec backend php artisan tinker
+
+$user = App\Models\User::where('login', 'ivanov')->first();
+$user->password = bcrypt('NewPassword123!');
+$user->save();
+
+exit
+```
+
+---
+
+## ✅ Чек-лист после установки
+
+- [ ] Зарегистрирован первый пользователь
+- [ ] Назначена роль администратора
+- [ ] Созданы дополнительные пользователи
+- [ ] Настроены отделы
+- [ ] Созданы шаблоны конференций
+- [ ] Настроены теги
+- [ ] Проверены уведомления
+- [ ] Протестировано подключение к ВКС
+- [ ] Настроена резервная копия
+- [ ] Настроен мониторинг
+
+---
+
+<div align="center">
+
+**Теперь система полностью безопасна! 🔒**
+
+Никаких предустановленных аккаунтов - только ваши пользователи!
+
+</div>
