@@ -187,6 +187,67 @@ export function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substr(2);
 }
 
+// ============ DEMO DATA ============
+export function initializeDemoData(): void {
+  const existing = getUsers();
+  if (existing.length > 0) return;
+
+  // Генерируем временный пароль для первого администратора
+  const tempPassword = 'temp' + Math.random().toString(36).slice(-8);
+  
+  const adminId = generateId();
+
+  // Создаём ТОЛЬКО одного администратора с временным паролем
+  const demoUsers: User[] = [
+    {
+      id: adminId,
+      name: 'Администратор Системы',
+      login: 'admin',
+      password: tempPassword,
+      role: 'admin',
+      phone: '',
+      department: 'IT',
+      position: 'Системный администратор',
+      createdAt: new Date().toISOString(),
+      isActive: true,
+      mustChangePassword: true, // Флаг для обязательной смены пароля
+    },
+  ];
+
+  localStorage.setItem('vks_users', JSON.stringify(demoUsers));
+  localStorage.setItem('vks_admin_temp_password', tempPassword); // Сохраняем временный пароль
+
+  // Пустой список конференций при первом запуске
+  localStorage.setItem('vks_meetings', JSON.stringify([]));
+}
+
+export function getAdminTempPassword(): string | null {
+  return localStorage.getItem('vks_admin_temp_password');
+}
+
+export function clearAdminTempPassword(): void {
+  localStorage.removeItem('vks_admin_temp_password');
+}
+
+export function mustChangePassword(userId: string): boolean {
+  const users = getUsers();
+  const user = users.find(u => u.id === userId);
+  return user?.mustChangePassword || false;
+}
+
+export function setPasswordChanged(userId: string): void {
+  const users = getUsers();
+  const updated = users.map(u => u.id === userId ? { ...u, mustChangePassword: false } : u);
+  localStorage.setItem('vks_users', JSON.stringify(updated));
+  
+  // Обновляем текущего пользователя если это он
+  const currentUser = getCurrentUser();
+  if (currentUser && currentUser.id === userId) {
+    const updatedUser = { ...currentUser, mustChangePassword: false };
+    localStorage.setItem('vks_auth', JSON.stringify({ token: getToken(), user: updatedUser }));
+  }
+}
+
 // THEME
 export function getTheme(): 'light' | 'dark' {
   return (localStorage.getItem('vks_theme') as 'light' | 'dark') || 'light';
