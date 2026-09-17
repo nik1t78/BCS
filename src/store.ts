@@ -192,149 +192,60 @@ export function initializeDemoData(): void {
   const existing = getUsers();
   if (existing.length > 0) return;
 
+  // Генерируем временный пароль для первого администратора
+  const tempPassword = 'temp' + Math.random().toString(36).slice(-8);
+  
   const adminId = generateId();
-  const modId = generateId();
-  const user1Id = generateId();
-  const user2Id = generateId();
 
-  const today = new Date().toISOString().split('T')[0];
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = tomorrow.toISOString().split('T')[0];
-
+  // Создаём ТОЛЬКО одного администратора с временным паролем
   const demoUsers: User[] = [
     {
       id: adminId,
       name: 'Администратор Системы',
       login: 'admin',
-      password: 'admin123',
+      password: tempPassword,
       role: 'admin',
-      phone: '+7 (999) 000-00-01',
+      phone: '',
       department: 'IT',
       position: 'Системный администратор',
       createdAt: new Date().toISOString(),
       isActive: true,
-    },
-    {
-      id: modId,
-      name: 'Сидоров Константин Львович',
-      login: 'sidorov',
-      password: 'mod123',
-      role: 'moderator',
-      phone: '+7 (999) 333-44-55',
-      department: 'HR',
-      position: 'HR Manager',
-      createdAt: new Date().toISOString(),
-      isActive: true,
-    },
-    {
-      id: user1Id,
-      name: 'Иванов Алексей Сергеевич',
-      login: 'ivanov',
-      password: 'user123',
-      role: 'user',
-      phone: '+7 (999) 111-22-33',
-      department: 'Разработка',
-      position: 'Frontend Developer',
-      createdAt: new Date().toISOString(),
-      isActive: true,
-    },
-    {
-      id: user2Id,
-      name: 'Петрова Мария Владимировна',
-      login: 'petrova',
-      password: 'user123',
-      role: 'user',
-      phone: '+7 (999) 222-33-44',
-      department: 'Менеджмент',
-      position: 'Project Manager',
-      createdAt: new Date().toISOString(),
-      isActive: true,
+      mustChangePassword: true, // Флаг для обязательной смены пароля
     },
   ];
 
   localStorage.setItem('vks_users', JSON.stringify(demoUsers));
+  localStorage.setItem('vks_admin_temp_password', tempPassword); // Сохраняем временный пароль
 
-  const demoMeetings: Meeting[] = [
-    {
-      id: generateId(),
-      title: 'Еженедельный стендап',
-      description: 'Обсуждение прогресса команды',
-      date: today,
-      startTime: '10:00',
-      endTime: '10:30',
-      organizerId: user2Id,
-      participants: [user1Id, user2Id, modId],
-      participantEmails: [],
-      link: 'https://meet.example.com/standup',
-      room: 'Переговорная №1',
-      status: 'scheduled',
-      reminderMinutes: 10,
-      recurring: 'weekly',
-      priority: 'high',
-      createdAt: new Date().toISOString(),
-      isPrivate: false,
-    },
-    {
-      id: generateId(),
-      title: 'Обзор проекта Q4',
-      description: 'Презентация результатов квартала',
-      date: today,
-      startTime: '14:00',
-      endTime: '15:30',
-      organizerId: adminId,
-      participants: [user1Id, user2Id],
-      participantEmails: [],
-      link: 'https://meet.example.com/q4',
-      room: 'Конференц-зал А',
-      status: 'scheduled',
-      reminderMinutes: 30,
-      recurring: 'none',
-      priority: 'high',
-      createdAt: new Date().toISOString(),
-      isPrivate: false,
-    },
-    {
-      id: generateId(),
-      title: 'Собеседование',
-      description: 'Senior Frontend Developer',
-      date: tomorrowStr,
-      startTime: '11:00',
-      endTime: '12:00',
-      organizerId: modId,
-      participants: [modId],
-      participantEmails: [],
-      link: 'https://meet.example.com/interview',
-      room: 'Онлайн',
-      status: 'scheduled',
-      reminderMinutes: 15,
-      recurring: 'none',
-      priority: 'medium',
-      createdAt: new Date().toISOString(),
-      isPrivate: true,
-    },
-    {
-      id: generateId(),
-      title: 'Демо нового функционала',
-      description: 'Показ новой версии продукта заказчику',
-      date: tomorrowStr,
-      startTime: '16:00',
-      endTime: '17:00',
-      organizerId: user2Id,
-      participants: [user1Id, user2Id, adminId],
-      participantEmails: [],
-      link: 'https://meet.example.com/demo',
-      room: 'Переговорная №3',
-      status: 'scheduled',
-      reminderMinutes: 15,
-      recurring: 'none',
-      priority: 'high',
-      createdAt: new Date().toISOString(),
-      isPrivate: false,
-    },
-  ];
+  // Пустой список конференций при первом запуске
+  localStorage.setItem('vks_meetings', JSON.stringify([]));
+}
 
-  localStorage.setItem('vks_meetings', JSON.stringify(demoMeetings));
+export function getAdminTempPassword(): string | null {
+  return localStorage.getItem('vks_admin_temp_password');
+}
+
+export function clearAdminTempPassword(): void {
+  localStorage.removeItem('vks_admin_temp_password');
+}
+
+export function mustChangePassword(userId: string): boolean {
+  const users = getUsers();
+  const user = users.find(u => u.id === userId);
+  return user?.mustChangePassword || false;
+}
+
+export function setPasswordChanged(userId: string): void {
+  const users = getUsers();
+  const updated = users.map(u => u.id === userId ? { ...u, mustChangePassword: false } : u);
+  localStorage.setItem('vks_users', JSON.stringify(updated));
+  
+  // Обновляем текущего пользователя если это он
+  const currentUser = getCurrentUser();
+  if (currentUser && currentUser.id === userId) {
+    const updatedUser = { ...currentUser, mustChangePassword: false };
+    localStorage.setItem('vks_auth', JSON.stringify({ token: getToken(), user: updatedUser }));
+  }
 }
 
 // THEME
