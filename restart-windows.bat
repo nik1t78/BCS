@@ -1,11 +1,8 @@
 @echo off
-echo Очистка кэша Vite...
-if exist "node_modules\.vite" (
-    rmdir /s /q node_modules\.vite
-    echo Кэш успешно удалён.
-) else (
-    echo Кэш не найден, пропускаем удаление.
+echo Освобождение порта 3000...
+for /f "tokens=5" %%a in ('netstat -aon ^| find ":3000" ^| find "LISTENING"') do (
+    echo Остановка процесса %%a...
+    taskkill /F /PID %%a
 )
-
 echo Запуск сервера разработки...
 npm run dev
