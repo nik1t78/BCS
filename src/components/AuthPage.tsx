@@ -196,25 +196,33 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
             <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <p className="text-sm font-semibold text-blue-900 mb-2">
                 <i className="fas fa-info-circle mr-1"></i>
-                Первый вход в систему
+                Тестовые аккаунты для демонстрации
               </p>
-              <p className="text-xs text-blue-800 mb-2">
-                Используйте данные для входа:
-              </p>
-              <div className="space-y-2">
+              <div className="space-y-2 max-h-64 overflow-y-auto">
                 <div className="bg-white p-2 rounded border border-blue-300">
                   <p className="text-xs font-semibold text-blue-700 mb-1">👑 Администратор:</p>
                   <code className="text-sm font-mono text-blue-900">
-                    Логин: <strong>admin</strong><br/>
-                    Пароль: <strong>admin123</strong>
+                    Логин: <strong>admin</strong> | Пароль: <strong>admin123</strong>
                   </code>
                 </div>
                 <div className="bg-white p-2 rounded border border-purple-300">
                   <p className="text-xs font-semibold text-purple-700 mb-1">🔧 Модератор:</p>
                   <code className="text-sm font-mono text-purple-900">
-                    Логин: <strong>moderator</strong><br/>
-                    Пароль: <strong>mod123</strong>
+                    Логин: <strong>moderator</strong> | Пароль: <strong>mod123</strong>
                   </code>
+                </div>
+                <div className="bg-white p-2 rounded border border-green-300">
+                  <p className="text-xs font-semibold text-green-700 mb-1">👤 Пользователи (пароль: user123):</p>
+                  <div className="text-xs font-mono text-green-900 space-y-1">
+                    <div>• <strong>ivanov</strong> - Frontend Developer (Разработка)</div>
+                    <div>• <strong>petrova</strong> - Backend Developer (Разработка)</div>
+                    <div>• <strong>sidorov</strong> - UI/UX Designer (Дизайн)</div>
+                    <div>• <strong>kozlova</strong> - Project Manager (Менеджмент)</div>
+                    <div>• <strong>nikolaev</strong> - Marketing Specialist (Маркетинг)</div>
+                    <div>• <strong>fedorova</strong> - HR Manager (HR)</div>
+                    <div>• <strong>morozov</strong> - Financial Analyst (Финансы)</div>
+                    <div>• <strong>volkova</strong> - Sales Manager (Продажи)</div>
+                  </div>
                 </div>
               </div>
               <p className="text-xs text-blue-800 mt-2">
