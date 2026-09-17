@@ -147,6 +147,32 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
               </button>
             </form>
           )}
+
+          {/* Demo accounts */}
+          <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <p className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-3">
+              <i className="fas fa-info-circle mr-1"></i>
+              Демо-аккаунты для входа:
+            </p>
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between items-center bg-white dark:bg-gray-800 p-2 rounded">
+                <span className="font-medium text-gray-700 dark:text-gray-300">👑 Администратор:</span>
+                <code className="text-blue-600 dark:text-blue-400">admin / admin123</code>
+              </div>
+              <div className="flex justify-between items-center bg-white dark:bg-gray-800 p-2 rounded">
+                <span className="font-medium text-gray-700 dark:text-gray-300">🔧 Модератор:</span>
+                <code className="text-blue-600 dark:text-blue-400">sidorov / mod123</code>
+              </div>
+              <div className="flex justify-between items-center bg-white dark:bg-gray-800 p-2 rounded">
+                <span className="font-medium text-gray-700 dark:text-gray-300">👤 Пользователь:</span>
+                <code className="text-blue-600 dark:text-blue-400">ivanov / user123</code>
+              </div>
+              <div className="flex justify-between items-center bg-white dark:bg-gray-800 p-2 rounded">
+                <span className="font-medium text-gray-700 dark:text-gray-300">👤 Пользователь:</span>
+                <code className="text-blue-600 dark:text-blue-400">petrova / user123</code>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
