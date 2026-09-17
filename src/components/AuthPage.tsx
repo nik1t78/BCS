@@ -199,13 +199,23 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
                 Первый вход в систему
               </p>
               <p className="text-xs text-blue-800 mb-2">
-                Используйте данные администратора:
+                Используйте данные для входа:
               </p>
-              <div className="bg-white p-2 rounded border border-blue-300">
-                <code className="text-sm font-mono text-blue-900">
-                  Логин: <strong>admin</strong><br/>
-                  Пароль: <strong>admin123</strong>
-                </code>
+              <div className="space-y-2">
+                <div className="bg-white p-2 rounded border border-blue-300">
+                  <p className="text-xs font-semibold text-blue-700 mb-1">👑 Администратор:</p>
+                  <code className="text-sm font-mono text-blue-900">
+                    Логин: <strong>admin</strong><br/>
+                    Пароль: <strong>admin123</strong>
+                  </code>
+                </div>
+                <div className="bg-white p-2 rounded border border-purple-300">
+                  <p className="text-xs font-semibold text-purple-700 mb-1">🔧 Модератор:</p>
+                  <code className="text-sm font-mono text-purple-900">
+                    Логин: <strong>moderator</strong><br/>
+                    Пароль: <strong>mod123</strong>
+                  </code>
+                </div>
               </div>
               <p className="text-xs text-blue-800 mt-2">
                 <i className="fas fa-lightbulb mr-1"></i>

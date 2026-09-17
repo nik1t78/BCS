@@ -193,6 +193,7 @@ export function initializeDemoData(): void {
   if (existing.length > 0) return;
 
   createAdminUser();
+  createModeratorUser();
 }
 
 export function createAdminUser(): void {
@@ -215,14 +216,36 @@ export function createAdminUser(): void {
   const users = getUsers();
   users.push(adminUser);
   localStorage.setItem('vks_users', JSON.stringify(users));
-
+  
   // Пустой список конференций при первом запуске
   localStorage.setItem('vks_meetings', JSON.stringify([]));
 }
 
+export function createModeratorUser(): void {
+  const moderatorId = generateId();
+
+  // Создаём модератора со статическим паролем
+  const moderatorUser: User = {
+    id: moderatorId,
+    name: 'Модератор Системы',
+    login: 'moderator',
+    password: 'mod123', // Статический пароль - смените после первого входа!
+    role: 'moderator',
+    phone: '',
+    department: 'IT',
+    position: 'Модератор',
+    createdAt: new Date().toISOString(),
+    isActive: true,
+  };
+
+  const users = getUsers();
+  users.push(moderatorUser);
+  localStorage.setItem('vks_users', JSON.stringify(users));
+}
 export function forceReset(): void {
   localStorage.clear();
   createAdminUser();
+  createModeratorUser();
 }
 
 export function getAdminTempPassword(): string | null {
