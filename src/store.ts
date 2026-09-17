@@ -192,30 +192,25 @@ export function initializeDemoData(): void {
   const existing = getUsers();
   if (existing.length > 0) return;
 
-  // Генерируем временный пароль для первого администратора
-  const tempPassword = 'temp' + Math.random().toString(36).slice(-8);
-  
   const adminId = generateId();
 
-  // Создаём ТОЛЬКО одного администратора с временным паролем
+  // Создаём администратора со статическим паролем
   const demoUsers: User[] = [
     {
       id: adminId,
       name: 'Администратор Системы',
       login: 'admin',
-      password: tempPassword,
+      password: 'admin123', // Статический пароль - смените после первого входа!
       role: 'admin',
       phone: '',
       department: 'IT',
       position: 'Системный администратор',
       createdAt: new Date().toISOString(),
       isActive: true,
-      mustChangePassword: true, // Флаг для обязательной смены пароля
     },
   ];
 
   localStorage.setItem('vks_users', JSON.stringify(demoUsers));
-  localStorage.setItem('vks_admin_temp_password', tempPassword); // Сохраняем временный пароль
 
   // Пустой список конференций при первом запуске
   localStorage.setItem('vks_meetings', JSON.stringify([]));
