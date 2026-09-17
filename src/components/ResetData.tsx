@@ -15,10 +15,10 @@ export default function ResetData() {
   if (reset) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-xl p-8 text-center">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-8 text-center">
           <i className="fas fa-check-circle text-green-500 text-5xl mb-4"></i>
-          <h2 className="text-xl font-bold text-gray-800 mb-2">Данные очищены!</h2>
-          <p className="text-gray-600">Перезагрузка страницы...</p>
+          <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">Данные очищены!</h2>
+          <p className="text-gray-600 dark:text-gray-400">Перезагрузка страницы...</p>
         </div>
       </div>
     );
@@ -39,29 +39,18 @@ export default function ResetData() {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md p-6">
         <div className="text-center mb-6">
           <i className="fas fa-exclamation-triangle text-yellow-500 text-5xl mb-4"></i>
-          <h2 className="text-xl font-bold text-gray-800 mb-2">Сбросить все данные?</h2>
-          <p className="text-gray-600 text-sm">
-            Это действие удалит все данные из localStorage:
-          </p>
-          <ul className="text-left text-sm text-gray-600 mt-3 space-y-1">
-            <li>• Пользователей</li>
-            <li>• Конференции</li>
-            <li>• Уведомления</li>
-            <li>• Настройки</li>
-            <li>• Шаблоны</li>
-            <li>• Теги</li>
-          </ul>
-          <p className="text-sm text-gray-500 mt-3">
-            После сброса демо-данные загрузятся заново
+          <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">Сбросить все данные?</h2>
+          <p className="text-gray-600 dark:text-gray-400 text-sm">
+            Это действие удалит все данные из localStorage
           </p>
         </div>
         <div className="flex gap-3">
           <button
             onClick={() => setShowConfirm(false)}
-            className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+            className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
           >
             Отмена
           </button>

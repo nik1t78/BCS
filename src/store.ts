@@ -1,4 +1,4 @@
-import { User, Meeting, Notification, Settings, MeetingTemplate, Tag, Attachment, MeetingHistory } from './types';
+import { User, Meeting, Notification, Settings } from './types';
 
 const USERS_KEY = 'vks_users';
 const MEETINGS_KEY = 'vks_meetings';
@@ -14,13 +14,12 @@ export const defaultSettings: Settings = {
   workHoursEnd: '18:00',
 };
 
-// ============ AUTH ============
+// AUTH
 export function getCurrentUser(): User | null {
   const data = localStorage.getItem(AUTH_KEY);
   if (!data) return null;
   const auth = JSON.parse(data);
-  if (!auth.token || !auth.user) return null;
-  return auth.user;
+  return auth.user || null;
 }
 
 export function getToken(): string | null {
@@ -33,16 +32,15 @@ export function login(login: string, password: string): { success: boolean; user
   const users = getUsers();
   const user = users.find(u => u.login.toLowerCase() === login.toLowerCase() && u.password === password);
   if (!user) return { success: false, error: 'Неверный логин или пароль' };
-  if (!user.isActive) return { success: false, error: 'Аккаунт заблокирован. Обратитесь к администратору.' };
+  if (!user.isActive) return { success: false, error: 'Аккаунт заблокирован' };
 
   const token = 'tok_' + Date.now().toString(36) + Math.random().toString(36).substr(2);
   const updatedUser = { ...user, lastLogin: new Date().toISOString() };
   
-  // Update user in storage
   const usersUpdated = users.map(u => u.id === user.id ? updatedUser : u);
   localStorage.setItem(USERS_KEY, JSON.stringify(usersUpdated));
-  
   localStorage.setItem(AUTH_KEY, JSON.stringify({ token, user: updatedUser }));
+  
   return { success: true, user: updatedUser };
 }
 
@@ -85,7 +83,7 @@ export function updateProfile(user: User): void {
   localStorage.setItem(AUTH_KEY, JSON.stringify({ token: getToken(), user }));
 }
 
-// ============ USERS (Admin) ============
+// USERS
 export function getUsers(): User[] {
   const data = localStorage.getItem(USERS_KEY);
   return data ? JSON.parse(data) : [];
@@ -114,7 +112,7 @@ export function toggleUserActive(id: string): void {
   localStorage.setItem(USERS_KEY, JSON.stringify(updated));
 }
 
-// ============ MEETINGS ============
+// MEETINGS
 export function getMeetings(): Meeting[] {
   const data = localStorage.getItem(MEETINGS_KEY);
   return data ? JSON.parse(data) : [];
@@ -144,7 +142,7 @@ export function deleteMeeting(id: string): void {
   saveMeetings(meetings);
 }
 
-// ============ NOTIFICATIONS ============
+// NOTIFICATIONS
 export function getNotifications(): Notification[] {
   const data = localStorage.getItem(NOTIFICATIONS_KEY);
   return data ? JSON.parse(data) : [];
@@ -175,7 +173,7 @@ export function markAllNotificationsRead(userId: string): void {
   saveNotifications(notifications);
 }
 
-// ============ SETTINGS ============
+// SETTINGS
 export function getSettings(): Settings {
   const data = localStorage.getItem(SETTINGS_KEY);
   return data ? JSON.parse(data) : defaultSettings;
@@ -189,7 +187,7 @@ export function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substr(2);
 }
 
-// ============ THEME ============
+// THEME
 export function getTheme(): 'light' | 'dark' {
   return (localStorage.getItem('vks_theme') as 'light' | 'dark') || 'light';
 }
@@ -199,286 +197,79 @@ export function setTheme(theme: 'light' | 'dark'): void {
   document.documentElement.classList.toggle('dark', theme === 'dark');
 }
 
-// ============ TEMPLATES ============
-export function getTemplates(): MeetingTemplate[] {
+// TEMPLATES
+export function getTemplates(): any[] {
   const data = localStorage.getItem('vks_templates');
   return data ? JSON.parse(data) : [];
 }
 
-export function saveTemplates(templates: MeetingTemplate[]): void {
+export function addTemplate(template: any): void {
+  const templates = getTemplates();
+  templates.push(template);
   localStorage.setItem('vks_templates', JSON.stringify(templates));
 }
 
-export function addTemplate(template: MeetingTemplate): void {
+export function updateTemplate(updated: any): void {
   const templates = getTemplates();
-  templates.push(template);
-  saveTemplates(templates);
-}
-
-export function updateTemplate(updated: MeetingTemplate): void {
-  const templates = getTemplates();
-  const index = templates.findIndex(t => t.id === updated.id);
+  const index = templates.findIndex((t: any) => t.id === updated.id);
   if (index !== -1) {
     templates[index] = updated;
-    saveTemplates(templates);
+    localStorage.setItem('vks_templates', JSON.stringify(templates));
   }
 }
 
 export function deleteTemplate(id: string): void {
-  const templates = getTemplates().filter(t => t.id !== id);
-  saveTemplates(templates);
+  const templates = getTemplates().filter((t: any) => t.id !== id);
+  localStorage.setItem('vks_templates', JSON.stringify(templates));
 }
 
-// ============ TAGS ============
-export function getTags(): Tag[] {
+// TAGS
+export function getTags(): any[] {
   const data = localStorage.getItem('vks_tags');
   return data ? JSON.parse(data) : [];
 }
 
-export function saveTags(tags: Tag[]): void {
+export function addTag(tag: any): void {
+  const tags = getTags();
+  tags.push(tag);
   localStorage.setItem('vks_tags', JSON.stringify(tags));
 }
 
-export function addTag(tag: Tag): void {
+export function updateTag(updated: any): void {
   const tags = getTags();
-  tags.push(tag);
-  saveTags(tags);
-}
-
-export function updateTag(updated: Tag): void {
-  const tags = getTags();
-  const index = tags.findIndex(t => t.id === updated.id);
+  const index = tags.findIndex((t: any) => t.id === updated.id);
   if (index !== -1) {
     tags[index] = updated;
-    saveTags(tags);
+    localStorage.setItem('vks_tags', JSON.stringify(tags));
   }
 }
 
 export function deleteTag(id: string): void {
-  const tags = getTags().filter(t => t.id !== id);
-  saveTags(tags);
+  const tags = getTags().filter((t: any) => t.id !== id);
+  localStorage.setItem('vks_tags', JSON.stringify(tags));
 }
 
-// ============ FAVORITES ============
-export function toggleFavorite(meetingId: string): void {
-  const meetings = getMeetings();
-  const index = meetings.findIndex(m => m.id === meetingId);
-  if (index !== -1) {
-    meetings[index].isFavorite = !meetings[index].isFavorite;
-    saveMeetings(meetings);
-  }
-}
-
-export function getFavorites(): Meeting[] {
-  return getMeetings().filter(m => m.isFavorite);
-}
-
-// ============ ATTACHMENTS ============
-export function getAttachments(meetingId?: string): Attachment[] {
+// ATTACHMENTS
+export function getAttachments(meetingId?: string): any[] {
   const data = localStorage.getItem('vks_attachments');
-  const attachments: Attachment[] = data ? JSON.parse(data) : [];
-  return meetingId ? attachments.filter((a: Attachment) => a.meetingId === meetingId) : attachments;
+  const attachments = data ? JSON.parse(data) : [];
+  return meetingId ? attachments.filter((a: any) => a.meetingId === meetingId) : attachments;
 }
 
-export function saveAttachments(attachments: Attachment[]): void {
+export function addAttachment(attachment: any): void {
+  const attachments = getAttachments();
+  attachments.push(attachment);
   localStorage.setItem('vks_attachments', JSON.stringify(attachments));
 }
 
-export function addAttachment(attachment: Attachment): void {
-  const attachments = getAttachments();
-  attachments.push(attachment);
-  saveAttachments(attachments);
-}
-
 export function deleteAttachment(id: string): void {
-  const attachments = getAttachments().filter(a => a.id !== id);
-  saveAttachments(attachments);
+  const attachments = getAttachments().filter((a: any) => a.id !== id);
+  localStorage.setItem('vks_attachments', JSON.stringify(attachments));
 }
 
-// ============ HISTORY ============
-export function getHistory(meetingId?: string): MeetingHistory[] {
+// HISTORY
+export function getHistory(meetingId?: string): any[] {
   const data = localStorage.getItem('vks_history');
-  const history: MeetingHistory[] = data ? JSON.parse(data) : [];
-  return meetingId ? history.filter((h: MeetingHistory) => h.meetingId === meetingId) : history;
-}
-
-export function saveHistory(history: MeetingHistory[]): void {
-  localStorage.setItem('vks_history', JSON.stringify(history));
-}
-
-export function addHistoryEntry(entry: MeetingHistory): void {
-  const history = getHistory();
-  history.unshift(entry);
-  if (history.length > 500) history.length = 500;
-  saveHistory(history);
-}
-
-// ============ DEMO DATA ============
-export function initializeDemoData(): void {
-  const users = getUsers();
-  if (users.length > 0) return;
-
-  // Create admin user
-  const adminId = generateId();
-  const userId1 = generateId();
-  const userId2 = generateId();
-  const userId3 = generateId();
-
-  const demoUsers: User[] = [
-    {
-      id: adminId,
-      name: 'Администратор Системы',
-      login: 'admin',
-      password: 'admin123',
-      role: 'admin',
-      phone: '+7 (999) 000-00-01',
-      department: 'IT',
-      position: 'Системный администратор',
-      createdAt: new Date().toISOString(),
-      isActive: true,
-    },
-    {
-      id: userId1,
-      name: 'Иванов Алексей Сергеевич',
-      login: 'ivanov',
-      password: 'user123',
-      role: 'user',
-      phone: '+7 (999) 111-22-33',
-      department: 'Разработка',
-      position: 'Frontend Developer',
-      createdAt: new Date().toISOString(),
-      isActive: true,
-    },
-    {
-      id: userId2,
-      name: 'Петрова Мария Владимировна',
-      login: 'petrova',
-      password: 'user123',
-      role: 'user',
-      phone: '+7 (999) 222-33-44',
-      department: 'Менеджмент',
-      position: 'Project Manager',
-      createdAt: new Date().toISOString(),
-      isActive: true,
-    },
-    {
-      id: userId3,
-      name: 'Сидоров Константин Львович',
-      login: 'sidorov',
-      password: 'mod123',
-      role: 'moderator',
-      phone: '+7 (999) 333-44-55',
-      department: 'HR',
-      position: 'HR Manager',
-      createdAt: new Date().toISOString(),
-      isActive: true,
-    },
-  ];
-
-  localStorage.setItem(USERS_KEY, JSON.stringify(demoUsers));
-
-  const today = new Date();
-  const todayStr = today.toISOString().split('T')[0];
-  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = tomorrow.toISOString().split('T')[0];
-  const dayAfter = new Date(today); dayAfter.setDate(dayAfter.getDate() + 2);
-  const dayAfterStr = dayAfter.toISOString().split('T')[0];
-  const nextWeek = new Date(today); nextWeek.setDate(nextWeek.getDate() + 5);
-  const nextWeekStr = nextWeek.toISOString().split('T')[0];
-  const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-  const demoMeetings: Meeting[] = [
-    {
-      id: generateId(), title: 'Еженедельный стендап', description: 'Обсуждение прогресса',
-      date: todayStr, startTime: '10:00', endTime: '10:30',
-      organizerId: userId2, participants: [userId1, userId2, userId3],
-      participantEmails: [], link: 'https://meet.example.com/standup',
-      room: 'Переговорная №1', status: 'scheduled', reminderMinutes: 10,
-      recurring: 'weekly', priority: 'high', createdAt: new Date().toISOString(), isPrivate: false,
-    },
-    {
-      id: generateId(), title: 'Обзор проекта Q4', description: 'Презентация результатов',
-      date: todayStr, startTime: '14:00', endTime: '15:30',
-      organizerId: adminId, participants: [userId1, userId2],
-      participantEmails: ['client@example.com'], link: 'https://meet.example.com/q4',
-      room: 'Конференц-зал А', status: 'scheduled', reminderMinutes: 30,
-      recurring: 'none', priority: 'high', createdAt: new Date().toISOString(), isPrivate: false,
-    },
-    {
-      id: generateId(), title: 'Собеседование', description: 'Senior Frontend Developer',
-      date: tomorrowStr, startTime: '11:00', endTime: '12:00',
-      organizerId: userId3, participants: [userId3],
-      participantEmails: ['candidate@example.com'], link: 'https://meet.example.com/interview',
-      room: 'Онлайн', status: 'scheduled', reminderMinutes: 15,
-      recurring: 'none', priority: 'medium', createdAt: new Date().toISOString(), isPrivate: true,
-    },
-    {
-      id: generateId(), title: 'Демо продукта', description: 'Показ заказчику',
-      date: tomorrowStr, startTime: '16:00', endTime: '17:00',
-      organizerId: userId2, participants: [userId1, userId2, adminId],
-      participantEmails: [], link: 'https://meet.example.com/demo',
-      room: 'Переговорная №3', status: 'scheduled', reminderMinutes: 15,
-      recurring: 'none', priority: 'high', createdAt: new Date().toISOString(), isPrivate: false,
-    },
-    {
-      id: generateId(), title: 'Ретроспектива', description: 'Анализ спринта',
-      date: dayAfterStr, startTime: '15:00', endTime: '16:00',
-      organizerId: userId2, participants: [userId1, userId2],
-      participantEmails: [], link: 'https://meet.example.com/retro',
-      room: 'Переговорная №2', status: 'scheduled', reminderMinutes: 10,
-      recurring: 'weekly', priority: 'medium', createdAt: new Date().toISOString(), isPrivate: false,
-    },
-    {
-      id: generateId(), title: 'Обучение: Новый стек', description: 'Тренинг',
-      date: nextWeekStr, startTime: '10:00', endTime: '12:00',
-      organizerId: adminId, participants: [userId1, userId2, userId3],
-      participantEmails: [], link: 'https://meet.example.com/training',
-      room: 'Конференц-зал Б', status: 'scheduled', reminderMinutes: 60,
-      recurring: 'none', priority: 'low', createdAt: new Date().toISOString(), isPrivate: false,
-    },
-    {
-      id: generateId(), title: 'Планёрка с клиентом', description: 'Обсуждение требований',
-      date: yesterdayStr, startTime: '09:00', endTime: '10:00',
-      organizerId: userId2, participants: [userId1, userId2],
-      participantEmails: ['client@example.com'], link: 'https://meet.example.com/client',
-      room: 'Онлайн', status: 'completed', reminderMinutes: 15,
-      recurring: 'none', priority: 'medium', createdAt: new Date().toISOString(), isPrivate: false,
-    },
-    {
-      id: generateId(), title: 'Архитектурный комитет', description: 'Новые решения',
-      date: yesterdayStr, startTime: '14:00', endTime: '15:00',
-      organizerId: adminId, participants: [adminId, userId1],
-      participantEmails: [], link: 'https://meet.example.com/arch',
-      room: 'Переговорная №1', status: 'completed', reminderMinutes: 15,
-      recurring: 'monthly', priority: 'high', createdAt: new Date().toISOString(), isPrivate: false,
-    },
-  ];
-
-  saveMeetings(demoMeetings);
-
-  const demoNotifications: Notification[] = [
-    {
-      id: generateId(), userId: userId1, meetingId: demoMeetings[0].id,
-      message: '⏰ Напоминание: через 10 мин. начнётся "Еженедельный стендап"',
-      type: 'reminder', timestamp: new Date(Date.now() - 3600000).toISOString(), read: false,
-    },
-    {
-      id: generateId(), userId: userId1, meetingId: demoMeetings[0].id,
-      message: '🔴 Конференция "Еженедельный стендап" начинается!',
-      type: 'starting', timestamp: new Date(Date.now() - 7200000).toISOString(), read: true,
-    },
-    {
-      id: generateId(), userId: userId2, meetingId: demoMeetings[6].id,
-      message: '✅ Конференция "Планёрка с клиентом" завершена',
-      type: 'info', timestamp: new Date(Date.now() - 86400000).toISOString(), read: true,
-    },
-    {
-      id: generateId(), userId: userId1, meetingId: demoMeetings[0].id,
-      message: '👤 Вас добавили в конференцию "Еженедельный стендап"',
-      type: 'user-added', timestamp: new Date(Date.now() - 172800000).toISOString(), read: true,
-    },
-  ];
-
-  saveNotifications(demoNotifications);
+  const history = data ? JSON.parse(data) : [];
+  return meetingId ? history.filter((h: any) => h.meetingId === meetingId) : history;
 }

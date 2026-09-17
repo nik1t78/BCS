@@ -5,28 +5,17 @@ export function exportToICS(meetings: Meeting[], username: string): void {
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'PRODID:-//ВКС Расписание//RU',
-    'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
-    'X-WR-CALNAME:ВКС Расписание',
-    `X-WR-TIMEZONE:Europe/Moscow`,
   ];
 
   meetings.forEach(meeting => {
-    const startDate = meeting.date.replace(/-/g, '') + 'T' + meeting.startTime.replace(':', '') + '00';
-    const endDate = meeting.date.replace(/-/g, '') + 'T' + meeting.endTime.replace(':', '') + '00';
-    const created = new Date(meeting.createdAt).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-
     icsContent.push(
       'BEGIN:VEVENT',
       `UID:${meeting.id}@vks.local`,
-      `DTSTART:${startDate}`,
-      `DTEND:${endDate}`,
+      `DTSTART:${meeting.date.replace(/-/g, '')}T${meeting.startTime.replace(':', '')}00`,
+      `DTEND:${meeting.date.replace(/-/g, '')}T${meeting.endTime.replace(':', '')}00`,
       `SUMMARY:${meeting.title}`,
-      `DESCRIPTION:${meeting.description || 'Видеоконференция'}`,
+      `DESCRIPTION:${meeting.description || ''}`,
       `LOCATION:${meeting.room || 'Онлайн'}`,
-      `URL:${meeting.link || ''}`,
-      `DTSTAMP:${created}`,
-      `CREATED:${created}`,
       'END:VEVENT'
     );
   });
@@ -58,7 +47,7 @@ export function exportToJSON(meetings: Meeting[], filename: string): void {
 }
 
 export function exportToCSV(meetings: Meeting[], filename: string): void {
-  const headers = ['Название', 'Дата', 'Начало', 'Конец', 'Комната', 'Статус', 'Приоритет', 'Ссылка'];
+  const headers = ['Название', 'Дата', 'Начало', 'Конец', 'Комната', 'Статус', 'Приоритет'];
   const rows = meetings.map(m => [
     `"${m.title}"`,
     m.date,
@@ -67,7 +56,6 @@ export function exportToCSV(meetings: Meeting[], filename: string): void {
     `"${m.room || 'Онлайн'}"`,
     m.status,
     m.priority,
-    m.link || '',
   ]);
 
   const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
