@@ -12,7 +12,7 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
   const [showForm, setShowForm] = useState(false);
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [filter, setFilter] = useState<'all' | 'organized' | 'participating'>('all');
-  const allUsers = getUsers();
+  const [allUsers, setAllUsers] = useState(getUsers());
 
   const emptyMeeting: Meeting = {
     id: '',
@@ -42,7 +42,10 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
       m.organizerId === user.id || m.participants.includes(user.id)
     );
     setMeetings(myMeetings);
-  }, [user.id]);
+    
+    // Обновляем список пользователей при открытии формы
+    setAllUsers(getUsers());
+  }, [user.id, showForm]);
 
   const filteredMeetings = meetings.filter(m => {
     if (filter === 'organized') return m.organizerId === user.id;
@@ -240,23 +243,101 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
 
                 {/* Participants */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Участники</label>
-                  <div className="flex flex-wrap gap-2">
-                    {allUsers.filter(u => u.isActive).map(u => (
-                      <button
-                        key={u.id}
-                        type="button"
-                        onClick={() => toggleParticipant(u.id)}
-                        className={`px-3 py-1 rounded-full text-sm border transition-colors ${
-                          formData.participants.includes(u.id)
-                            ? 'bg-blue-100 dark:bg-blue-900 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
-                            : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
-                        }`}
-                      >
-                        {u.name.split(' ').slice(0, 2).join(' ')}
-                      </button>
-                    ))}
-                  </div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Участники ({formData.participants.length} выбрано)
+                  </label>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                    <i className="fas fa-info-circle mr-1"></i>
+                    Выберите зарегистрированных пользователей из списка ниже
+                  </p>
+                  
+                  {allUsers.length === 0 ? (
+                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                      <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                        <i className="fas fa-exclamation-triangle mr-2"></i>
+                        В системе нет зарегистрированных пользователей. 
+                        Попросите администратора создать пользователей или зарегистрируйтесь сами.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 max-h-64 overflow-y-auto">
+                      <div className="space-y-2">
+                        {allUsers.filter(u => u.isActive).map(u => (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => toggleParticipant(u.id)}
+                            className={`w-full text-left px-3 py-2 rounded-lg border transition-colors flex items-center gap-3 ${
+                              formData.participants.includes(u.id)
+                                ? 'bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700'
+                                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                            }`}
+                          >
+                            <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
+                              formData.participants.includes(u.id)
+                                ? 'bg-blue-600 border-blue-600'
+                                : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-500'
+                            }`}>
+                              {formData.participants.includes(u.id) && (
+                                <i className="fas fa-check text-white text-xs"></i>
+                              )}
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-gray-800 dark:text-gray-100 text-sm">
+                                  {u.name}
+                                </span>
+                                <span className={`px-2 py-0.5 rounded text-xs ${
+                                  u.role === 'admin' 
+                                    ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                                    : u.role === 'moderator'
+                                    ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400'
+                                    : 'bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-300'
+                                }`}>
+                                  {u.role === 'admin' ? 'Админ' : u.role === 'moderator' ? 'Модератор' : 'Пользователь'}
+                                </span>
+                              </div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                @{u.login}
+                                {u.department && <span className="ml-2">• {u.department}</span>}
+                                {u.position && <span className="ml-2">• {u.position}</span>}
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {formData.participants.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+                        Выбранные участники:
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {formData.participants.map(participantId => {
+                          const participant = allUsers.find(u => u.id === participantId);
+                          if (!participant) return null;
+                          return (
+                            <span
+                              key={participantId}
+                              className="inline-flex items-center gap-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-1 rounded-full text-xs"
+                            >
+                              <i className="fas fa-user text-xs"></i>
+                              {participant.name.split(' ')[0]}
+                              <button
+                                type="button"
+                                onClick={() => toggleParticipant(participantId)}
+                                className="ml-1 hover:text-blue-900 dark:hover:text-blue-100"
+                              >
+                                <i className="fas fa-times text-xs"></i>
+                              </button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex justify-end gap-3 pt-4 border-t dark:border-gray-700">

@@ -129,8 +129,8 @@ function App() {
           {currentPage === 'dashboard' && <Dashboard user={user} onNavigate={(page: string) => setCurrentPage(page as Page)} />}
           {currentPage === 'schedule' && <Schedule user={user} onNavigate={(page: string) => setCurrentPage(page as Page)} />}
           {currentPage === 'meetings' && <UserPanel user={user} onNavigate={(page: string) => setCurrentPage(page as Page)} />}
-          {currentPage === 'templates' && <Templates userId={user.id} />}
-          {currentPage === 'tags' && <TagsManager userId={user.id} />}
+          {currentPage === 'templates' && <Templates user={user} />}
+          {currentPage === 'tags' && <TagsManager user={user} />}
           {currentPage === 'stats' && <Stats user={user} />}
           {currentPage === 'notifications' && <Notifications user={user} />}
           {currentPage === 'profile' && <Profile user={user} onUpdate={() => setUser(getCurrentUser())} />}

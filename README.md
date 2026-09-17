@@ -35,7 +35,43 @@
 
 ## 🚀 Быстрый старт
 
-### Запуск за 3 команды
+### 📖 Выберите инструкцию:
+
+| Инструкция | Для кого | Время |
+|------------|----------|-------|
+| [**QUICK_START_WINDOWS.md**](./QUICK_START_WINDOWS.md) | Быстрый запуск на Windows | 5 мин |
+| [**LOCAL_RUN_WINDOWS.md**](./LOCAL_RUN_WINDOWS.md) | Подробная инструкция для Windows | 15 мин |
+| [**HOW_TO_SHARE.md**](./HOW_TO_SHARE.md) | Как поделиться с командой | 5 мин |
+
+### ⚡ Самый быстрый способ (Windows)
+
+```cmd
+cd D:\BCS
+npm install
+npm run build
+npm install -g serve
+serve -s dist -l 3000
+```
+
+Откройте: **http://localhost:3000**
+
+Войдите: `admin` / `admin123`
+
+### 🌐 Чтобы другие могли подключиться
+
+```cmd
+:: Узнайте IP адрес
+ipconfig
+
+:: Откройте порт в firewall
+netsh advfirewall firewall add rule name="ВКС Расписание" dir=in action=allow protocol=TCP localport=3000
+```
+
+Другие открывают: **http://192.168.1.100:3000**
+
+---
+
+### Запуск через Docker (альтернатива)
 
 ```bash
 # 1. Клонирование
