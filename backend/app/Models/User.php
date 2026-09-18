@@ -13,7 +13,7 @@ class User extends Authenticatable
 
     protected $fillable = [
         'name',
-        'email',
+        'login',
         'password',
         'role',
         'phone',
@@ -30,7 +30,6 @@ class User extends Authenticatable
     ];
 
     protected $casts = [
-        'email_verified_at' => 'datetime',
         'last_login' => 'datetime',
         'password' => 'hashed',
         'is_active' => 'boolean',

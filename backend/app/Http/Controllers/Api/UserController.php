@@ -25,7 +25,7 @@ class UserController extends Controller
             $search = $request->search;
             $query->where(function($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%")
+                  ->orWhere('login', 'like', "%{$search}%")
                   ->orWhere('department', 'like', "%{$search}%");
             });
         }
@@ -50,7 +50,7 @@ class UserController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users',
+            'login' => 'required|string|unique:users',
             'password' => 'required|min:6',
             'role' => 'required|in:admin,moderator,user',
             'phone' => 'nullable|string|max:20',
@@ -93,7 +93,7 @@ class UserController extends Controller
 
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
-            'email' => 'sometimes|email|unique:users,email,' . $id,
+            'login' => 'sometimes|string|unique:users,login,' . $id,
             'phone' => 'nullable|string|max:20',
             'department' => 'nullable|string|max:255',
             'position' => 'nullable|string|max:255',
@@ -113,7 +113,7 @@ class UserController extends Controller
 
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
-            'email' => 'sometimes|email|unique:users,email,' . $user->id,
+            'login' => 'sometimes|string|unique:users,login,' . $user->id,
             'phone' => 'nullable|string|max:20',
             'department' => 'nullable|string|max:255',
             'position' => 'nullable|string|max:255',
