@@ -2,14 +2,17 @@ FROM node:20-alpine as builder
 
 WORKDIR /app
 
-# Копирование package.json
+# Копирование package.json из корня проекта
 COPY package*.json ./
 
 # Установка зависимостей
 RUN npm ci
 
 # Копирование исходного кода
-COPY . .
+COPY src ./src
+COPY index.html ./
+COPY vite.config.js ./
+COPY tsconfig.json ./
 
 # Сборка приложения
 RUN npm run build
@@ -21,7 +24,7 @@ FROM nginx:alpine
 COPY --from=builder /app/dist /var/www/frontend
 
 # Копирование конфигурации nginx для SPA
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
 

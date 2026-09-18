@@ -4,8 +4,8 @@ services:
   # Frontend (React)
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: frontend/Dockerfile
     container_name: vks-frontend
     restart: unless-stopped
     networks:

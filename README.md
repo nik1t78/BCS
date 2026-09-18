@@ -146,7 +146,24 @@ docker compose exec backend php artisan migrate
 
 **📖 [ALL_DOCUMENTATION.md](./ALL_DOCUMENTATION.md)** — полная документация проекта
 
-В одном файле содержится:
+### 🪟 Для Windows:
+- **[WINDOWS_QUICK_START.md](./WINDOWS_QUICK_START.md)** — быстрый старт (5 минут)
+- **[WINDOWS_SETUP.md](./WINDOWS_SETUP.md)** — полная инструкция с решением проблем
+
+### 🐧 Для Linux/РЕД ОС:
+- **[RED_OS_QUICK_START.md](./RED_OS_QUICK_START.md)** — быстрый старт для РЕД ОС
+- **[RED_OS_DEPLOYMENT.md](./RED_OS_DEPLOYMENT.md)** — полная инструкция для РЕД ОС
+
+### 🐳 Для Docker:
+- **[DOCKER_QUICK_START.md](./DOCKER_QUICK_START.md)** — быстрый старт через Docker
+- **[DOCKER_DEPLOYMENT.md](./DOCKER_DEPLOYMENT.md)** — полная инструкция Docker
+
+### 📋 Общая документация:
+- **[DEPLOYMENT_OPTIONS.md](./DEPLOYMENT_OPTIONS.md)** — сравнение всех способов запуска
+- **[DEMO_USERS.md](./DEMO_USERS.md)** — тестовые пользователи для демонстрации
+- **[LOGIN_CREDENTIALS.md](./LOGIN_CREDENTIALS.md)** — данные для входа
+
+В одном файле **ALL_DOCUMENTATION.md** содержится:
 - ✅ Описание всех 59 функций
 - ✅ Структура проекта и базы данных
 - ✅ API Endpoints
