@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
-import { getUsers, getMeetings, updateUser, deleteUser, toggleUserActive, changeUserRole, updateMeeting, deleteMeeting, generateId, addMeeting } from '../store';
+import { getUsers, getMeetings, createUser, updateUser, deleteUser, toggleUserActive, changeUserRole, resetUserPassword, updateMeeting, deleteMeeting, createMeeting } from '../store-api';
 
 interface AdminPanelProps {
   user: User;
@@ -19,6 +19,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const emptyUser: User = {
     id: '', name: '', login: '', password: '', role: 'user',
@@ -35,33 +36,49 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [meetingForm, setMeetingForm] = useState<Meeting>(emptyMeeting);
 
   useEffect(() => {
-    setUsers(getUsers());
-    setMeetings(getMeetings());
+    loadData();
   }, []);
 
-  // User management
-  const handleSaveUser = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingUser) {
-      updateUser({ ...userForm, id: editingUser.id });
-    } else {
-      if (!userForm.name || !userForm.login || !userForm.password) {
-        alert('Заполните обязательные поля');
-        return;
-      }
-      if (users.find(u => u.login === userForm.login)) {
-        alert('Логин уже используется');
-        return;
-      }
-      const newUser = { ...userForm, id: generateId(), createdAt: new Date().toISOString() };
-      const allUsers = getUsers();
-      allUsers.push(newUser);
-      localStorage.setItem('vks_users', JSON.stringify(allUsers));
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [usersData, meetingsData] = await Promise.all([
+        getUsers(),
+        getMeetings()
+      ]);
+      setUsers(usersData);
+      setMeetings(meetingsData);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setLoading(false);
     }
-    setUsers(getUsers());
-    setShowUserForm(false);
-    setEditingUser(null);
-    setUserForm(emptyUser);
+  };
+
+  // User management
+  const handleSaveUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    try {
+      if (editingUser) {
+        await updateUser(editingUser.id, userForm);
+      } else {
+        if (!userForm.name || !userForm.login || !userForm.password) {
+          alert('Заполните обязательные поля');
+          return;
+        }
+        await createUser(userForm);
+      }
+      
+      const usersData = await getUsers();
+      setUsers(usersData);
+      setShowUserForm(false);
+      setEditingUser(null);
+      setUserForm(emptyUser);
+    } catch (error) {
+      console.error('Error saving user:', error);
+      alert('Ошибка при сохранении пользователя');
+    }
   };
 
   const handleEditUser = (u: User) => {
@@ -77,7 +94,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     setShowPasswordModal(true);
   };
 
-  const handleResetPassword = () => {
+  const handleResetPassword = async () => {
     if (!passwordUserId) return;
     
     if (newPassword.length < 6) {
@@ -90,49 +107,84 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       return;
     }
     
-    const userToUpdate = users.find(u => u.id === passwordUserId);
-    if (userToUpdate) {
-      updateUser({ ...userToUpdate, password: newPassword });
-      setUsers(getUsers());
+    try {
+      await resetUserPassword(passwordUserId, newPassword);
       setShowPasswordModal(false);
       setPasswordUserId(null);
       setNewPassword('');
       setConfirmPassword('');
       alert('Пароль успешно изменён');
+    } catch (error) {
+      console.error('Error resetting password:', error);
+      alert('Ошибка при смене пароля');
     }
   };
 
-  const handleDeleteUser = (id: string) => {
-    if (id === user.id) { alert('Нельзя удалить свой аккаунт'); return; }
+  const handleDeleteUser = async (id: string) => {
+    if (id === user.id) { 
+      alert('Нельзя удалить свой аккаунт'); 
+      return; 
+    }
+    
     if (confirm('Удалить пользователя?')) {
-      deleteUser(id);
-      setUsers(getUsers());
+      try {
+        await deleteUser(id);
+        const usersData = await getUsers();
+        setUsers(usersData);
+      } catch (error) {
+        console.error('Error deleting user:', error);
+        alert('Ошибка при удалении пользователя');
+      }
     }
   };
 
-  const handleToggleActive = (id: string) => {
-    if (id === user.id) { alert('Нельзя заблокировать свой аккаунт'); return; }
-    toggleUserActive(id);
-    setUsers(getUsers());
+  const handleToggleActive = async (id: string) => {
+    if (id === user.id) { 
+      alert('Нельзя заблокировать свой аккаунт'); 
+      return; 
+    }
+    
+    try {
+      await toggleUserActive(id);
+      const usersData = await getUsers();
+      setUsers(usersData);
+    } catch (error) {
+      console.error('Error toggling user active:', error);
+      alert('Ошибка при изменении статуса пользователя');
+    }
   };
 
-  const handleChangeRole = (id: string, role: User['role']) => {
-    changeUserRole(id, role);
-    setUsers(getUsers());
+  const handleChangeRole = async (id: string, role: User['role']) => {
+    try {
+      await changeUserRole(id, role);
+      const usersData = await getUsers();
+      setUsers(usersData);
+    } catch (error) {
+      console.error('Error changing role:', error);
+      alert('Ошибка при изменении роли');
+    }
   };
 
   // Meeting management
-  const handleSaveMeeting = (e: React.FormEvent) => {
+  const handleSaveMeeting = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingMeeting) {
-      updateMeeting({ ...meetingForm, id: editingMeeting.id });
-    } else {
-      addMeeting({ ...meetingForm, id: generateId(), organizerId: user.id });
+    
+    try {
+      if (editingMeeting) {
+        await updateMeeting(editingMeeting.id, meetingForm);
+      } else {
+        await createMeeting({ ...meetingForm, organizerId: user.id });
+      }
+      
+      const meetingsData = await getMeetings();
+      setMeetings(meetingsData);
+      setShowMeetingForm(false);
+      setEditingMeeting(null);
+      setMeetingForm(emptyMeeting);
+    } catch (error) {
+      console.error('Error saving meeting:', error);
+      alert('Ошибка при сохранении конференции');
     }
-    setMeetings(getMeetings());
-    setShowMeetingForm(false);
-    setEditingMeeting(null);
-    setMeetingForm(emptyMeeting);
   };
 
   const handleEditMeeting = (m: Meeting) => {
@@ -141,18 +193,30 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     setShowMeetingForm(true);
   };
 
-  const handleDeleteMeeting = (id: string) => {
+  const handleDeleteMeeting = async (id: string) => {
     if (confirm('Удалить конференцию?')) {
-      deleteMeeting(id);
-      setMeetings(getMeetings());
+      try {
+        await deleteMeeting(id);
+        const meetingsData = await getMeetings();
+        setMeetings(meetingsData);
+      } catch (error) {
+        console.error('Error deleting meeting:', error);
+        alert('Ошибка при удалении конференции');
+      }
     }
   };
 
-  const handleStatusChange = (id: string, status: Meeting['status']) => {
+  const handleStatusChange = async (id: string, status: Meeting['status']) => {
     const meeting = meetings.find(m => m.id === id);
     if (meeting) {
-      updateMeeting({ ...meeting, status });
-      setMeetings(getMeetings());
+      try {
+        await updateMeeting(id, { ...meeting, status });
+        const meetingsData = await getMeetings();
+        setMeetings(meetingsData);
+      } catch (error) {
+        console.error('Error changing status:', error);
+        alert('Ошибка при изменении статуса');
+      }
     }
   };
 
@@ -191,6 +255,17 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       default: return 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300';
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <i className="fas fa-spinner fa-spin text-4xl text-blue-600 mb-4"></i>
+          <p className="text-gray-600 dark:text-gray-400">Загрузка...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -356,246 +431,6 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   ))}
                 </tbody>
               </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Meetings Tab */}
-      {activeTab === 'meetings' && (
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <p className="text-sm text-gray-500 dark:text-gray-400">Всего: {filteredMeetings.length} конференций</p>
-            <button onClick={() => { setShowMeetingForm(true); setEditingMeeting(null); setMeetingForm(emptyMeeting); }}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2">
-              <i className="fas fa-plus"></i>Создать
-            </button>
-          </div>
-
-          {/* Meeting Form Modal */}
-          {showMeetingForm && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-                <div className="p-6">
-                  <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">
-                      {editingMeeting ? 'Редактировать конференцию' : 'Новая конференция'}
-                    </h2>
-                    <button onClick={() => setShowMeetingForm(false)} className="text-gray-400 hover:text-gray-600">
-                      <i className="fas fa-times text-xl"></i>
-                    </button>
-                  </div>
-
-                  <form onSubmit={handleSaveMeeting} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Название *</label>
-                        <input type="text" required value={meetingForm.title}
-                          onChange={(e) => setMeetingForm({ ...meetingForm, title: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
-                          placeholder="Название конференции" />
-                      </div>
-
-                      <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Описание</label>
-                        <textarea value={meetingForm.description}
-                          onChange={(e) => setMeetingForm({ ...meetingForm, description: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
-                          rows={3} placeholder="Описание конференции" />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Дата *</label>
-                        <input type="date" required value={meetingForm.date}
-                          onChange={(e) => setMeetingForm({ ...meetingForm, date: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500" />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Комната</label>
-                        <input type="text" value={meetingForm.room}
-                          onChange={(e) => setMeetingForm({ ...meetingForm, room: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
-                          placeholder="Переговорная №1" />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Начало *</label>
-                        <input type="time" required value={meetingForm.startTime}
-                          onChange={(e) => setMeetingForm({ ...meetingForm, startTime: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500" />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Конец *</label>
-                        <input type="time" required value={meetingForm.endTime}
-                          onChange={(e) => setMeetingForm({ ...meetingForm, endTime: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500" />
-                      </div>
-
-                      <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ссылка на ВКС</label>
-                        <input type="url" value={meetingForm.link}
-                          onChange={(e) => setMeetingForm({ ...meetingForm, link: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
-                          placeholder="https://zoom.us/j/..." />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Приоритет</label>
-                        <select value={meetingForm.priority}
-                          onChange={(e) => setMeetingForm({ ...meetingForm, priority: e.target.value as Meeting['priority'] })}
-                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500">
-                          <option value="low">Низкий</option>
-                          <option value="medium">Средний</option>
-                          <option value="high">Высокий</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Напоминание (мин)</label>
-                        <input type="number" value={meetingForm.reminderMinutes}
-                          onChange={(e) => setMeetingForm({ ...meetingForm, reminderMinutes: parseInt(e.target.value) })}
-                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
-                          min="5" max="1440" />
-                      </div>
-
-                      <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Участники</label>
-                        <div className="flex flex-wrap gap-2">
-                          {users.filter(u => u.isActive).map(u => (
-                            <button key={u.id} type="button"
-                              onClick={() => {
-                                const participants = meetingForm.participants.includes(u.id)
-                                  ? meetingForm.participants.filter(p => p !== u.id)
-                                  : [...meetingForm.participants, u.id];
-                                setMeetingForm({ ...meetingForm, participants });
-                              }}
-                              className={`px-3 py-1 rounded-full text-sm border transition-colors ${
-                                meetingForm.participants.includes(u.id)
-                                  ? 'bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
-                                  : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
-                              }`}>
-                              {u.name.split(' ').slice(0, 2).join(' ')}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 md:col-span-2">
-                        <input type="checkbox" id="isPrivate" checked={meetingForm.isPrivate}
-                          onChange={(e) => setMeetingForm({ ...meetingForm, isPrivate: e.target.checked })}
-                          className="w-4 h-4" />
-                        <label htmlFor="isPrivate" className="text-sm text-gray-700 dark:text-gray-300">Приватная конференция</label>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end gap-3 pt-4 border-t dark:border-gray-600">
-                      <button type="button" onClick={() => setShowMeetingForm(false)}
-                        className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
-                        Отмена
-                      </button>
-                      <button type="submit"
-                        className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                        {editingMeeting ? 'Сохранить' : 'Создать'}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Meetings Table */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-                  <tr>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Название</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Дата</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Организатор</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Статус</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Действия</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {filteredMeetings.map(m => (
-                    <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-gray-800 dark:text-gray-100 text-sm">{m.title}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{m.startTime} - {m.endTime} • {m.room || 'Онлайн'}</p>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{new Date(m.date).toLocaleDateString('ru-RU')}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{getUserName(m.organizerId)}</td>
-                      <td className="px-4 py-3">
-                        <select value={m.status} onChange={(e) => handleStatusChange(m.id, e.target.value as Meeting['status'])}
-                          className={`text-xs px-2 py-1 rounded-full font-medium border-0 ${
-                            m.status === 'completed' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
-                            m.status === 'in-progress' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
-                            m.status === 'cancelled' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-                          }`}>
-                          <option value="scheduled">Запланирована</option>
-                          <option value="in-progress">Идёт</option>
-                          <option value="completed">Завершена</option>
-                          <option value="cancelled">Отменена</option>
-                        </select>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => handleEditMeeting(m)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-gray-600 rounded" title="Редактировать"><i className="fas fa-edit"></i></button>
-                          <button onClick={() => handleDeleteMeeting(m.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-gray-600 rounded" title="Удалить"><i className="fas fa-trash"></i></button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Stats Tab */}
-      {activeTab === 'stats' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5">
-              <p className="text-sm text-gray-500 dark:text-gray-400">Пользователей</p>
-              <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{stats.totalUsers}</p>
-              <p className="text-xs text-green-600 dark:text-green-400 mt-1">{stats.activeUsers} активных</p>
-            </div>
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5">
-              <p className="text-sm text-gray-500 dark:text-gray-400">Конференций</p>
-              <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{stats.totalMeetings}</p>
-              <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">{stats.thisWeek} на этой неделе</p>
-            </div>
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5">
-              <p className="text-sm text-gray-500 dark:text-gray-400">Администраторов</p>
-              <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{stats.admins}</p>
-            </div>
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5">
-              <p className="text-sm text-gray-500 dark:text-gray-400">Завершено</p>
-              <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{stats.completed}</p>
-            </div>
-          </div>
-
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
-            <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4">Статусы конференций</h3>
-            <div className="space-y-3">
-              {[
-                { label: 'Запланированные', count: stats.scheduled, color: 'bg-gray-400' },
-                { label: 'Завершённые', count: stats.completed, color: 'bg-green-500' },
-                { label: 'Отменённые', count: stats.cancelled, color: 'bg-red-500' },
-              ].map(item => (
-                <div key={item.label} className="flex items-center gap-3">
-                  <span className="text-sm text-gray-600 dark:text-gray-300 w-40">{item.label}</span>
-                  <div className="flex-1 bg-gray-100 dark:bg-gray-700 rounded-full h-4 overflow-hidden">
-                    <div className={`h-full ${item.color} rounded-full`} style={{ width: stats.totalMeetings > 0 ? `${(item.count / stats.totalMeetings) * 100}%` : '0%' }}></div>
-                  </div>
-                  <span className="text-sm font-medium w-8 text-right text-gray-800 dark:text-gray-100">{item.count}</span>
-                </div>
-              ))}
             </div>
           </div>
         </div>
