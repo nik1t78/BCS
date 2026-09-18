@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { login, register } from '../store';
+import { login, register } from '../store-api';
 
 interface AuthPageProps {
   onLogin: () => void;
@@ -15,23 +15,26 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     
-    setTimeout(() => {
-      const result = login(loginValue, password);
+    try {
+      const result = await login(loginValue, password);
       if (result.success) {
         onLogin();
       } else {
         setError(result.error || 'Ошибка входа');
       }
+    } catch (error: any) {
+      setError(error.message || 'Ошибка входа');
+    } finally {
       setLoading(false);
-    }, 500);
+    }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     
@@ -45,15 +48,19 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
     }
 
     setLoading(true);
-    setTimeout(() => {
-      const result = register(name, loginValue, password, phone, department);
+    
+    try {
+      const result = await register(name, loginValue, password, phone, department);
       if (result.success) {
         onLogin();
       } else {
         setError(result.error || 'Ошибка регистрации');
       }
+    } catch (error: any) {
+      setError(error.message || 'Ошибка регистрации');
+    } finally {
       setLoading(false);
-    }, 500);
+    }
   };
 
   return (
