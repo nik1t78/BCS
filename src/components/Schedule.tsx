@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
-import { getMeetings, getUsers } from '../store';
+import { getMeetings, getUsers } from '../store-api';
 
 interface ScheduleProps {
   user: User;
@@ -9,20 +9,37 @@ interface ScheduleProps {
 
 export default function Schedule({ user, onNavigate }: ScheduleProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
   const [view, setView] = useState<'day' | 'week' | 'month'>('week');
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [filter, setFilter] = useState<'all' | 'my' | 'today' | 'upcoming'>('all');
-  const allUsers = getUsers();
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Модераторы и админы видят все конференции, обычные пользователи - только свои
-    const allMeetings = getMeetings();
-    const visibleMeetings = (user.role === 'admin' || user.role === 'moderator')
-      ? allMeetings
-      : allMeetings.filter(m => m.participants.includes(user.id) || m.organizerId === user.id);
-    
-    setMeetings(visibleMeetings);
+    loadData();
   }, [user]);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [allMeetings, users] = await Promise.all([
+        getMeetings(),
+        getUsers()
+      ]);
+      
+      // Модераторы и админы видят все конференции, обычные пользователи - только свои
+      const visibleMeetings = (user.role === 'admin' || user.role === 'moderator')
+        ? allMeetings
+        : allMeetings.filter(m => m.participants.includes(user.id) || m.organizerId === user.id);
+      
+      setMeetings(visibleMeetings);
+      setAllUsers(users);
+    } catch (error) {
+      console.error('Error loading schedule:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getWeekDates = (date: Date): Date[] => {
     const start = new Date(date);
@@ -48,7 +65,7 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
     return dates;
   };
 
-  const filteredMeetings = meetings.filter(m => {
+  const visibleMeetings = meetings.filter(m => {
     if (filter === 'my') return m.participants.includes(user.id) || m.organizerId === user.id;
     if (filter === 'today') return m.date === new Date().toISOString().split('T')[0];
     if (filter === 'upcoming') return m.date >= new Date().toISOString().split('T')[0] && m.status !== 'completed' && m.status !== 'cancelled';
@@ -57,7 +74,7 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
 
   const getMeetingsForDate = (date: Date) => {
     const dateStr = date.toISOString().split('T')[0];
-    return filteredMeetings.filter(m => m.date === dateStr);
+    return visibleMeetings.filter(m => m.date === dateStr);
   };
 
   const getPriorityColor = (priority: string) => {
@@ -69,10 +86,21 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
     }
   };
 
-  const getUserName = (id: string) => allUsers.find(u => u.id === id)?.name || 'Неизвестный';
+  const getUserName = (id: string) => allUsers.find(u => u.id === id)?.name || '—';
 
   const weekDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
   const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <i className="fas fa-spinner fa-spin text-4xl text-blue-600 mb-4"></i>
+          <p className="text-gray-600 dark:text-gray-400">Загрузка расписания...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

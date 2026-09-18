@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
-import { getMeetings, getUsers } from '../store';
+import { getMeetings, getUsers } from '../store-api';
 
 interface StatsProps {
   user: User;
@@ -8,17 +8,34 @@ interface StatsProps {
 
 export default function Stats({ user }: StatsProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
-  const [users] = useState(getUsers());
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Модераторы и админы видят все конференции, обычные пользователи - только свои
-    const allMeetings = getMeetings();
-    const visibleMeetings = (user.role === 'admin' || user.role === 'moderator')
-      ? allMeetings
-      : allMeetings.filter(m => m.participants.includes(user.id) || m.organizerId === user.id);
-    
-    setMeetings(visibleMeetings);
+    loadData();
   }, [user]);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [allMeetings, allUsers] = await Promise.all([
+        getMeetings(),
+        getUsers()
+      ]);
+      
+      // Модераторы и админы видят все конференции, обычные пользователи - только свои
+      const visibleMeetings = (user.role === 'admin' || user.role === 'moderator')
+        ? allMeetings
+        : allMeetings.filter(m => m.participants.includes(user.id) || m.organizerId === user.id);
+      
+      setMeetings(visibleMeetings);
+      setUsers(allUsers);
+    } catch (error) {
+      console.error('Error loading stats:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const stats = {
     total: meetings.length,
@@ -46,6 +63,17 @@ export default function Stats({ user }: StatsProps) {
     { label: 'Высокий приоритет', value: stats.highPriority, icon: 'fa-exclamation-circle', color: 'from-red-500 to-red-600' },
     { label: 'Организовано мной', value: stats.organized, icon: 'fa-user-edit', color: 'from-green-500 to-green-600' },
   ];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <i className="fas fa-spinner fa-spin text-4xl text-blue-600 mb-4"></i>
+          <p className="text-gray-600 dark:text-gray-400">Загрузка статистики...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
