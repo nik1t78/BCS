@@ -16,7 +16,7 @@ class VksDatabaseSeeder extends Seeder
         // Создание пользователей
         $admin = User::create([
             'name' => 'Администратор Системы',
-            'email' => 'admin@vks.local',
+            'login' => 'admin',
             'password' => Hash::make('admin123'),
             'role' => 'admin',
             'phone' => '+7 (999) 000-00-01',
@@ -27,7 +27,7 @@ class VksDatabaseSeeder extends Seeder
 
         $user1 = User::create([
             'name' => 'Иванов Алексей Сергеевич',
-            'email' => 'ivanov@vks.local',
+            'login' => 'ivanov',
             'password' => Hash::make('user123'),
             'role' => 'user',
             'phone' => '+7 (999) 111-22-33',
@@ -38,7 +38,7 @@ class VksDatabaseSeeder extends Seeder
 
         $user2 = User::create([
             'name' => 'Петрова Мария Владимировна',
-            'email' => 'petrova@vks.local',
+            'login' => 'petrova',
             'password' => Hash::make('user123'),
             'role' => 'user',
             'phone' => '+7 (999) 222-33-44',
@@ -49,7 +49,7 @@ class VksDatabaseSeeder extends Seeder
 
         $moderator = User::create([
             'name' => 'Сидоров Константин Львович',
-            'email' => 'sidorov@vks.local',
+            'login' => 'sidorov',
             'password' => Hash::make('mod123'),
             'role' => 'moderator',
             'phone' => '+7 (999) 333-44-55',

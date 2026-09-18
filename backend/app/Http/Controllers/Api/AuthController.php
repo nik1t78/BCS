@@ -18,7 +18,7 @@ class AuthController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
+            'login' => 'required|string|max:255|unique:users',
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
             'phone' => 'nullable|string|max:20',
             'department' => 'nullable|string|max:255',
@@ -26,7 +26,7 @@ class AuthController extends Controller
 
         $user = User::create([
             'name' => $request->name,
-            'email' => $request->email,
+            'login' => $request->login,
             'password' => Hash::make($request->password),
             'phone' => $request->phone,
             'department' => $request->department,
@@ -48,21 +48,21 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         $request->validate([
-            'email' => 'required|email',
+            'login' => 'required|string',
             'password' => 'required',
         ]);
 
-        $user = User::where('email', $request->email)->first();
+        $user = User::where('login', $request->login)->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
-                'email' => ['Неверный email или пароль'],
+                'login' => ['Неверный логин или пароль'],
             ]);
         }
 
         if (!$user->is_active) {
             throw ValidationException::withMessages([
-                'email' => ['Аккаунт заблокирован. Обратитесь к администратору.'],
+                'login' => ['Аккаунт заблокирован. Обратитесь к администратору.'],
             ]);
         }
 
