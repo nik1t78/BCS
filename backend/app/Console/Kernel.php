@@ -15,8 +15,8 @@ class Kernel extends ConsoleKernel
 
     protected function schedule(Schedule $schedule): void
     {
-        // Отправка напоминаний о конференциях каждую минуту
-        $schedule->command('meetings:send-reminders')
+        // Отправка уведомлений о конференциях каждую минуту
+        $schedule->command('meetings:send-notifications')
                  ->everyMinute()
                  ->withoutOverlapping()
                  ->runInBackground();

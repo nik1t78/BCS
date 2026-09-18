@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
-import { getMeetings, getUsers } from '../store';
+import { getMeetings, getUsers } from '../store-api';
 
 interface DashboardProps {
   user: User;
@@ -9,14 +9,29 @@ interface DashboardProps {
 
 export default function Dashboard({ user, onNavigate }: DashboardProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [nextMeeting, setNextMeeting] = useState<Meeting | null>(null);
   const [countdown, setCountdown] = useState('');
 
   useEffect(() => {
-    setMeetings(getMeetings());
+    const loadData = async () => {
+      const [meetingsData, usersData] = await Promise.all([
+        getMeetings(),
+        getUsers()
+      ]);
+      setMeetings(meetingsData);
+      setUsers(usersData);
+    };
+    loadData();
+    
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
+    const dataTimer = setInterval(loadData, 30000); // Обновляем каждые 30 секунд
+    
+    return () => {
+      clearInterval(timer);
+      clearInterval(dataTimer);
+    };
   }, []);
 
   const visibleMeetings = (user.role === 'admin' || user.role === 'moderator') 
@@ -51,7 +66,6 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
   }, [currentTime, visibleMeetings]);
 
   const todayMeetings = visibleMeetings.filter(m => m.date === currentTime.toISOString().split('T')[0]);
-  const users = getUsers();
   const getUserName = (id: string) => users.find(u => u.id === id)?.name || 'Неизвестный';
 
   const getPriorityColor = (priority: string) => {
