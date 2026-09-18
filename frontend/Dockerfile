@@ -2,11 +2,18 @@ FROM node:20-alpine as builder
 
 WORKDIR /app
 
+# Настройка npm для стабильной работы с сетью
+RUN npm config set registry https://registry.npmjs.org/ && \
+    npm config set fetch-retries 10 && \
+    npm config set fetch-retry-mintimeout 60000 && \
+    npm config set fetch-retry-maxtimeout 300000 && \
+    npm config set fetch-timeout 300000
+
 # Копирование package.json из корня проекта
 COPY package*.json ./
 
-# Установка зависимостей
-RUN npm ci
+# Установка зависимостей с увеличенными таймаутами
+RUN npm install --legacy-peer-deps --maxsockets=1
 
 # Копирование исходного кода
 COPY src ./src
