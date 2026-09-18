@@ -5,7 +5,7 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: Dockerfile.offline
+      dockerfile: Dockerfile
     container_name: vks-frontend
     restart: unless-stopped
     networks:
