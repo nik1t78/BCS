@@ -2,7 +2,7 @@ FROM node:20-alpine as builder
 
 WORKDIR /app
 
-# Копирование package.json и node_modules из локальной машины
+# Копирование package.json и node_modules из корня проекта
 COPY package*.json ./
 COPY node_modules ./node_modules
 
