@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
-import { getMeetings, addMeeting, updateMeeting, deleteMeeting, generateId, getUsers } from '../store';
+import { getMeetings, addMeeting, updateMeeting, deleteMeeting, generateId, getUsers, addNotification } from '../store';
+import TagsSelector from './TagsSelector';
 
 interface UserPanelProps {
   user: User;
@@ -63,7 +64,23 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
     if (editingMeeting) {
       updateMeeting({ ...formData, id: editingMeeting.id });
     } else {
-      addMeeting({ ...formData, id: generateId() });
+      const newMeetingId = generateId();
+      addMeeting({ ...formData, id: newMeetingId });
+      
+      // Создаём уведомления для всех участников
+      formData.participants.forEach(participantId => {
+        if (participantId !== user.id) { // Не отправляем уведомление организатору
+          addNotification({
+            id: generateId(),
+            userId: participantId,
+            meetingId: newMeetingId,
+            message: `👤 Вас добавили в конференцию "${formData.title}"`,
+            type: 'user-added',
+            timestamp: new Date().toISOString(),
+            read: false,
+          });
+        }
+      });
     }
 
     const allMeetings = getMeetings();
@@ -338,6 +355,21 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                       </div>
                     </div>
                   )}
+                </div>
+
+                {/* Tags */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Теги
+                  </label>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                    <i className="fas fa-info-circle mr-1"></i>
+                    Выберите теги для классификации конференции
+                  </p>
+                  <TagsSelector
+                    selectedTags={formData.tags || []}
+                    onTagsChange={(tags: string[]) => setFormData({ ...formData, tags })}
+                  />
                 </div>
 
                 <div className="flex justify-end gap-3 pt-4 border-t dark:border-gray-700">
