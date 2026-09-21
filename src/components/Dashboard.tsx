@@ -108,65 +108,75 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
       </div>
 
       {/* Next Meeting */}
-      {nextMeeting && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border-2 border-blue-200 dark:border-blue-800 p-6">
-          <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">
-            <i className="fas fa-arrow-right text-blue-500 mr-2"></i>
-            Следующая конференция
-          </h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
-              <p className="text-sm text-blue-600 dark:text-blue-400 font-medium">Название</p>
-              <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">{nextMeeting.title}</p>
-            </div>
-            <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4">
-              <p className="text-sm text-purple-600 dark:text-purple-400 font-medium">Дата и время</p>
-              <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">
-                {new Date(nextMeeting.date).toLocaleDateString('ru-RU')}
-              </p>
-              <p className="text-sm text-gray-600 dark:text-gray-400">{nextMeeting.startTime} - {nextMeeting.endTime}</p>
-            </div>
-            <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-4">
-              <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">До начала</p>
-              <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">{countdown}</p>
-            </div>
-            <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4">
-              <p className="text-sm text-orange-600 dark:text-orange-400 font-medium">Место</p>
-              <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">
-                {nextMeeting.room || 'Онлайн'}
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">Организатор</p>
-                <p className="text-gray-800 dark:text-gray-100">{getUserName(nextMeeting.organizerId)}</p>
+      {nextMeeting && (() => {
+        const canSeeDetails = user.role === 'admin' || user.role === 'moderator' || 
+                             nextMeeting.organizerId === user.id || 
+                             nextMeeting.participants.includes(user.id);
+        
+        return (
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border-2 border-blue-200 dark:border-blue-800 p-6">
+            <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">
+              <i className="fas fa-arrow-right text-blue-500 mr-2"></i>
+              Следующая конференция
+            </h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
+                <p className="text-sm text-blue-600 dark:text-blue-400 font-medium">Название</p>
+                <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">
+                  {canSeeDetails ? nextMeeting.title : 'Конференция'}
+                </p>
               </div>
-              <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">Участники</p>
-                <p className="text-gray-800 dark:text-gray-100">{nextMeeting.participants.length} чел.</p>
+              <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4">
+                <p className="text-sm text-purple-600 dark:text-purple-400 font-medium">Дата и время</p>
+                <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">
+                  {new Date(nextMeeting.date).toLocaleDateString('ru-RU')}
+                </p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">{nextMeeting.startTime} - {nextMeeting.endTime}</p>
               </div>
-              <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">Кабинет</p>
-                <p className="text-gray-800 dark:text-gray-100 font-semibold">
-                  {nextMeeting.room ? `📍 ${nextMeeting.room}` : '🌐 Онлайн'}
+              <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-4">
+                <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">До начала</p>
+                <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">{countdown}</p>
+              </div>
+              <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4">
+                <p className="text-sm text-orange-600 dark:text-orange-400 font-medium">Место</p>
+                <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">
+                  {canSeeDetails ? (nextMeeting.room || 'Онлайн') : 'Скрыто'}
                 </p>
               </div>
             </div>
-          </div>
 
-          <button
-            onClick={() => alert('Функция подключения к конференции')}
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium"
-          >
-            <i className="fas fa-video mr-2"></i>
-            Подключиться к конференции
-          </button>
-        </div>
-      )}
+            {canSeeDetails && (
+              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">Организатор</p>
+                    <p className="text-gray-800 dark:text-gray-100">{getUserName(nextMeeting.organizerId)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">Участники</p>
+                    <p className="text-gray-800 dark:text-gray-100">{nextMeeting.participants.length} чел.</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">Кабинет</p>
+                    <p className="text-gray-800 dark:text-gray-100 font-semibold">
+                      {nextMeeting.room ? `📍 ${nextMeeting.room}` : '🌐 Онлайн'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={() => alert('Функция подключения к конференции')}
+              className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            >
+              <i className="fas fa-video mr-2"></i>
+              Подключиться к конференции
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Today's Schedule */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
@@ -178,24 +188,36 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
           <p className="text-center text-gray-400 py-8">Нет конференций на сегодня</p>
         ) : (
           <div className="space-y-3">
-            {todayMeetings.sort((a, b) => a.startTime.localeCompare(b.startTime)).map(meeting => (
-              <div key={meeting.id} className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="font-bold text-gray-800 dark:text-gray-100">{meeting.title}</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                      {meeting.startTime} - {meeting.endTime} • {meeting.room || 'Онлайн'}
-                    </p>
-                    <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">
-                      Организатор: {getUserName(meeting.organizerId)}
-                    </p>
+            {todayMeetings.sort((a, b) => a.startTime.localeCompare(b.startTime)).map(meeting => {
+              const canSeeDetails = user.role === 'admin' || user.role === 'moderator' || 
+                                   meeting.organizerId === user.id || 
+                                   meeting.participants.includes(user.id);
+              
+              return (
+                <div key={meeting.id} className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="font-bold text-gray-800 dark:text-gray-100">
+                        {canSeeDetails ? meeting.title : 'Конференция'}
+                      </h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                        {meeting.startTime} - {meeting.endTime}
+                        {canSeeDetails && meeting.room && <> • {meeting.room}</>}
+                        {!canSeeDetails && <> • Место скрыто</>}
+                      </p>
+                      {canSeeDetails && (
+                        <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">
+                          Организатор: {getUserName(meeting.organizerId)}
+                        </p>
+                      )}
+                    </div>
+                    <span className={`px-2 py-1 rounded text-xs font-medium border ${getPriorityColor(meeting.priority)}`}>
+                      {meeting.priority === 'high' ? 'Высокий' : meeting.priority === 'medium' ? 'Средний' : 'Низкий'}
+                    </span>
                   </div>
-                  <span className={`px-2 py-1 rounded text-xs font-medium border ${getPriorityColor(meeting.priority)}`}>
-                    {meeting.priority === 'high' ? 'Высокий' : meeting.priority === 'medium' ? 'Средний' : 'Низкий'}
-                  </span>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
