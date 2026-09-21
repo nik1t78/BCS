@@ -17,15 +17,15 @@ export interface User {
 export interface Meeting {
   id: string;
   title: string;
-  description: string;
+  description?: string;
   date: string;
   startTime: string;
   endTime: string;
   organizerId: string;
   participants: string[]; // user IDs
-  participantEmails: string[]; // for guests
-  link: string;
-  room: string;
+  participantEmails?: string[]; // for guests
+  link?: string;
+  room?: string;
   status: 'scheduled' | 'in-progress' | 'completed' | 'cancelled';
   reminderMinutes: number;
   recurring: 'none' | 'daily' | 'weekly' | 'monthly';

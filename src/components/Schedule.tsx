@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
-import { getMeetings, getUsers } from '../store-api';
+import { getMeetings, getUsers } from '../store';
 
 interface ScheduleProps {
   user: User;
@@ -19,26 +19,19 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
     loadData();
   }, [user]);
 
-  const loadData = async () => {
+  const loadData = () => {
     setLoading(true);
-    try {
-      const [allMeetings, users] = await Promise.all([
-        getMeetings(),
-        getUsers()
-      ]);
-      
-      // Модераторы и админы видят все конференции, обычные пользователи - только свои
-      const visibleMeetings = (user.role === 'admin' || user.role === 'moderator')
-        ? allMeetings
-        : allMeetings.filter(m => m.participants.includes(user.id) || m.organizerId === user.id);
-      
-      setMeetings(visibleMeetings);
-      setAllUsers(users);
-    } catch (error) {
-      console.error('Error loading schedule:', error);
-    } finally {
-      setLoading(false);
-    }
+    const allMeetings = getMeetings();
+    const users = getUsers();
+    
+    // Модераторы и админы видят все конференции, обычные пользователи - только свои
+    const visibleMeetings = (user.role === 'admin' || user.role === 'moderator')
+      ? allMeetings
+      : allMeetings.filter(m => m.participants.includes(user.id) || m.organizerId === user.id);
+    
+    setMeetings(visibleMeetings);
+    setAllUsers(users);
+    setLoading(false);
   };
 
   const getWeekDates = (date: Date): Date[] => {

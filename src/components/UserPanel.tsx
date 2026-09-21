@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
-import { getMeetings, createMeeting, updateMeeting, deleteMeeting, getUsers } from '../store-api';
+import { getMeetings, createMeeting, updateMeeting, deleteMeeting, getUsers } from '../store';
 import { generateId } from '../store';
 import TagsSelector from './TagsSelector';
 
@@ -43,24 +43,17 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
     loadData();
   }, [user.id, showForm]);
 
-  const loadData = async () => {
+  const loadData = () => {
     setLoading(true);
-    try {
-      const [allMeetings, allUsers] = await Promise.all([
-        getMeetings(),
-        getUsers()
-      ]);
-      
-      const myMeetings = allMeetings.filter(m => 
-        m.organizerId === user.id || m.participants.includes(user.id)
-      );
-      setMeetings(myMeetings);
-      setUsers(allUsers);
-    } catch (error) {
-      console.error('Error loading data:', error);
-    } finally {
-      setLoading(false);
-    }
+    const allMeetings = getMeetings();
+    const allUsers = getUsers();
+    
+    const myMeetings = allMeetings.filter(m => 
+      m.organizerId === user.id || m.participants.includes(user.id)
+    );
+    setMeetings(myMeetings);
+    setUsers(allUsers);
+    setLoading(false);
   };
 
   const filteredMeetings = meetings.filter(m => {
@@ -69,28 +62,23 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
     return true;
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title || !formData.date || !formData.startTime || !formData.endTime) {
       alert('Заполните все обязательные поля');
       return;
     }
 
-    try {
-      if (editingMeeting) {
-        await updateMeeting(editingMeeting.id, formData);
-      } else {
-        await createMeeting(formData);
-      }
-
-      await loadData();
-      setShowForm(false);
-      setEditingMeeting(null);
-      setFormData(emptyMeeting);
-    } catch (error) {
-      console.error('Error saving meeting:', error);
-      alert('Ошибка при сохранении конференции');
+    if (editingMeeting) {
+      updateMeeting(editingMeeting.id, formData);
+    } else {
+      createMeeting(formData);
     }
+
+    loadData();
+    setShowForm(false);
+    setEditingMeeting(null);
+    setFormData(emptyMeeting);
   };
 
   const handleEdit = (meeting: Meeting) => {
@@ -99,15 +87,10 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
     setShowForm(true);
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = (id: string) => {
     if (confirm('Удалить конференцию?')) {
-      try {
-        await deleteMeeting(id);
-        await loadData();
-      } catch (error) {
-        console.error('Error deleting meeting:', error);
-        alert('Ошибка при удалении конференции');
-      }
+      deleteMeeting(id);
+      loadData();
     }
   };
 

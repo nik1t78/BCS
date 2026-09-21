@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User } from '../types';
-import { updateProfile, changePassword } from '../store-api';
+import { updateProfile, changePassword } from '../store';
 
 interface ProfileProps {
   user: User;
@@ -24,27 +24,22 @@ export default function Profile({ user, onUpdate }: ProfileProps) {
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
 
-  const handleSave = async () => {
-    try {
-      const updatedUser = await updateProfile({
-        name: formData.name,
-        phone: formData.phone,
-        department: formData.department,
-        position: formData.position,
-      });
-      
-      if (updatedUser) {
-        onUpdate();
-        setSaved(true);
-        setTimeout(() => setSaved(false), 3000);
-      }
-    } catch (error) {
-      console.error('Error updating profile:', error);
-      alert('Ошибка при обновлении профиля');
+  const handleSave = () => {
+    const updatedUser = updateProfile({
+      name: formData.name,
+      phone: formData.phone,
+      department: formData.department,
+      position: formData.position,
+    });
+    
+    if (updatedUser) {
+      onUpdate();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
     }
   };
 
-  const handleChangePassword = async (e: React.FormEvent) => {
+  const handleChangePassword = (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordError('');
     setPasswordSuccess('');
@@ -59,26 +54,21 @@ export default function Profile({ user, onUpdate }: ProfileProps) {
       return;
     }
 
-    try {
-      const success = await changePassword(passwordData.currentPassword, passwordData.newPassword);
-      
-      if (success) {
-        setPasswordSuccess('Пароль успешно изменён');
-        setPasswordData({
-          currentPassword: '',
-          newPassword: '',
-          confirmPassword: '',
-        });
-        setTimeout(() => {
-          setShowPasswordForm(false);
-          setPasswordSuccess('');
-        }, 2000);
-      } else {
-        setPasswordError('Неверный текущий пароль');
-      }
-    } catch (error) {
-      console.error('Error changing password:', error);
-      setPasswordError('Ошибка при смене пароля');
+    const success = changePassword(passwordData.currentPassword, passwordData.newPassword);
+    
+    if (success) {
+      setPasswordSuccess('Пароль успешно изменён');
+      setPasswordData({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      });
+      setTimeout(() => {
+        setShowPasswordForm(false);
+        setPasswordSuccess('');
+      }, 2000);
+    } else {
+      setPasswordError('Неверный текущий пароль');
     }
   };
 

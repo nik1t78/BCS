@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
-import { getUsers, getMeetings, createUser, updateUser, deleteUser, toggleUserActive, changeUserRole, resetUserPassword, updateMeeting, deleteMeeting, createMeeting } from '../store-api';
+import { getUsers, getMeetings, createUser, updateUser, deleteUser, toggleUserActive, changeUserRole, resetUserPassword, updateMeeting, deleteMeeting, createMeeting } from '../store';
 
 interface AdminPanelProps {
   user: User;
@@ -56,29 +56,23 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   };
 
   // User management
-  const handleSaveUser = async (e: React.FormEvent) => {
+  const handleSaveUser = (e: React.FormEvent) => {
     e.preventDefault();
     
-    try {
-      if (editingUser) {
-        await updateUser(editingUser.id, userForm);
-      } else {
-        if (!userForm.name || !userForm.login || !userForm.password) {
-          alert('Заполните обязательные поля');
-          return;
-        }
-        await createUser(userForm);
+    if (editingUser) {
+      updateUser(editingUser.id, userForm);
+    } else {
+      if (!userForm.name || !userForm.login || !userForm.password) {
+        alert('Заполните обязательные поля');
+        return;
       }
-      
-      const usersData = await getUsers();
-      setUsers(usersData);
-      setShowUserForm(false);
-      setEditingUser(null);
-      setUserForm(emptyUser);
-    } catch (error) {
-      console.error('Error saving user:', error);
-      alert('Ошибка при сохранении пользователя');
+      createUser(userForm);
     }
+    
+    setUsers(getUsers());
+    setShowUserForm(false);
+    setEditingUser(null);
+    setUserForm(emptyUser);
   };
 
   const handleEditUser = (u: User) => {
@@ -94,7 +88,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     setShowPasswordModal(true);
   };
 
-  const handleResetPassword = async () => {
+  const handleResetPassword = () => {
     if (!passwordUserId) return;
     
     if (newPassword.length < 6) {
@@ -107,84 +101,55 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       return;
     }
     
-    try {
-      await resetUserPassword(passwordUserId, newPassword);
-      setShowPasswordModal(false);
-      setPasswordUserId(null);
-      setNewPassword('');
-      setConfirmPassword('');
-      alert('Пароль успешно изменён');
-    } catch (error) {
-      console.error('Error resetting password:', error);
-      alert('Ошибка при смене пароля');
-    }
+    resetUserPassword(passwordUserId, newPassword);
+    setShowPasswordModal(false);
+    setPasswordUserId(null);
+    setNewPassword('');
+    setConfirmPassword('');
+    alert('Пароль успешно изменён');
   };
 
-  const handleDeleteUser = async (id: string) => {
+  const handleDeleteUser = (id: string) => {
     if (id === user.id) { 
       alert('Нельзя удалить свой аккаунт'); 
       return; 
     }
     
     if (confirm('Удалить пользователя?')) {
-      try {
-        await deleteUser(id);
-        const usersData = await getUsers();
-        setUsers(usersData);
-      } catch (error) {
-        console.error('Error deleting user:', error);
-        alert('Ошибка при удалении пользователя');
-      }
+      deleteUser(id);
+      setUsers(getUsers());
     }
   };
 
-  const handleToggleActive = async (id: string) => {
+  const handleToggleActive = (id: string) => {
     if (id === user.id) { 
       alert('Нельзя заблокировать свой аккаунт'); 
       return; 
     }
     
-    try {
-      await toggleUserActive(id);
-      const usersData = await getUsers();
-      setUsers(usersData);
-    } catch (error) {
-      console.error('Error toggling user active:', error);
-      alert('Ошибка при изменении статуса пользователя');
-    }
+    toggleUserActive(id);
+    setUsers(getUsers());
   };
 
-  const handleChangeRole = async (id: string, role: User['role']) => {
-    try {
-      await changeUserRole(id, role);
-      const usersData = await getUsers();
-      setUsers(usersData);
-    } catch (error) {
-      console.error('Error changing role:', error);
-      alert('Ошибка при изменении роли');
-    }
+  const handleChangeRole = (id: string, role: User['role']) => {
+    changeUserRole(id, role);
+    setUsers(getUsers());
   };
 
   // Meeting management
-  const handleSaveMeeting = async (e: React.FormEvent) => {
+  const handleSaveMeeting = (e: React.FormEvent) => {
     e.preventDefault();
     
-    try {
-      if (editingMeeting) {
-        await updateMeeting(editingMeeting.id, meetingForm);
-      } else {
-        await createMeeting({ ...meetingForm, organizerId: user.id });
-      }
-      
-      const meetingsData = await getMeetings();
-      setMeetings(meetingsData);
-      setShowMeetingForm(false);
-      setEditingMeeting(null);
-      setMeetingForm(emptyMeeting);
-    } catch (error) {
-      console.error('Error saving meeting:', error);
-      alert('Ошибка при сохранении конференции');
+    if (editingMeeting) {
+      updateMeeting(editingMeeting.id, meetingForm);
+    } else {
+      createMeeting({ ...meetingForm, organizerId: user.id });
     }
+    
+    setMeetings(getMeetings());
+    setShowMeetingForm(false);
+    setEditingMeeting(null);
+    setMeetingForm(emptyMeeting);
   };
 
   const handleEditMeeting = (m: Meeting) => {
@@ -193,30 +158,18 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     setShowMeetingForm(true);
   };
 
-  const handleDeleteMeeting = async (id: string) => {
+  const handleDeleteMeeting = (id: string) => {
     if (confirm('Удалить конференцию?')) {
-      try {
-        await deleteMeeting(id);
-        const meetingsData = await getMeetings();
-        setMeetings(meetingsData);
-      } catch (error) {
-        console.error('Error deleting meeting:', error);
-        alert('Ошибка при удалении конференции');
-      }
+      deleteMeeting(id);
+      setMeetings(getMeetings());
     }
   };
 
-  const handleStatusChange = async (id: string, status: Meeting['status']) => {
+  const handleStatusChange = (id: string, status: Meeting['status']) => {
     const meeting = meetings.find(m => m.id === id);
     if (meeting) {
-      try {
-        await updateMeeting(id, { ...meeting, status });
-        const meetingsData = await getMeetings();
-        setMeetings(meetingsData);
-      } catch (error) {
-        console.error('Error changing status:', error);
-        alert('Ошибка при изменении статуса');
-      }
+      updateMeeting(id, { ...meeting, status });
+      setMeetings(getMeetings());
     }
   };
 
@@ -230,7 +183,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
   const filteredMeetings = meetings.filter(m =>
     m.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    m.room.toLowerCase().includes(searchQuery.toLowerCase())
+    (m.room || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const stats = {

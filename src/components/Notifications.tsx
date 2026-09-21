@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Notification } from '../types';
-import { getNotifications, markNotificationRead, markAllNotificationsRead, clearAllNotifications } from '../store-api';
+import { getNotifications, markNotificationRead, markAllNotificationsRead, clearAllNotifications } from '../store';
 
 interface NotificationsProps {
   user: User;
@@ -19,44 +19,27 @@ export default function Notifications({ user }: NotificationsProps) {
     return () => clearInterval(timer);
   }, [user.id]);
 
-  const loadNotifications = async () => {
+  const loadNotifications = () => {
     setLoading(true);
-    try {
-      const allNotifications = await getNotifications();
-      setNotifications(allNotifications.filter(n => n.userId === user.id));
-    } catch (error) {
-      console.error('Error loading notifications:', error);
-    } finally {
-      setLoading(false);
-    }
+    const allNotifications = getNotifications();
+    setNotifications(allNotifications.filter(n => n.userId === user.id));
+    setLoading(false);
   };
 
-  const handleMarkRead = async (id: string) => {
-    try {
-      await markNotificationRead(id);
-      await loadNotifications();
-    } catch (error) {
-      console.error('Error marking notification as read:', error);
-    }
+  const handleMarkRead = (id: string) => {
+    markNotificationRead(id);
+    loadNotifications();
   };
 
-  const handleMarkAllRead = async () => {
-    try {
-      await markAllNotificationsRead();
-      await loadNotifications();
-    } catch (error) {
-      console.error('Error marking all notifications as read:', error);
-    }
+  const handleMarkAllRead = () => {
+    markAllNotificationsRead();
+    loadNotifications();
   };
 
-  const handleClearAll = async () => {
+  const handleClearAll = () => {
     if (confirm('Очистить все уведомления?')) {
-      try {
-        await clearAllNotifications();
-        setNotifications([]);
-      } catch (error) {
-        console.error('Error clearing notifications:', error);
-      }
+      clearAllNotifications();
+      setNotifications([]);
     }
   };
 
