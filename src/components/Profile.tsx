@@ -76,19 +76,18 @@ export default function Profile({ user, onUpdate }: ProfileProps) {
     <div className="space-y-6">
       {/* Profile Header */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
-        <div className="bg-gradient-to-r from-blue-500 to-purple-600 h-32"></div>
-        <div className="px-6 pb-6">
-          <div className="flex items-end gap-4 -mt-12">
+        <div className="bg-gradient-to-r from-blue-500 to-purple-600 h-32 relative">
+          <div className="absolute -bottom-12 left-6">
             <div className="w-24 h-24 bg-white dark:bg-gray-700 rounded-xl shadow-lg flex items-center justify-center border-4 border-white dark:border-gray-800">
               <span className="text-3xl font-bold text-blue-600 dark:text-blue-400">{user.name.charAt(0)}</span>
             </div>
-            <div className="pb-2">
-              <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">{user.name}</h2>
-              <p className="text-gray-500 dark:text-gray-400 capitalize">
-                {user.role === 'admin' ? '🛡️ Администратор' : user.role === 'moderator' ? '🔧 Модератор' : '👤 Пользователь'}
-              </p>
-            </div>
           </div>
+        </div>
+        <div className="px-6 pt-16 pb-6">
+          <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">{user.name}</h2>
+          <p className="text-gray-500 dark:text-gray-400 capitalize mt-1">
+            {user.role === 'admin' ? '🛡️ Администратор' : user.role === 'moderator' ? '🔧 Модератор' : '👤 Пользователь'}
+          </p>
         </div>
       </div>
 
