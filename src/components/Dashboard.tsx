@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
-import { getMeetings, getUsers } from '../store-api';
+import { getMeetings, getUsers } from '../store';
 
 interface DashboardProps {
   user: User;
@@ -15,13 +15,9 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
   const [countdown, setCountdown] = useState('');
 
   useEffect(() => {
-    const loadData = async () => {
-      const [meetingsData, usersData] = await Promise.all([
-        getMeetings(),
-        getUsers()
-      ]);
-      setMeetings(meetingsData);
-      setUsers(usersData);
+    const loadData = () => {
+      setMeetings(getMeetings());
+      setUsers(getUsers());
     };
     loadData();
     

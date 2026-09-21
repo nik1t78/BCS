@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { login, register } from '../store-api';
+import { login, register } from '../store';
 
 interface AuthPageProps {
   onLogin: () => void;
