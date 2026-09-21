@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User } from './types';
-import { getCurrentUser, logout, getTheme } from './store';
+import { getCurrentUser, logout } from './store-api';
+import { getTheme } from './store';
 import AuthPage from './components/AuthPage';
 import Dashboard from './components/Dashboard';
 import Schedule from './components/Schedule';
@@ -17,21 +18,29 @@ import ResetData from './components/ResetData';
 type Page = 'dashboard' | 'schedule' | 'meetings' | 'templates' | 'tags' | 'stats' | 'notifications' | 'profile' | 'admin';
 
 function App() {
-  const [user, setUser] = useState<User | null>(getCurrentUser());
+  const [user, setUser] = useState<User | null>(null);
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
     const theme = getTheme();
     document.documentElement.classList.toggle('dark', theme === 'dark');
+    
+    // Загружаем текущего пользователя из API
+    const loadUser = async () => {
+      const currentUser = await getCurrentUser();
+      setUser(currentUser);
+    };
+    loadUser();
   }, []);
 
-  const handleLogin = () => {
-    setUser(getCurrentUser());
+  const handleLogin = async () => {
+    const currentUser = await getCurrentUser();
+    setUser(currentUser);
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     setUser(null);
   };
 
