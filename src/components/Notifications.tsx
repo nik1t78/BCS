@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Notification } from '../types';
-import { getUserNotifications, markNotificationRead, markAllNotificationsRead, saveNotifications, getNotifications } from '../store';
+import { getNotifications, markNotificationRead, markAllNotificationsRead, clearAllNotifications } from '../store-api';
 
 interface NotificationsProps {
   user: User;
@@ -9,26 +9,54 @@ interface NotificationsProps {
 export default function Notifications({ user }: NotificationsProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setNotifications(getUserNotifications(user.id));
+    loadNotifications();
+    
+    // Обновляем уведомления каждые 30 секунд
+    const timer = setInterval(loadNotifications, 30000);
+    return () => clearInterval(timer);
   }, [user.id]);
 
-  const handleMarkRead = (id: string) => {
-    markNotificationRead(id);
-    setNotifications(getUserNotifications(user.id));
+  const loadNotifications = async () => {
+    setLoading(true);
+    try {
+      const allNotifications = await getNotifications();
+      setNotifications(allNotifications.filter(n => n.userId === user.id));
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleMarkAllRead = () => {
-    markAllNotificationsRead(user.id);
-    setNotifications(getUserNotifications(user.id));
+  const handleMarkRead = async (id: string) => {
+    try {
+      await markNotificationRead(id);
+      await loadNotifications();
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
   };
 
-  const handleClearAll = () => {
+  const handleMarkAllRead = async () => {
+    try {
+      await markAllNotificationsRead();
+      await loadNotifications();
+    } catch (error) {
+      console.error('Error marking all notifications as read:', error);
+    }
+  };
+
+  const handleClearAll = async () => {
     if (confirm('Очистить все уведомления?')) {
-      const all = getNotifications().filter(n => n.userId !== user.id);
-      saveNotifications(all);
-      setNotifications([]);
+      try {
+        await clearAllNotifications();
+        setNotifications([]);
+      } catch (error) {
+        console.error('Error clearing notifications:', error);
+      }
     }
   };
 
@@ -50,6 +78,17 @@ export default function Notifications({ user }: NotificationsProps) {
   };
 
   const unreadCount = notifications.filter(n => !n.read).length;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <i className="fas fa-spinner fa-spin text-4xl text-blue-600 mb-4"></i>
+          <p className="text-gray-600 dark:text-gray-400">Загрузка...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

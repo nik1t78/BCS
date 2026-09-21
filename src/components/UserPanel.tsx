@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
-import { getMeetings, addMeeting, updateMeeting, deleteMeeting, generateId, getUsers, addNotification } from '../store';
+import { getMeetings, createMeeting, updateMeeting, deleteMeeting, getUsers } from '../store-api';
+import { generateId } from '../store';
 import TagsSelector from './TagsSelector';
 
 interface UserPanelProps {
@@ -10,10 +11,11 @@ interface UserPanelProps {
 
 export default function UserPanel({ user, onNavigate }: UserPanelProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [filter, setFilter] = useState<'all' | 'organized' | 'participating'>('all');
-  const [allUsers, setAllUsers] = useState(getUsers());
+  const [loading, setLoading] = useState(true);
 
   const emptyMeeting: Meeting = {
     id: '',
@@ -38,15 +40,28 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
   const [formData, setFormData] = useState<Meeting>(emptyMeeting);
 
   useEffect(() => {
-    const allMeetings = getMeetings();
-    const myMeetings = allMeetings.filter(m => 
-      m.organizerId === user.id || m.participants.includes(user.id)
-    );
-    setMeetings(myMeetings);
-    
-    // Обновляем список пользователей при открытии формы
-    setAllUsers(getUsers());
+    loadData();
   }, [user.id, showForm]);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [allMeetings, allUsers] = await Promise.all([
+        getMeetings(),
+        getUsers()
+      ]);
+      
+      const myMeetings = allMeetings.filter(m => 
+        m.organizerId === user.id || m.participants.includes(user.id)
+      );
+      setMeetings(myMeetings);
+      setUsers(allUsers);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredMeetings = meetings.filter(m => {
     if (filter === 'organized') return m.organizerId === user.id;
@@ -54,43 +69,28 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
     return true;
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title || !formData.date || !formData.startTime || !formData.endTime) {
       alert('Заполните все обязательные поля');
       return;
     }
 
-    if (editingMeeting) {
-      updateMeeting({ ...formData, id: editingMeeting.id });
-    } else {
-      const newMeetingId = generateId();
-      addMeeting({ ...formData, id: newMeetingId });
-      
-      // Создаём уведомления для всех участников
-      formData.participants.forEach(participantId => {
-        if (participantId !== user.id) { // Не отправляем уведомление организатору
-          addNotification({
-            id: generateId(),
-            userId: participantId,
-            meetingId: newMeetingId,
-            message: `👤 Вас добавили в конференцию "${formData.title}"`,
-            type: 'user-added',
-            timestamp: new Date().toISOString(),
-            read: false,
-          });
-        }
-      });
-    }
+    try {
+      if (editingMeeting) {
+        await updateMeeting(editingMeeting.id, formData);
+      } else {
+        await createMeeting(formData);
+      }
 
-    const allMeetings = getMeetings();
-    const myMeetings = allMeetings.filter(m => 
-      m.organizerId === user.id || m.participants.includes(user.id)
-    );
-    setMeetings(myMeetings);
-    setShowForm(false);
-    setEditingMeeting(null);
-    setFormData(emptyMeeting);
+      await loadData();
+      setShowForm(false);
+      setEditingMeeting(null);
+      setFormData(emptyMeeting);
+    } catch (error) {
+      console.error('Error saving meeting:', error);
+      alert('Ошибка при сохранении конференции');
+    }
   };
 
   const handleEdit = (meeting: Meeting) => {
@@ -99,14 +99,15 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
     setShowForm(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Удалить конференцию?')) {
-      deleteMeeting(id);
-      const allMeetings = getMeetings();
-      const myMeetings = allMeetings.filter(m => 
-        m.organizerId === user.id || m.participants.includes(user.id)
-      );
-      setMeetings(myMeetings);
+      try {
+        await deleteMeeting(id);
+        await loadData();
+      } catch (error) {
+        console.error('Error deleting meeting:', error);
+        alert('Ошибка при удалении конференции');
+      }
     }
   };
 
@@ -117,7 +118,18 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
     setFormData({ ...formData, participants });
   };
 
-  const getUserName = (id: string) => allUsers.find(u => u.id === id)?.name || 'Неизвестный';
+  const getUserName = (id: string) => users.find(u => u.id === id)?.name || 'Неизвестный';
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <i className="fas fa-spinner fa-spin text-4xl text-blue-600 mb-4"></i>
+          <p className="text-gray-600 dark:text-gray-400">Загрузка...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -268,18 +280,17 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                     Выберите зарегистрированных пользователей из списка ниже
                   </p>
                   
-                  {allUsers.length === 0 ? (
+                  {users.length === 0 ? (
                     <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
                       <p className="text-sm text-yellow-800 dark:text-yellow-200">
                         <i className="fas fa-exclamation-triangle mr-2"></i>
-                        В системе нет зарегистрированных пользователей. 
-                        Попросите администратора создать пользователей или зарегистрируйтесь сами.
+                        В системе нет зарегистрированных пользователей.
                       </p>
                     </div>
                   ) : (
                     <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 max-h-64 overflow-y-auto">
                       <div className="space-y-2">
-                        {allUsers.filter(u => u.isActive).map(u => (
+                        {users.filter(u => u.isActive).map(u => (
                           <button
                             key={u.id}
                             type="button"
@@ -317,7 +328,6 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                               <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                                 @{u.login}
                                 {u.department && <span className="ml-2">• {u.department}</span>}
-                                {u.position && <span className="ml-2">• {u.position}</span>}
                               </div>
                             </div>
                           </button>
@@ -325,51 +335,6 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                       </div>
                     </div>
                   )}
-                  
-                  {formData.participants.length > 0 && (
-                    <div className="mt-3">
-                      <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
-                        Выбранные участники:
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {formData.participants.map(participantId => {
-                          const participant = allUsers.find(u => u.id === participantId);
-                          if (!participant) return null;
-                          return (
-                            <span
-                              key={participantId}
-                              className="inline-flex items-center gap-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-1 rounded-full text-xs"
-                            >
-                              <i className="fas fa-user text-xs"></i>
-                              {participant.name.split(' ')[0]}
-                              <button
-                                type="button"
-                                onClick={() => toggleParticipant(participantId)}
-                                className="ml-1 hover:text-blue-900 dark:hover:text-blue-100"
-                              >
-                                <i className="fas fa-times text-xs"></i>
-                              </button>
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Tags */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Теги
-                  </label>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                    <i className="fas fa-info-circle mr-1"></i>
-                    Выберите теги для классификации конференции
-                  </p>
-                  <TagsSelector
-                    selectedTags={formData.tags || []}
-                    onTagsChange={(tags: string[]) => setFormData({ ...formData, tags })}
-                  />
                 </div>
 
                 <div className="flex justify-end gap-3 pt-4 border-t dark:border-gray-700">
