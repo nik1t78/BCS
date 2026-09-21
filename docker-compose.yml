@@ -67,7 +67,7 @@ services:
       MYSQL_USER: vks_user
       MYSQL_PASSWORD: vks_password_2024
     volumes:
-      - mysql_/var/lib/mysql
+      - mysql_data:/var/lib/mysql
       - ./docker/mysql/my.cnf:/etc/mysql/conf.d/my.cnf
     ports:
       - "3306:3306"
