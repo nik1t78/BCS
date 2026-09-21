@@ -1,32 +1,27 @@
 @echo off
-chcp 65001 >nul
-title Остановка ВКС Расписание
+title VKS Schedule - Stopping
 color 0C
 
 echo.
-echo ╔══════════════════════════════════════════════════╗
-echo ║                                                  ║
-echo ║     🛑 Остановка ВКС Расписание...              ║
-echo ║                                                  ║
-echo ╚══════════════════════════════════════════════════╝
+echo ==========================================
+echo    Stopping VKS Schedule...
+echo ==========================================
 echo.
 
 cd /d D:\server\BCS-main
 
-echo [1/3] Остановка Laravel API...
-taskkill /FI "WINDOWTITLE eq Laravel API*" /T /F >nul 2>&1
+echo [1/3] Stopping Laravel API...
+taskkill /FI "WINDOWTITLE eq LaravelAPI*" /T /F >nul 2>&1
 
-echo [2/3] Остановка Frontend...
+echo [2/3] Stopping Frontend...
 taskkill /FI "WINDOWTITLE eq Frontend*" /T /F >nul 2>&1
 
-echo [3/3] Остановка Docker контейнеров...
+echo [3/3] Stopping Docker containers...
 docker compose down
 
 echo.
-echo ╔══════════════════════════════════════════════════╗
-echo ║                                                  ║
-echo ║   ✅ Все серверы остановлены!                   ║
-echo ║                                                  ║
-echo ╚══════════════════════════════════════════════════╝
+echo ==========================================
+echo    All servers stopped!
+echo ==========================================
 echo.
 pause
