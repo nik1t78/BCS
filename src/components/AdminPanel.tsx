@@ -339,12 +339,14 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       <input type="text" required value={userForm.login} onChange={(e) => setUserForm({ ...userForm, login: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500" />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Пароль {!editingUser && '*'}</label>
-                      <input type="text" value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
-                        placeholder={editingUser ? 'Оставьте пустым чтобы не менять' : 'Минимум 6 символов'} />
-                    </div>
+                    {!editingUser && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Пароль *</label>
+                        <input type="password" required value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                          placeholder="Минимум 6 символов" />
+                      </div>
+                    )}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Роль</label>

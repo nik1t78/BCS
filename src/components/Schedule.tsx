@@ -166,24 +166,34 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
             {selectedDate.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           </h3>
           <div className="space-y-3">
-            {getMeetingsForDate(selectedDate).sort((a, b) => a.startTime.localeCompare(b.startTime)).map(meeting => (
-              <div key={meeting.id} className={`border-l-4 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded-r-lg p-4`}>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold text-gray-800 dark:text-gray-100">{meeting.title}</p>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                      <i className="far fa-clock mr-1"></i>{meeting.startTime} - {meeting.endTime}
-                      {meeting.room && <span className="ml-3"><i className="fas fa-map-marker-alt mr-1"></i>{meeting.room}</span>}
-                    </p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Организатор: {getUserName(meeting.organizerId)}</p>
+            {getMeetingsForDate(selectedDate).sort((a, b) => a.startTime.localeCompare(b.startTime)).map(meeting => {
+              const canSeeDetails = user.role === 'admin' || user.role === 'moderator' || 
+                                   meeting.organizerId === user.id || 
+                                   meeting.participants.includes(user.id);
+              
+              return (
+                <div key={meeting.id} className={`border-l-4 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded-r-lg p-4`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-gray-800 dark:text-gray-100">
+                        {canSeeDetails ? meeting.title : 'Конференция'}
+                      </p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        <i className="far fa-clock mr-1"></i>{meeting.startTime} - {meeting.endTime}
+                        {canSeeDetails && meeting.room && <span className="ml-3"><i className="fas fa-map-marker-alt mr-1"></i>{meeting.room}</span>}
+                      </p>
+                      {canSeeDetails && (
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Организатор: {getUserName(meeting.organizerId)}</p>
+                      )}
+                    </div>
+                    {meeting.link && (
+                      <a href={meeting.link} target="_blank" rel="noopener noreferrer"
+                        className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"><i className="fas fa-video mr-1"></i>Войти</a>
+                    )}
                   </div>
-                  {meeting.link && (
-                    <a href={meeting.link} target="_blank" rel="noopener noreferrer"
-                      className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"><i className="fas fa-video mr-1"></i>Войти</a>
-                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {getMeetingsForDate(selectedDate).length === 0 && <p className="text-center text-gray-400 dark:text-gray-500 py-8">Нет конференций</p>}
           </div>
         </div>
@@ -206,12 +216,20 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
               const dayMeetings = getMeetingsForDate(date);
               return (
                 <div key={i} className="min-h-[180px] p-2 border-r border-gray-100 dark:border-gray-700 last:border-r-0 border-b border-gray-100 dark:border-gray-700">
-                  {dayMeetings.sort((a, b) => a.startTime.localeCompare(b.startTime)).map(meeting => (
-                    <div key={meeting.id} className={`border-l-2 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded p-1.5 mb-1 text-xs`}>
-                      <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{meeting.title}</p>
-                      <p className="text-gray-500 dark:text-gray-400">{meeting.startTime}</p>
-                    </div>
-                  ))}
+                  {dayMeetings.sort((a, b) => a.startTime.localeCompare(b.startTime)).map(meeting => {
+                    const canSeeDetails = user.role === 'admin' || user.role === 'moderator' || 
+                                         meeting.organizerId === user.id || 
+                                         meeting.participants.includes(user.id);
+                    
+                    return (
+                      <div key={meeting.id} className={`border-l-2 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded p-1.5 mb-1 text-xs`}>
+                        <p className="font-medium text-gray-800 dark:text-gray-100 truncate">
+                          {canSeeDetails ? meeting.title : 'Конференция'}
+                        </p>
+                        <p className="text-gray-500 dark:text-gray-400">{meeting.startTime}</p>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}
@@ -231,11 +249,19 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
               return (
                 <div key={i} className={`min-h-[90px] p-1.5 border-r border-gray-100 dark:border-gray-700 last:border-r-0 border-b border-gray-100 dark:border-gray-700 ${isToday ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
                   <p className={`text-sm font-medium mb-1 ${isToday ? 'text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-300'}`}>{date.getDate()}</p>
-                  {dayMeetings.slice(0, 3).map(meeting => (
-                    <div key={meeting.id} className={`border-l-2 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded px-1 py-0.5 mb-0.5 text-xs`}>
-                      <p className="truncate text-gray-700 dark:text-gray-300">{meeting.startTime} {meeting.title}</p>
-                    </div>
-                  ))}
+                  {dayMeetings.slice(0, 3).map(meeting => {
+                    const canSeeDetails = user.role === 'admin' || user.role === 'moderator' || 
+                                         meeting.organizerId === user.id || 
+                                         meeting.participants.includes(user.id);
+                    
+                    return (
+                      <div key={meeting.id} className={`border-l-2 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded px-1 py-0.5 mb-0.5 text-xs`}>
+                        <p className="truncate text-gray-700 dark:text-gray-300">
+                          {meeting.startTime} {canSeeDetails ? meeting.title : 'Конференция'}
+                        </p>
+                      </div>
+                    );
+                  })}
                   {dayMeetings.length > 3 && <p className="text-xs text-gray-400 dark:text-gray-500">+{dayMeetings.length - 3}</p>}
                 </div>
               );
