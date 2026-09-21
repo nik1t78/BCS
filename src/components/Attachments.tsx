@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Attachment } from '../types';
-import { getAttachments, addAttachment, deleteAttachment, generateId } from '../store';
+import { getAttachments, uploadAttachment, deleteAttachment } from '../store-api';
 
 interface AttachmentsProps {
   meetingId: string;
@@ -10,10 +10,23 @@ interface AttachmentsProps {
 export default function Attachments({ meetingId, userId }: AttachmentsProps) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setAttachments(getAttachments(meetingId));
+    loadAttachments();
   }, [meetingId]);
+
+  const loadAttachments = async () => {
+    setLoading(true);
+    try {
+      const data = await getAttachments(meetingId);
+      setAttachments(data);
+    } catch (error) {
+      console.error('Error loading attachments:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -21,40 +34,38 @@ export default function Attachments({ meetingId, userId }: AttachmentsProps) {
 
     setUploading(true);
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      
-      // Проверка размера (10 MB)
-      if (file.size > 10 * 1024 * 1024) {
-        alert(`Файл ${file.name} слишком большой. Максимум 10 MB.`);
-        continue;
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        // Проверка размера (10 MB)
+        if (file.size > 10 * 1024 * 1024) {
+          alert(`Файл ${file.name} слишком большой. Максимум 10 MB.`);
+          continue;
+        }
+
+        await uploadAttachment(meetingId, file);
       }
 
-      // В реальном приложении здесь была бы загрузка на сервер
-      // Для демо сохраняем метаданные в localStorage
-      const attachment: Attachment = {
-        id: generateId(),
-        meetingId,
-        userId,
-        fileName: file.name,
-        filePath: URL.createObjectURL(file),
-        fileSize: file.size,
-        mimeType: file.type,
-        createdAt: new Date().toISOString(),
-      };
-
-      addAttachment(attachment);
+      await loadAttachments();
+    } catch (error) {
+      console.error('Error uploading files:', error);
+      alert('Ошибка при загрузке файлов');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
     }
-
-    setAttachments(getAttachments(meetingId));
-    setUploading(false);
-    e.target.value = '';
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Удалить файл?')) {
-      deleteAttachment(id);
-      setAttachments(getAttachments(meetingId));
+      try {
+        await deleteAttachment(id);
+        await loadAttachments();
+      } catch (error) {
+        console.error('Error deleting attachment:', error);
+        alert('Ошибка при удалении файла');
+      }
     }
   };
 
@@ -98,6 +109,19 @@ export default function Attachments({ meetingId, userId }: AttachmentsProps) {
     return 'text-gray-500';
   };
 
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-center h-32">
+          <div className="text-center">
+            <i className="fas fa-spinner fa-spin text-4xl text-blue-600 mb-4"></i>
+            <p className="text-gray-600 dark:text-gray-400">Загрузка вложений...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -105,7 +129,7 @@ export default function Attachments({ meetingId, userId }: AttachmentsProps) {
           <i className="fas fa-paperclip mr-2 text-blue-500"></i>
           Вложения ({attachments.length})
         </h3>
-        <label className="cursor-pointer bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+        <label className={`cursor-pointer ${uploading ? 'opacity-50 cursor-not-allowed' : 'bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors'}`}>
           <i className="fas fa-upload mr-2"></i>
           {uploading ? 'Загрузка...' : 'Загрузить файл'}
           <input

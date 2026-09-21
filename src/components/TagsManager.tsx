@@ -1,37 +1,36 @@
 import React, { useState, useEffect } from 'react';
-import { User } from '../types';
-
-interface Tag {
-  id: string;
-  name: string;
-  color: string;
-  createdAt: string;
-}
+import { User, Tag } from '../types';
+import { getTags, createTag, updateTag, deleteTag } from '../store-api';
 
 interface TagsManagerProps {
-  user: User;
+  userId: string;
 }
 
-export default function TagsManager({ user }: TagsManagerProps) {
+export default function TagsManager({ userId }: TagsManagerProps) {
   const [tags, setTags] = useState<Tag[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingTag, setEditingTag] = useState<Tag | null>(null);
   const [tagName, setTagName] = useState('');
   const [tagColor, setTagColor] = useState('#3b82f6');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const data = localStorage.getItem('vks_tags');
-    if (data) {
-      setTags(JSON.parse(data));
-    }
+    loadTags();
   }, []);
 
-  const saveTags = (newTags: Tag[]) => {
-    localStorage.setItem('vks_tags', JSON.stringify(newTags));
-    setTags(newTags);
+  const loadTags = async () => {
+    setLoading(true);
+    try {
+      const data = await getTags();
+      setTags(data);
+    } catch (error) {
+      console.error('Error loading tags:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!tagName.trim()) {
@@ -39,23 +38,22 @@ export default function TagsManager({ user }: TagsManagerProps) {
       return;
     }
 
-    if (editingTag) {
-      const updated = tags.map(t => t.id === editingTag.id ? { ...t, name: tagName, color: tagColor } : t);
-      saveTags(updated);
-    } else {
-      const newTag: Tag = {
-        id: Date.now().toString(),
-        name: tagName,
-        color: tagColor,
-        createdAt: new Date().toISOString(),
-      };
-      saveTags([...tags, newTag]);
-    }
+    try {
+      if (editingTag) {
+        await updateTag(editingTag.id, { name: tagName, color: tagColor });
+      } else {
+        await createTag({ name: tagName, color: tagColor, userId });
+      }
 
-    setShowForm(false);
-    setEditingTag(null);
-    setTagName('');
-    setTagColor('#3b82f6');
+      await loadTags();
+      setShowForm(false);
+      setEditingTag(null);
+      setTagName('');
+      setTagColor('#3b82f6');
+    } catch (error) {
+      console.error('Error saving tag:', error);
+      alert('Ошибка при сохранении тега');
+    }
   };
 
   const handleEdit = (tag: Tag) => {
@@ -65,9 +63,15 @@ export default function TagsManager({ user }: TagsManagerProps) {
     setShowForm(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Удалить тег?')) {
-      saveTags(tags.filter(t => t.id !== id));
+      try {
+        await deleteTag(id);
+        await loadTags();
+      } catch (error) {
+        console.error('Error deleting tag:', error);
+        alert('Ошибка при удалении тега');
+      }
     }
   };
 
@@ -77,6 +81,17 @@ export default function TagsManager({ user }: TagsManagerProps) {
     '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef',
     '#ec4899', '#f43f5e',
   ];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <i className="fas fa-spinner fa-spin text-4xl text-blue-600 mb-4"></i>
+          <p className="text-gray-600 dark:text-gray-400">Загрузка тегов...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { MeetingHistory } from '../types';
-import { getHistory } from '../store';
+import { getMeetingHistory } from '../store-api';
 
 interface MeetingHistoryProps {
   meetingId: string;
@@ -8,10 +8,23 @@ interface MeetingHistoryProps {
 
 export default function MeetingHistoryView({ meetingId }: MeetingHistoryProps) {
   const [history, setHistory] = useState<MeetingHistory[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setHistory(getHistory(meetingId));
+    loadHistory();
   }, [meetingId]);
+
+  const loadHistory = async () => {
+    setLoading(true);
+    try {
+      const data = await getMeetingHistory(meetingId);
+      setHistory(data);
+    } catch (error) {
+      console.error('Error loading history:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getActionLabel = (action: string): string => {
     switch (action) {
@@ -42,6 +55,19 @@ export default function MeetingHistoryView({ meetingId }: MeetingHistoryProps) {
       default: return 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700';
     }
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-center h-32">
+          <div className="text-center">
+            <i className="fas fa-spinner fa-spin text-4xl text-blue-600 mb-4"></i>
+            <p className="text-gray-600 dark:text-gray-400">Загрузка истории...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

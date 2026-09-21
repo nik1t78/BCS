@@ -53,6 +53,30 @@ class Meeting extends Model
     }
 
     /**
+     * Теги конференции
+     */
+    public function tags()
+    {
+        return $this->belongsToMany(Tag::class, 'meeting_tag');
+    }
+
+    /**
+     * Вложения конференции
+     */
+    public function attachments()
+    {
+        return $this->hasMany(Attachment::class);
+    }
+
+    /**
+     * История изменений конференции
+     */
+    public function history()
+    {
+        return $this->hasMany(MeetingHistory::class);
+    }
+
+    /**
      * Scope: только предстоящие
      */
     public function scopeUpcoming($query)

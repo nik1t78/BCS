@@ -6,7 +6,12 @@ export default function ResetData() {
   const [reset, setReset] = useState(false);
 
   const handleReset = () => {
+    // Очищаем localStorage
+    localStorage.clear();
+    
+    // Вызываем forceReset для создания новых тестовых данных
     forceReset();
+    
     setReset(true);
     setTimeout(() => {
       window.location.reload();
