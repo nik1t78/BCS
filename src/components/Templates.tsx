@@ -1,71 +1,69 @@
 import React, { useState, useEffect } from 'react';
-import { User } from '../types';
-
-interface MeetingTemplate {
-  id: string;
-  name: string;
-  description: string;
-  duration: number;
-  room: string;
-  link: string;
-  priority: 'low' | 'medium' | 'high';
-  reminderMinutes: number;
-  recurring: 'none' | 'daily' | 'weekly' | 'monthly';
-  isPrivate: boolean;
-  createdAt: string;
-}
+import { User, MeetingTemplate } from '../types';
+import { getTemplates, createTemplate, updateTemplate, deleteTemplate } from '../store-api';
 
 interface TemplatesProps {
-  user: User;
+  userId: string;
 }
 
-export default function Templates({ user }: TemplatesProps) {
+export default function Templates({ userId }: TemplatesProps) {
   const [templates, setTemplates] = useState<MeetingTemplate[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<MeetingTemplate | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const emptyTemplate: MeetingTemplate = {
     id: '',
+    userId,
     name: '',
     description: '',
-    duration: 60,
+    durationMinutes: 60,
     room: '',
     link: '',
     priority: 'medium',
     reminderMinutes: 15,
     recurring: 'none',
     isPrivate: false,
+    defaultParticipants: [],
     createdAt: new Date().toISOString(),
   };
 
   const [formData, setFormData] = useState<MeetingTemplate>(emptyTemplate);
 
   useEffect(() => {
-    const data = localStorage.getItem('vks_templates');
-    if (data) {
-      setTemplates(JSON.parse(data));
-    }
+    loadTemplates();
   }, []);
 
-  const saveTemplates = (newTemplates: MeetingTemplate[]) => {
-    localStorage.setItem('vks_templates', JSON.stringify(newTemplates));
-    setTemplates(newTemplates);
+  const loadTemplates = async () => {
+    setLoading(true);
+    try {
+      const data = await getTemplates();
+      setTemplates(data);
+    } catch (error) {
+      console.error('Error loading templates:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (editingTemplate) {
-      const updated = templates.map(t => t.id === editingTemplate.id ? { ...formData, id: editingTemplate.id } : t);
-      saveTemplates(updated);
-    } else {
-      const newTemplate = { ...formData, id: Date.now().toString() };
-      saveTemplates([...templates, newTemplate]);
-    }
+    try {
+      if (editingTemplate) {
+        await updateTemplate(editingTemplate.id, formData);
+      } else {
+        await createTemplate({ ...formData, userId });
+      }
 
-    setShowForm(false);
-    setEditingTemplate(null);
-    setFormData(emptyTemplate);
+      await loadTemplates();
+      setShowForm(false);
+      setEditingTemplate(null);
+      setFormData(emptyTemplate);
+    } catch (error) {
+      console.error('Error saving template:', error);
+      alert('Ошибка при сохранении шаблона');
+    }
   };
 
   const handleEdit = (template: MeetingTemplate) => {
@@ -74,9 +72,15 @@ export default function Templates({ user }: TemplatesProps) {
     setShowForm(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Удалить шаблон?')) {
-      saveTemplates(templates.filter(t => t.id !== id));
+      try {
+        await deleteTemplate(id);
+        await loadTemplates();
+      } catch (error) {
+        console.error('Error deleting template:', error);
+        alert('Ошибка при удалении шаблона');
+      }
     }
   };
 
@@ -85,7 +89,7 @@ export default function Templates({ user }: TemplatesProps) {
     const params = new URLSearchParams({
       title: template.name,
       description: template.description,
-      duration: template.duration.toString(),
+      duration: template.durationMinutes.toString(),
       room: template.room,
       link: template.link,
       priority: template.priority,
@@ -95,6 +99,17 @@ export default function Templates({ user }: TemplatesProps) {
     });
     window.location.href = `/meetings?create=1&${params.toString()}`;
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <i className="fas fa-spinner fa-spin text-4xl text-blue-600 mb-4"></i>
+          <p className="text-gray-600 dark:text-gray-400">Загрузка шаблонов...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -163,8 +178,8 @@ export default function Templates({ user }: TemplatesProps) {
                     </label>
                     <input
                       type="number"
-                      value={formData.duration}
-                      onChange={(e) => setFormData({ ...formData, duration: parseInt(e.target.value) })}
+                      value={formData.durationMinutes}
+                      onChange={(e) => setFormData({ ...formData, durationMinutes: parseInt(e.target.value) })}
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
                     />
                   </div>
@@ -304,7 +319,7 @@ export default function Templates({ user }: TemplatesProps) {
             <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400 mb-4">
               <p>
                 <i className="far fa-clock mr-2"></i>
-                {template.duration} мин
+                {template.durationMinutes} мин
               </p>
               {template.room && (
                 <p>

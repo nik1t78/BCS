@@ -4,6 +4,10 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\MeetingController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\TagController;
+use App\Http\Controllers\Api\TemplateController;
+use App\Http\Controllers\Api\AttachmentController;
+use App\Http\Controllers\Api\MeetingHistoryController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -44,6 +48,26 @@ Route::middleware('auth:sanctum')->group(function () {
     // Settings
     Route::get('/settings', [UserController::class, 'getSettings']);
     Route::put('/settings', [UserController::class, 'updateSettings']);
+
+    // Tags
+    Route::get('/tags', [TagController::class, 'index']);
+    Route::post('/tags', [TagController::class, 'store']);
+    Route::put('/tags/{id}', [TagController::class, 'update']);
+    Route::delete('/tags/{id}', [TagController::class, 'destroy']);
+
+    // Templates
+    Route::get('/templates', [TemplateController::class, 'index']);
+    Route::post('/templates', [TemplateController::class, 'store']);
+    Route::put('/templates/{id}', [TemplateController::class, 'update']);
+    Route::delete('/templates/{id}', [TemplateController::class, 'destroy']);
+
+    // Attachments
+    Route::get('/meetings/{meetingId}/attachments', [AttachmentController::class, 'index']);
+    Route::post('/meetings/{meetingId}/attachments', [AttachmentController::class, 'store']);
+    Route::delete('/attachments/{id}', [AttachmentController::class, 'destroy']);
+
+    // Meeting History
+    Route::get('/meetings/{meetingId}/history', [MeetingHistoryController::class, 'index']);
 
     // Admin routes (admin + moderator)
     Route::middleware('can:admin-or-moderator')->group(function () {

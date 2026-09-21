@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getTags } from '../store';
+import { getTags } from '../store-api';
 
 interface Tag {
   id: string;
@@ -15,13 +15,23 @@ interface TagsSelectorProps {
 
 export default function TagsSelector({ selectedTags, onTagsChange }: TagsSelectorProps) {
   const [tags, setTags] = useState<Tag[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const data = localStorage.getItem('vks_tags');
-    if (data) {
-      setTags(JSON.parse(data));
-    }
+    loadTags();
   }, []);
+
+  const loadTags = async () => {
+    setLoading(true);
+    try {
+      const data = await getTags();
+      setTags(data);
+    } catch (error) {
+      console.error('Error loading tags:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const toggleTag = (tagId: string) => {
     const newTags = selectedTags.includes(tagId)
@@ -29,6 +39,17 @@ export default function TagsSelector({ selectedTags, onTagsChange }: TagsSelecto
       : [...selectedTags, tagId];
     onTagsChange(newTags);
   };
+
+  if (loading) {
+    return (
+      <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          <i className="fas fa-spinner fa-spin mr-2"></i>
+          Загрузка тегов...
+        </p>
+      </div>
+    );
+  }
 
   if (tags.length === 0) {
     return (

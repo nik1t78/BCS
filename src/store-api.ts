@@ -1,7 +1,7 @@
 // Store с поддержкой API Laravel
 
-import { authAPI, usersAPI, meetingsAPI, notificationsAPI, settingsAPI, profileAPI } from './api/client';
-import { User, Meeting, Notification, Settings } from './types';
+import { authAPI, usersAPI, meetingsAPI, notificationsAPI, settingsAPI, profileAPI, tagsAPI, templatesAPI, attachmentsAPI, meetingHistoryAPI } from './api/client';
+import { User, Meeting, Notification, Settings, Tag, MeetingTemplate, Attachment, MeetingHistory } from './types';
 
 // ============ AUTH ============
 export async function login(login: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> {
@@ -269,6 +269,132 @@ export async function changePassword(currentPassword: string, newPassword: strin
   } catch (error) {
     console.error('Change password error:', error);
     return false;
+  }
+}
+
+// ============ TAGS ============
+export async function getTags(): Promise<Tag[]> {
+  try {
+    const response = await tagsAPI.getAll();
+    return response.data || response;
+  } catch (error) {
+    console.error('Get tags error:', error);
+    return [];
+  }
+}
+
+export async function createTag(data: any): Promise<Tag | null> {
+  try {
+    const response = await tagsAPI.create(data);
+    return response;
+  } catch (error) {
+    console.error('Create tag error:', error);
+    return null;
+  }
+}
+
+export async function updateTag(id: string, data: any): Promise<Tag | null> {
+  try {
+    const response = await tagsAPI.update(id, data);
+    return response;
+  } catch (error) {
+    console.error('Update tag error:', error);
+    return null;
+  }
+}
+
+export async function deleteTag(id: string): Promise<boolean> {
+  try {
+    await tagsAPI.delete(id);
+    return true;
+  } catch (error) {
+    console.error('Delete tag error:', error);
+    return false;
+  }
+}
+
+// ============ TEMPLATES ============
+export async function getTemplates(): Promise<MeetingTemplate[]> {
+  try {
+    const response = await templatesAPI.getAll();
+    return response.data || response;
+  } catch (error) {
+    console.error('Get templates error:', error);
+    return [];
+  }
+}
+
+export async function createTemplate(data: any): Promise<MeetingTemplate | null> {
+  try {
+    const response = await templatesAPI.create(data);
+    return response;
+  } catch (error) {
+    console.error('Create template error:', error);
+    return null;
+  }
+}
+
+export async function updateTemplate(id: string, data: any): Promise<MeetingTemplate | null> {
+  try {
+    const response = await templatesAPI.update(id, data);
+    return response;
+  } catch (error) {
+    console.error('Update template error:', error);
+    return null;
+  }
+}
+
+export async function deleteTemplate(id: string): Promise<boolean> {
+  try {
+    await templatesAPI.delete(id);
+    return true;
+  } catch (error) {
+    console.error('Delete template error:', error);
+    return false;
+  }
+}
+
+// ============ ATTACHMENTS ============
+export async function getAttachments(meetingId: string): Promise<Attachment[]> {
+  try {
+    const response = await attachmentsAPI.getByMeeting(meetingId);
+    return response.data || response;
+  } catch (error) {
+    console.error('Get attachments error:', error);
+    return [];
+  }
+}
+
+export async function uploadAttachment(meetingId: string, file: File): Promise<Attachment | null> {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await attachmentsAPI.upload(meetingId, formData);
+    return response;
+  } catch (error) {
+    console.error('Upload attachment error:', error);
+    return null;
+  }
+}
+
+export async function deleteAttachment(id: string): Promise<boolean> {
+  try {
+    await attachmentsAPI.delete(id);
+    return true;
+  } catch (error) {
+    console.error('Delete attachment error:', error);
+    return false;
+  }
+}
+
+// ============ MEETING HISTORY ============
+export async function getMeetingHistory(meetingId: string): Promise<MeetingHistory[]> {
+  try {
+    const response = await meetingHistoryAPI.getByMeeting(meetingId);
+    return response.data || response;
+  } catch (error) {
+    console.error('Get meeting history error:', error);
+    return [];
   }
 }
 

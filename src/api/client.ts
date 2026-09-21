@@ -187,6 +187,76 @@ export const profileAPI = {
     }),
 };
 
+// TAGS API
+export const tagsAPI = {
+  getAll: () =>
+    apiRequest('/tags'),
+
+  create: (data: any) =>
+    apiRequest('/tags', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (id: string, data: any) =>
+    apiRequest(`/tags/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (id: string) =>
+    apiRequest(`/tags/${id}`, {
+      method: 'DELETE',
+    }),
+};
+
+// TEMPLATES API
+export const templatesAPI = {
+  getAll: () =>
+    apiRequest('/templates'),
+
+  create: (data: any) =>
+    apiRequest('/templates', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (id: string, data: any) =>
+    apiRequest(`/templates/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (id: string) =>
+    apiRequest(`/templates/${id}`, {
+      method: 'DELETE',
+    }),
+};
+
+// ATTACHMENTS API
+export const attachmentsAPI = {
+  getByMeeting: (meetingId: string) =>
+    apiRequest(`/meetings/${meetingId}/attachments`),
+
+  upload: (meetingId: string, formData: FormData) =>
+    apiRequest(`/meetings/${meetingId}/attachments`, {
+      method: 'POST',
+      body: formData,
+      headers: {}, // Не устанавливаем Content-Type, чтобы браузер установил multipart/form-data
+    }),
+
+  delete: (id: string) =>
+    apiRequest(`/attachments/${id}`, {
+      method: 'DELETE',
+    }),
+};
+
+// MEETING HISTORY API
+export const meetingHistoryAPI = {
+  getByMeeting: (meetingId: string) =>
+    apiRequest(`/meetings/${meetingId}/history`),
+};
+
 // HEALTH CHECK
 export const healthAPI = {
   check: () =>
