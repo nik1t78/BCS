@@ -163,13 +163,25 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
               </div>
             )}
 
-            <button
-              onClick={() => alert('Функция подключения к конференции')}
-              className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium"
-            >
-              <i className="fas fa-video mr-2"></i>
-              Подключиться к конференции
-            </button>
+            {nextMeeting.link ? (
+              <a
+                href={nextMeeting.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              >
+                <i className="fas fa-video mr-2"></i>
+                Подключиться к конференции
+              </a>
+            ) : (
+              <button
+                disabled
+                className="bg-gray-400 text-white px-6 py-3 rounded-lg font-medium cursor-not-allowed"
+              >
+                <i className="fas fa-video mr-2"></i>
+                Ссылка не указана
+              </button>
+            )}
           </div>
         );
       })()}
@@ -192,7 +204,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
               return (
                 <div key={meeting.id} className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
                   <div className="flex items-start justify-between">
-                    <div>
+                    <div className="flex-1">
                       <h3 className="font-bold text-gray-800 dark:text-gray-100">
                         {canSeeDetails ? meeting.title : 'Конференция'}
                       </h3>
@@ -207,9 +219,21 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
                         </p>
                       )}
                     </div>
-                    <span className={`px-2 py-1 rounded text-xs font-medium border ${getPriorityColor(meeting.priority)}`}>
-                      {meeting.priority === 'high' ? 'Высокий' : meeting.priority === 'medium' ? 'Средний' : 'Низкий'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {meeting.link && (
+                        <a
+                          href={meeting.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-blue-700 transition-colors"
+                        >
+                          <i className="fas fa-video mr-1"></i>Войти
+                        </a>
+                      )}
+                      <span className={`px-2 py-1 rounded text-xs font-medium border ${getPriorityColor(meeting.priority)}`}>
+                        {meeting.priority === 'high' ? 'Высокий' : meeting.priority === 'medium' ? 'Средний' : 'Низкий'}
+                      </span>
+                    </div>
                   </div>
                 </div>
               );
