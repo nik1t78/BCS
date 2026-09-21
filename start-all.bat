@@ -1,5 +1,5 @@
 @echo off
-title VKS Schedule - Starting...
+title VKS Schedule - Starting
 color 0A
 
 echo.
@@ -10,23 +10,12 @@ echo.
 
 cd /d D:\server\BCS-main
 
-if not exist "D:\server\BCS-main" (
-    echo ERROR: Folder D:\server\BCS-main not found!
-    pause
-    exit /b 1
-)
-
 echo [1/5] Starting Docker containers...
 docker compose up -d mysql backend redis
-if errorlevel neq 0 (
-    echo ERROR: Docker failed to start!
-    pause
-    exit /b 1
-)
 
 echo.
 echo [2/5] Waiting for MySQL to start (30 seconds)...
-timeout /t 30 /nobreak >nul
+ping -n 31 127.0.0.1 >nul
 
 echo.
 echo [3/5] Checking container status...
@@ -42,7 +31,7 @@ start "Frontend" cmd /k "cd /d D:\server\BCS-main && npm run dev"
 
 echo.
 echo ==========================================
-echo    Servers started successfully!
+echo    Servers started!
 echo ==========================================
 echo.
 echo    Frontend: http://localhost:5173
