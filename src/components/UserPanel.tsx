@@ -48,10 +48,9 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
     const allMeetings = getMeetings();
     const allUsers = getUsers();
     
-    const myMeetings = allMeetings.filter(m => 
-      m.organizerId === user.id || m.participants.includes(user.id)
-    );
-    setMeetings(myMeetings);
+    // Модераторы и админы видят все конференции, обычные пользователи - тоже все
+    // (но могут редактировать только свои)
+    setMeetings(allMeetings);
     setUsers(allUsers);
     setLoading(false);
   };
