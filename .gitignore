@@ -5,45 +5,67 @@ node_modules/
 # Build outputs
 dist/
 build/
-target/
+*.js.map
+*.ts.map
+
+# Environment variables
+.env
+.env.local
+*.env.*
+
+# IDE specific
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Coverage
+coverage/
+htmlcov/
+*.coverage
 
 # Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-*.py~
-*.py.class
-*.py.obj
-*.py.out
-*.py.dll
-*.py.so
-*.py.a
-*.py.obj
-*.py.out
+.Python
+*.so
+*.egg-info/
+.eggs/
+.mypy_cache/
+.pytest_cache/
+.tox/
 
-# Virtual environments
+# Node.js
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Distribution / packaging
+.Python
+env/
 venv/
 .venv/
-env/
-.ENV/
+.ENV
+.venv.bak/
+env.bak/
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*.tmp
+# Testing
+test/
+tests/
+spec/
 
-# Logs
-*.log
-
-# OS
+# OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
-
-# Environment variables
-.env
-.env.local
-*.env.*
+Icon?
 ```
