@@ -9,10 +9,10 @@ RUN npm config set registry https://registry.npmjs.org/ && \
     npm config set fetch-retry-maxtimeout 300000 && \
     npm config set fetch-timeout 300000
 
-# Копирование package.json из корня проекта
+# Копирование package.json
 COPY package*.json ./
 
-# Установка зависимостей с увеличенными таймаутами
+# Установка зависимостей
 RUN npm install --legacy-peer-deps --maxsockets=1
 
 # Копирование исходного кода
@@ -31,7 +31,7 @@ FROM nginx:alpine
 COPY --from=builder /app/dist /var/www/frontend
 
 # Копирование конфигурации nginx для SPA
-COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/nginx/default.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
 
