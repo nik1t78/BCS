@@ -1,6 +1,7 @@
 FROM php:8.4-fpm
 
 # Установка системных зависимостей
+# (libonig-dev уже содержит oniguruma — отдельный пакет "oniguruma5dev" не нужен)
 RUN apt-get update && apt-get install -y \
     git \
     curl \
@@ -21,11 +22,13 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Установка рабочего каталога
 WORKDIR /var/www/html
 
-# Копирование файлов проекта
-COPY . .
+# Зависимости (vendor/) и код проекта монтируются через volume ./backend:/var/www/html,
+# поэтому здесь НЕ выполняем composer install — он требует доступа к packagist.org,
+# который недоступен из вашей сети. Установите зависимости локально командой:
+#   composer install --no-dev --optimize-autoloader --ignore-platform-reqs
 
-# Установка зависимостей
-RUN composer install --no-dev --optimize-autoloader --no-interaction
+# Создание нужных директорий Laravel (на случай пустых volume)
+RUN mkdir -p storage/framework/{sessions,views,cache} storage/logs bootstrap/cache
 
 # Установка прав доступа
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache \
