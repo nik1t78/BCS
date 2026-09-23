@@ -56,6 +56,7 @@ services:
 
   # MySQL
   mysql:
+    hostname: mysql
     image: mysql:8.0
     container_name: vks-mysql
     restart: unless-stopped
@@ -73,6 +74,7 @@ services:
 
   # Redis
   redis:
+    hostname: redis
     image: redis:alpine
     container_name: vks-redis
     restart: unless-stopped
