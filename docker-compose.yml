@@ -1,15 +1,15 @@
 services:
-  # Frontend (React)
+  # Frontend (React) — сборочный сервис: копирует dist в общий volume и завершается
   frontend:
     build:
       context: .
-      dockerfile: Dockerfile
-    container_name: vks-frontend
-    restart: unless-stopped
+      dockerfile: Dockerfile.frontend
+    container_name: vks-frontend-builder
+    restart: "no"
     networks:
       - vks-network
     volumes:
-      - frontend_build:/app/dist
+      - frontend_build:/out
 
   # Backend (Laravel)
   backend:
@@ -46,7 +46,7 @@ services:
       - "80:80"
     volumes:
       - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
-      - frontend_build:/var/www/frontend
+      - frontend_build:/var/www/frontend:ro
       - ./backend/public:/var/www/backend/public
     depends_on:
       - frontend
