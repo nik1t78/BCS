@@ -4,12 +4,18 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: vks-frontend
-    restart: unless-stopped
+    container_name: vks-frontend-builder
+    restart: "no"
     networks:
       - vks-network
     volumes:
-      - frontend_build:/app/dist
+      # Точка монтирования volume должна СОВПАДАТЬ с последней в Dockerfile
+      # (/mnt/dist): при создании пустого volume docker копирует в него
+      # содержимое образа по этому пути. CMD контейнера дополнительно
+      # перезаписывает volume свежей сборкой.
+      - type: volume
+        source: frontend_build
+        target: /mnt/dist
 
   # Backend (Laravel)
   backend:
@@ -19,8 +25,13 @@ services:
     container_name: vks-backend
     restart: unless-stopped
     volumes:
-      - ./backend:/var/www/html
-      - ./backend/storage:/var/www/html/storage
+      # Длинный (explicit) синтаксис — не зависит от пути с диском (D:\)
+      - type: bind
+        source: ./backend
+        target: /var/www/html
+      - type: bind
+        source: ./backend/storage
+        target: /var/www/html/storage
     environment:
       - DB_CONNECTION=mysql
       - DB_HOST=mysql
@@ -45,9 +56,20 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
-      - frontend_build:/var/www/frontend
-      - ./backend/public:/var/www/backend/public
+      # Long (explicit) syntax — immune to the legacy docker-compose v1
+      # "too many colons" parser bug triggered by Windows drive paths.
+      - type: bind
+        source: ./docker/nginx/default.conf
+        target: /etc/nginx/conf.d/default.conf
+        read_only: true
+      - type: volume
+        source: frontend_build
+        target: /var/www/frontend
+        read_only: true
+      - type: bind
+        source: ./backend/public
+        target: /var/www/backend/public
+        read_only: true
     depends_on:
       - frontend
       - backend
@@ -65,7 +87,10 @@ services:
       MYSQL_USER: vks_user
       MYSQL_PASSWORD: vks_password_2024
     volumes:
-      - mysql_data:/var/lib/mysql
+      # Длинный (explicit) синтаксис — не зависит от пути с диском (D:\)
+      - type: volume
+        source: mysql_data
+        target: /var/lib/mysql
     ports:
       - "3306:3306"
     networks:
@@ -88,7 +113,10 @@ services:
     restart: unless-stopped
     command: php artisan queue:work --sleep=3 --tries=3
     volumes:
-      - ./backend:/var/www/html
+      # Длинный (explicit) синтаксис — не зависит от пути с диском (D:\)
+      - type: bind
+        source: ./backend
+        target: /var/www/html
     environment:
       - DB_CONNECTION=mysql
       - DB_HOST=mysql
@@ -112,7 +140,10 @@ services:
     command: >
       sh -c "while true; do php artisan schedule:run --verbose --no-interaction & sleep 60; done"
     volumes:
-      - ./backend:/var/www/html
+      # Длинный (explicit) синтаксис — не зависит от пути с диском (D:\)
+      - type: bind
+        source: ./backend
+        target: /var/www/html
     environment:
       - DB_CONNECTION=mysql
       - DB_HOST=mysql

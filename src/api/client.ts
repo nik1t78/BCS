@@ -1,6 +1,9 @@
 // API клиент для работы с Laravel backend
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+// По умолчанию API доступен на том же origin через nginx (location /api/ -> Laravel),
+// поэтому относительный путь '/api' работает и в docker, и без настройки CORS.
+// Переопределить можно переменной окружения VITE_API_URL при сборке.
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 // Получение токена из localStorage
 const getToken = (): string | null => {
@@ -29,8 +32,17 @@ const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Ошибка запроса');
+      const error = await response.json().catch(() => ({} as any));
+      // Laravel при валидации (422) возвращает { message, errors: { field: [msgs] } },
+      // а не поле "message" с текстом ошибки — достаём текст из errors
+      let message = error.message;
+      if (!message && error.errors) {
+        const firstMessages = Object.values(error.errors).flat() as string[];
+        if (firstMessages.length > 0) {
+          message = firstMessages.join('; ');
+        }
+      }
+      throw new Error(message || 'Ошибка запроса');
     }
 
     return await response.json();
