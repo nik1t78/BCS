@@ -46,11 +46,63 @@ export function getToken(): string | null {
   return JSON.parse(data).token;
 }
 
+// ============ Маппинги snake_case (Laravel) <-> camelCase (UI) ============
+const toCamel = (s: string) => s.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+const toSnake = (s: string) => s.replace(/[A-Z]/g, (c) => '_' + c.toLowerCase());
+
+export function mapUser(raw: any): User {
+  const out: any = {};
+  for (const k of Object.keys(raw ?? {})) out[toCamel(k)] = raw[k];
+  if (out.createdAt && typeof out.createdAt === 'string') out.createdAt = out.createdAt.replace(' ', 'T');
+  return out as User;
+}
+
+export function userToApi(data: any): any {
+  const out: any = {};
+  for (const k of Object.keys(data ?? {})) {
+    if (k === 'id' || k === 'createdAt' || k === 'lastLogin' || k === 'password_hash') continue;
+    out[toSnake(k)] = data[k];
+  }
+  return out;
+}
+
+export function mapMeeting(raw: any): Meeting {
+  const out: any = {};
+  for (const k of Object.keys(raw ?? {})) out[toCamel(k)] = raw[k];
+  if (raw?.start_time !== undefined) out.startTime = String(raw.start_time).slice(0, 5);
+  if (raw?.end_time !== undefined) out.endTime = String(raw.end_time).slice(0, 5);
+  if (Array.isArray(out.participants)) out.participants = out.participants.map(String);
+  if (Array.isArray(out.organizer)) out.organizer = undefined;
+  if (typeof out.date === 'string') out.date = out.date.slice(0, 10);
+  if (out.createdAt && typeof out.createdAt === 'string') out.createdAt = out.createdAt.replace(' ', 'T');
+  return out as Meeting;
+}
+
+export function meetingToApi(data: any): any {
+  const out: any = {};
+  for (const k of Object.keys(data ?? {})) {
+    if (k === 'id' || k === 'createdAt' || k === 'updatedAt' || k === 'organizer') continue;
+    out[toSnake(k)] = data[k];
+  }
+  if (data.startTime) out.start_time = data.startTime;
+  if (data.endTime) out.end_time = data.endTime;
+  if (Array.isArray(out.participants)) out.participants = out.participants.map((v: any) => Number(v)).filter((v: number) => !Number.isNaN(v));
+  delete out.start_time_text;
+  delete out.end_time_text;
+  return out;
+}
+
+export function unwrapList(response: any): any[] {
+  if (Array.isArray(response)) return response;
+  if (response && Array.isArray(response.data)) return response.data;
+  return [];
+}
+
 // ============ USERS ============
 export async function getUsers(): Promise<User[]> {
   try {
     const response = await usersAPI.getAll();
-    return response.data;
+    return unwrapList(response).map(mapUser);
   } catch (error) {
     console.error('Get users error:', error);
     return [];
@@ -121,7 +173,7 @@ export async function resetUserPassword(id: string, password: string): Promise<b
 export async function getMeetings(params?: { status?: string; date?: string; my?: boolean; search?: string }): Promise<Meeting[]> {
   try {
     const response = await meetingsAPI.getAll(params);
-    return response.data;
+    return unwrapList(response).map(mapMeeting);
   } catch (error) {
     console.error('Get meetings error:', error);
     return [];
@@ -130,7 +182,7 @@ export async function getMeetings(params?: { status?: string; date?: string; my?
 
 export async function createMeeting(data: any): Promise<Meeting | null> {
   try {
-    const response = await meetingsAPI.create(data);
+    const response = await meetingsAPI.create(meetingToApi(data));
     return response;
   } catch (error) {
     console.error('Create meeting error:', error);
@@ -140,7 +192,7 @@ export async function createMeeting(data: any): Promise<Meeting | null> {
 
 export async function updateMeeting(id: string, data: any): Promise<Meeting | null> {
   try {
-    const response = await meetingsAPI.update(id, data);
+    const response = await meetingsAPI.update(id, meetingToApi(data));
     return response;
   } catch (error) {
     console.error('Update meeting error:', error);
