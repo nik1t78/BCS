@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
-import { getMeetings, getUsers } from '../store';
+import { getMeetings, getUsers } from '../store-api';
 
 interface DashboardProps {
   user: User;
@@ -15,9 +15,14 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
   const [countdown, setCountdown] = useState('');
 
   useEffect(() => {
-    const loadData = () => {
-      setMeetings(getMeetings());
-      setUsers(getUsers());
+    const loadData = async () => {
+      try {
+        const [m, u] = await Promise.all([getMeetings(), getUsers()]);
+        setMeetings(m);
+        setUsers(u);
+      } catch (error) {
+        console.error('Error loading dashboard:', error);
+      }
     };
     loadData();
     
@@ -30,9 +35,14 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
     };
   }, []);
 
+  // API возвращает id числами, user.id — строка: сравниваем через Number
+  const hasAccessTo = (m: Meeting) =>
+    Number(m.organizerId) === Number(user.id) ||
+    (m.participants ?? []).some((p) => Number(p) === Number(user.id));
+
   const visibleMeetings = (user.role === 'admin' || user.role === 'moderator') 
     ? meetings 
-    : meetings.filter(m => m.participants.includes(user.id) || m.organizerId === user.id);
+    : meetings.filter(hasAccessTo);
 
   useEffect(() => {
     const today = currentTime.toISOString().split('T')[0];
@@ -62,7 +72,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
   }, [currentTime, visibleMeetings]);
 
   const todayMeetings = visibleMeetings.filter(m => m.date === currentTime.toISOString().split('T')[0]);
-  const getUserName = (id: string) => users.find(u => u.id === id)?.name || 'Неизвестный';
+  const getUserName = (id: string) => users.find(u => Number(u.id) === Number(id))?.name || 'Неизвестный';
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -95,7 +105,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
           <p className="text-sm text-gray-500 dark:text-gray-400">Организовано</p>
-          <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{visibleMeetings.filter(m => m.organizerId === user.id).length}</p>
+          <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{visibleMeetings.filter(m => Number(m.organizerId) === Number(user.id)).length}</p>
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
           <p className="text-sm text-gray-500 dark:text-gray-400">Высокий приоритет</p>
@@ -105,9 +115,8 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
 
       {/* Next Meeting */}
       {nextMeeting && (() => {
-        const canSeeDetails = user.role === 'admin' || user.role === 'moderator' || 
-                             nextMeeting.organizerId === user.id || 
-                             nextMeeting.participants.includes(user.id);
+        const canSeeDetails = user.role === 'admin' || user.role === 'moderator' ||
+                             hasAccessTo(nextMeeting);
         
         return (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border-2 border-blue-200 dark:border-blue-800 p-6">
@@ -197,9 +206,8 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
         ) : (
           <div className="space-y-3">
             {todayMeetings.sort((a, b) => a.startTime.localeCompare(b.startTime)).map(meeting => {
-              const canSeeDetails = user.role === 'admin' || user.role === 'moderator' || 
-                                   meeting.organizerId === user.id || 
-                                   meeting.participants.includes(user.id);
+              const canSeeDetails = user.role === 'admin' || user.role === 'moderator' ||
+                                   hasAccessTo(meeting);
               
               return (
                 <div key={meeting.id} className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Notification } from '../types';
-import { getNotifications, markNotificationRead, markAllNotificationsRead, clearAllNotifications } from '../store';
+import { getNotifications, markNotificationRead, markAllNotificationsRead, clearAllNotifications } from '../store-api';
 
 interface NotificationsProps {
   user: User;
@@ -19,26 +19,31 @@ export default function Notifications({ user }: NotificationsProps) {
     return () => clearInterval(timer);
   }, [user.id]);
 
-  const loadNotifications = () => {
+  const loadNotifications = async () => {
     setLoading(true);
-    const allNotifications = getNotifications();
-    setNotifications(allNotifications.filter(n => n.userId === user.id));
-    setLoading(false);
+    try {
+      const allNotifications = await getNotifications();
+      setNotifications((allNotifications as Notification[]).filter(n => String(n.userId) === String(user.id)));
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleMarkRead = (id: string) => {
-    markNotificationRead(id);
+  const handleMarkRead = async (id: string) => {
+    await markNotificationRead(id);
     loadNotifications();
   };
 
-  const handleMarkAllRead = () => {
-    markAllNotificationsRead();
+  const handleMarkAllRead = async () => {
+    await markAllNotificationsRead();
     loadNotifications();
   };
 
-  const handleClearAll = () => {
+  const handleClearAll = async () => {
     if (confirm('Очистить все уведомления?')) {
-      clearAllNotifications();
+      await clearAllNotifications();
       setNotifications([]);
     }
   };
