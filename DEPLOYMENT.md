@@ -55,10 +55,12 @@ docker-compose logs -f backend
 docker-compose logs -f nginx
 ```
 
-### Перезапуск
+### Перезапуск / запуск после выключения света
 ```bash
-docker-compose restart
+docker-compose up -d      # поднять все сервисы (быстрый старт с сохранённой БД)
+docker-compose restart    # перезапуск уже запущенных контейнеров
 ```
+Подробная инструкция — в [RESTART.md](RESTART.md).
 
 ### Остановка
 ```bash
