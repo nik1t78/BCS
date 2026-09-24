@@ -281,17 +281,17 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                             type="button"
                             onClick={() => toggleParticipant(u.id)}
                             className={`w-full text-left px-3 py-2 rounded-lg border transition-colors flex items-center gap-3 ${
-                              formData.participants.includes(u.id)
+                              (formData.participants ?? []).some((id) => String(id) === String(u.id))
                                 ? 'bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700'
                                 : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
                             }`}
                           >
                             <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
-                              formData.participants.includes(u.id)
+                              (formData.participants ?? []).some((id) => String(id) === String(u.id))
                                 ? 'bg-blue-600 border-blue-600'
                                 : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-500'
                             }`}>
-                              {formData.participants.includes(u.id) && (
+                              {(formData.participants ?? []).some((id) => String(id) === String(u.id)) && (
                                 <i className="fas fa-check text-white text-xs"></i>
                               )}
                             </div>

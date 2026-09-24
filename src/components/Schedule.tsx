@@ -19,14 +19,19 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
     loadData();
   }, [user]);
 
+  // API возвращает id числами, user.id — строка: сравниваем через Number
+  const hasAccessTo = (m: Meeting) =>
+    Number(m.organizerId) === Number(user.id) ||
+    (m.participants ?? []).some((p) => Number(p) === Number(user.id));
+
   const loadData = async () => {
     setLoading(true);
     const [allMeetings, users] = await Promise.all([getMeetings(), getUsers()]);
-    
+
     // Модераторы и админы видят все конференции, обычные пользователи - только свои
     const visibleMeetings = (user.role === 'admin' || user.role === 'moderator')
       ? allMeetings
-      : allMeetings.filter(m => m.participants?.includes(user.id) || String(m.organizerId) === String(user.id));
+      : allMeetings.filter(hasAccessTo);
     
     setMeetings(visibleMeetings);
     setAllUsers(users);
@@ -58,7 +63,7 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
   };
 
   const visibleMeetings = meetings.filter(m => {
-    if (filter === 'my') return m.participants.includes(user.id) || m.organizerId === user.id;
+    if (filter === 'my') return hasAccessTo(m);
     if (filter === 'today') return m.date === new Date().toISOString().split('T')[0];
     if (filter === 'upcoming') return m.date >= new Date().toISOString().split('T')[0] && m.status !== 'completed' && m.status !== 'cancelled';
     return true;
@@ -160,8 +165,7 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
           <div className="space-y-3">
             {getMeetingsForDate(selectedDate).sort((a, b) => a.startTime.localeCompare(b.startTime)).map(meeting => {
               const canSeeDetails = user.role === 'admin' || user.role === 'moderator' || 
-                                   meeting.organizerId === user.id || 
-                                   meeting.participants.includes(user.id);
+                                   hasAccessTo(meeting);
               
               return (
                 <div key={meeting.id} className={`border-l-4 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded-r-lg p-4`}>
@@ -210,8 +214,7 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
                 <div key={i} className="min-h-[180px] p-2 border-r border-gray-100 dark:border-gray-700 last:border-r-0 border-b border-gray-100 dark:border-gray-700">
                   {dayMeetings.sort((a, b) => a.startTime.localeCompare(b.startTime)).map(meeting => {
                     const canSeeDetails = user.role === 'admin' || user.role === 'moderator' || 
-                                         meeting.organizerId === user.id || 
-                                         meeting.participants.includes(user.id);
+                                         hasAccessTo(meeting);
                     
                     return (
                       <div key={meeting.id} className={`border-l-2 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded p-1.5 mb-1 text-xs`}>
@@ -243,8 +246,7 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
                   <p className={`text-sm font-medium mb-1 ${isToday ? 'text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-300'}`}>{date.getDate()}</p>
                   {dayMeetings.slice(0, 3).map(meeting => {
                     const canSeeDetails = user.role === 'admin' || user.role === 'moderator' || 
-                                         meeting.organizerId === user.id || 
-                                         meeting.participants.includes(user.id);
+                                         hasAccessTo(meeting);
                     
                     return (
                       <div key={meeting.id} className={`border-l-2 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded px-1 py-0.5 mb-0.5 text-xs`}>
