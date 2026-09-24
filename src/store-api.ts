@@ -111,6 +111,24 @@ export async function getUsers(): Promise<User[]> {
   }
 }
 
+// Справочник пользователей для отображения ФИО (календарь, карточки, выбор
+// участников). Обычные пользователи не имеют доступа к /admin/users (403),
+// поэтому сначала пробуем публичный GET /users, а для админа/модератора
+// используем расширенный список /admin/users.
+export async function getUsersForDisplay(currentRole?: string): Promise<User[]> {
+  if (currentRole === 'admin' || currentRole === 'moderator') {
+    const adminList = await getUsers();
+    if (adminList.length > 0) return adminList;
+  }
+  try {
+    const response = await usersAPI.getPublicList();
+    return unwrapList(response).map(mapUser).filter((u: any) => u && u.id != null && u.name);
+  } catch (error) {
+    console.error('Get public users error:', error);
+    return getUsers();
+  }
+}
+
 // Laravel Paginate::toArray() возвращает { data, current_page, ... } —
 // и для списка пользователей, и для созданной модели (она сериализуется в
 // {"data": {...}}). Достаём первую запись из возможной обёртки пагинации.
@@ -244,6 +262,22 @@ export async function deleteMeeting(id: string): Promise<boolean> {
     console.error('Delete meeting error:', error);
     return false;
   }
+}
+
+// Серверная статистика для админ-панели: сводка по конференциям
+// (/meetings-stats) + сводка по пользователям (/admin/stats, только admin).
+export async function getAdminPanelStats(currentRole?: string): Promise<any> {
+  const requests: Promise<any>[] = [getMeetingStats()];
+  if (currentRole === 'admin') {
+    requests.push(
+      usersAPI.getAdminStats().catch((error) => {
+        console.error('Get admin stats error:', error);
+        return null;
+      })
+    );
+  }
+  const results = await Promise.all(requests);
+  return { ...(results[0] || {}), ...(results[1] || {}) };
 }
 
 export async function getMeetingStats(): Promise<any> {

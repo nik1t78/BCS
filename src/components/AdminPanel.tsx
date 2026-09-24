@@ -1,6 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
-import { getUsers, getMeetings, createUser, updateUser, deleteUser, toggleUserActive, changeUserRole, resetUserPassword, updateMeeting, deleteMeeting, createMeeting } from '../store-api';
+import { authAPI } from '../api/client';
+import { unwrapList, mapMeeting } from '../store-api';
+import { getUsers, getMeetings, getAdminPanelStats, createUser, updateUser, deleteUser, toggleUserActive, changeUserRole, resetUserPassword, updateMeeting, deleteMeeting, createMeeting } from '../store-api';
+
+// Админский список всех конференций: обычный GET /meetings доступён только
+// по роли/приватности и на бэкенде пагинируется (50 записей на страницу).
+// Для вкладки «Конференции» грузим все страницы целиком.
+async function getAllMeetingsForAdmin(): Promise<Meeting[]> {
+  const all: Meeting[] = [];
+  let page = 1;
+  for (;;) {
+    const response = await authAPI.rawGet(`/meetings?per_page=200&page=${page}`);
+    const items = unwrapList(response).map(mapMeeting) as Meeting[];
+    all.push(...items);
+    const lastPage = response?.last_page ?? page;
+    if (items.length === 0 || page >= lastPage) break;
+    page++;
+  }
+  return all;
+}
 
 interface AdminPanelProps {
   user: User;
@@ -20,6 +39,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [apiStats, setApiStats] = useState<any>(null);
 
   const emptyUser: User = {
     id: '', name: '', login: '', password: '', role: 'user',
@@ -42,15 +63,25 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
   const loadData = async () => {
     setLoading(true);
+    setError(null);
     try {
-      const [usersData, meetingsData] = await Promise.all([
+      // getMeetings/getUsers сами не бросают исключение, а возвращают [] при
+      // ошибке запроса — проверяем ответ сервера отдельно, чтобы админка не
+      // выглядела «пустой» без объяснений.
+      const [usersData, meetingsData, statsData] = await Promise.all([
         getUsers(),
-        getMeetings()
+        getAllMeetingsForAdmin().catch(() => getMeetings()),
+        getAdminPanelStats(user.role),
       ]);
+      if (usersData.length === 0 && meetingsData.length === 0 && !statsData) {
+        setError('Не удалось загрузить данные с сервера. Проверьте, что backend запущен и у вашей роли есть доступ к админ-панели.');
+      }
       setUsers(usersData);
       setMeetings(meetingsData);
+      setApiStats(statsData);
     } catch (error) {
       console.error('Error loading data:', error);
+      setError('Ошибка загрузки данных админ-панели');
     } finally {
       setLoading(false);
     }
@@ -71,6 +102,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     }
     
     setUsers(await getUsers());
+    setApiStats(await getAdminPanelStats(user.role));
     setShowUserForm(false);
     setEditingUser(null);
     setUserForm(emptyUser);
@@ -124,6 +156,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       const ok = await deleteUser(id);
       if (!ok) { alert('Не удалось удалить пользователя'); return; }
       setUsers(await getUsers());
+      setApiStats(await getAdminPanelStats(user.role));
     }
   };
 
@@ -136,25 +169,35 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     const ok = await toggleUserActive(id);
     if (!ok) { alert('Не удалось изменить статус пользователя'); return; }
     setUsers(await getUsers());
+    setApiStats(await getAdminPanelStats(user.role));
   };
 
   const handleChangeRole = async (id: string, role: User['role']) => {
     const ok = await changeUserRole(id, role);
     if (!ok) { alert('Не удалось изменить роль (доступно только администраторам)'); return; }
     setUsers(await getUsers());
+    setApiStats(await getAdminPanelStats(user.role));
   };
 
   // Meeting management
   const handleSaveMeeting = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
+    let ok: any;
     if (editingMeeting) {
-      updateMeeting(editingMeeting.id, meetingForm);
+      ok = await updateMeeting(editingMeeting.id, meetingForm);
     } else {
-      createMeeting({ ...meetingForm, organizerId: user.id });
+      ok = await createMeeting({ ...meetingForm, organizerId: user.id });
     }
-    
-    setMeetings(await getMeetings());
+    // createMeeting/updateMeeting возвращают null при ошибке сервера
+    // (например, 422 валидация) — показываем причину вместо «тихого» отказа.
+    if (!ok) {
+      alert('Не удалось сохранить конференцию. Проверьте обязательные поля: название, дата, время начала раньше времени окончания, приоритет, напоминание (5–1440 мин).');
+      return;
+    }
+
+    setMeetings(await getAllMeetingsForAdmin().catch(() => getMeetings()));
+    setApiStats(await getAdminPanelStats(user.role));
     setShowMeetingForm(false);
     setEditingMeeting(null);
     setMeetingForm(emptyMeeting);
@@ -168,8 +211,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
   const handleDeleteMeeting = async (id: string) => {
     if (confirm('Удалить конференцию?')) {
-      await deleteMeeting(id);
-      setMeetings(await getMeetings());
+      const ok = await deleteMeeting(id);
+      if (!ok) { alert('Не удалось удалить конференцию (доступно только организатору или администратору)'); return; }
+      setMeetings(await getAllMeetingsForAdmin().catch(() => getMeetings()));
+      setApiStats(await getAdminPanelStats(user.role));
     }
   };
 
@@ -177,7 +222,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     const meeting = meetings.find(m => m.id === id);
     if (meeting) {
       await updateMeeting(id, { status });
-      setMeetings(await getMeetings());
+      setMeetings(await getAllMeetingsForAdmin().catch(() => getMeetings()));
     }
   };
 
@@ -194,15 +239,18 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     (m.room || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Базовые цифры считаем из загруженных списков; если сервер вернул
+  // агрегированную статистику (/meetings-stats, /admin/stats) — берём её,
+  // т.к. она учитывает все записи на бэкенде, а не только первую страницу.
   const stats = {
-    totalUsers: users.length,
-    activeUsers: users.filter(u => u.isActive).length,
-    admins: users.filter(u => u.role === 'admin').length,
-    totalMeetings: meetings.length,
-    scheduled: meetings.filter(m => m.status === 'scheduled').length,
-    completed: meetings.filter(m => m.status === 'completed').length,
-    cancelled: meetings.filter(m => m.status === 'cancelled').length,
-    thisWeek: meetings.filter(m => {
+    totalUsers: apiStats?.total_users ?? users.length,
+    activeUsers: apiStats?.active_users ?? users.filter(u => u.isActive).length,
+    admins: apiStats?.admins ?? users.filter(u => u.role === 'admin').length,
+    totalMeetings: apiStats?.total ?? meetings.length,
+    scheduled: apiStats?.scheduled ?? meetings.filter(m => m.status === 'scheduled').length,
+    completed: apiStats?.completed ?? meetings.filter(m => m.status === 'completed').length,
+    cancelled: apiStats?.cancelled ?? meetings.filter(m => m.status === 'cancelled').length,
+    thisWeek: apiStats?.this_week ?? meetings.filter(m => {
       const now = new Date(); const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay() + 1);
       const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
       const mDate = new Date(m.date); return mDate >= weekStart && mDate <= weekEnd;
@@ -230,6 +278,18 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
   return (
     <div className="space-y-6">
+      {error && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 flex items-start gap-3">
+          <i className="fas fa-exclamation-triangle text-red-500 mt-0.5"></i>
+          <div className="flex-1">
+            <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+          </div>
+          <button onClick={loadData} className="text-sm px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700">
+            <i className="fas fa-sync-alt mr-1"></i>Повторить
+          </button>
+        </div>
+      )}
+
       {/* Admin Header */}
       <div className="bg-gradient-to-r from-gray-800 to-gray-900 rounded-xl p-6 text-white shadow-lg">
         <div className="flex items-center gap-3">

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
-import { getMeetings, getUsers } from '../store-api';
+import { getMeetings, getUsersForDisplay } from '../store-api';
 
 interface StatsProps {
   user: User;
@@ -20,7 +20,7 @@ export default function Stats({ user }: StatsProps) {
     try {
       const [allMeetings, allUsers] = await Promise.all([
         getMeetings(),
-        getUsers()
+        getUsersForDisplay(user.role)
       ]);
       
       // Модераторы и админы видят все конференции, обычные пользователи - только свои
