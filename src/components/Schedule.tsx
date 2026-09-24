@@ -7,6 +7,9 @@ interface ScheduleProps {
   onNavigate: (page: string) => void;
 }
 
+const toDateKey = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 export default function Schedule({ user, onNavigate }: ScheduleProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
@@ -64,13 +67,13 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
 
   const visibleMeetings = meetings.filter(m => {
     if (filter === 'my') return hasAccessTo(m);
-    if (filter === 'today') return m.date === new Date().toISOString().split('T')[0];
-    if (filter === 'upcoming') return m.date >= new Date().toISOString().split('T')[0] && m.status !== 'completed' && m.status !== 'cancelled';
+    if (filter === 'today') return m.date === toDateKey(new Date());
+    if (filter === 'upcoming') return m.date >= toDateKey(new Date()) && m.status !== 'completed' && m.status !== 'cancelled';
     return true;
   });
 
   const getMeetingsForDate = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toDateKey(date);
     return visibleMeetings.filter(m => m.date === dateStr);
   };
 
@@ -201,7 +204,7 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
             {weekDays.map((day, i) => (
               <div key={i} className="p-3 text-center border-r border-gray-100 dark:border-gray-700 last:border-r-0">
                 <p className="text-xs text-gray-500 dark:text-gray-400 uppercase">{day}</p>
-                <p className={`text-lg font-bold ${getWeekDates(selectedDate)[i].toISOString().split('T')[0] === new Date().toISOString().split('T')[0] ? 'text-blue-600 dark:text-blue-400' : 'text-gray-800 dark:text-gray-100'}`}>
+                <p className={`text-lg font-bold ${toDateKey(getWeekDates(selectedDate)[i]) === toDateKey(new Date()) ? 'text-blue-600 dark:text-blue-400' : 'text-gray-800 dark:text-gray-100'}`}>
                   {getWeekDates(selectedDate)[i].getDate()}
                 </p>
               </div>
@@ -240,7 +243,7 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
           <div className="grid grid-cols-7">
             {getMonthDates(selectedDate).map((date, i) => {
               const dayMeetings = getMeetingsForDate(date);
-              const isToday = date.toISOString().split('T')[0] === new Date().toISOString().split('T')[0];
+              const isToday = toDateKey(date) === toDateKey(new Date());
               return (
                 <div key={i} className={`min-h-[90px] p-1.5 border-r border-gray-100 dark:border-gray-700 last:border-r-0 border-b border-gray-100 dark:border-gray-700 ${isToday ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
                   <p className={`text-sm font-medium mb-1 ${isToday ? 'text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-300'}`}>{date.getDate()}</p>

@@ -7,6 +7,9 @@ interface DashboardProps {
   onNavigate: (page: string) => void;
 }
 
+const toDateKey = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 export default function Dashboard({ user, onNavigate }: DashboardProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -45,7 +48,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
     : meetings.filter(hasAccessTo);
 
   useEffect(() => {
-    const today = currentTime.toISOString().split('T')[0];
+    const today = toDateKey(currentTime);
     const now = currentTime.toTimeString().slice(0, 5);
     
     const upcoming = visibleMeetings
@@ -71,7 +74,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
     }
   }, [currentTime, visibleMeetings]);
 
-  const todayMeetings = visibleMeetings.filter(m => m.date === currentTime.toISOString().split('T')[0]);
+  const todayMeetings = visibleMeetings.filter(m => m.date === toDateKey(currentTime));
   const getUserName = (id: string) => users.find(u => Number(u.id) === Number(id))?.name || 'Неизвестный';
 
   const getPriorityColor = (priority: string) => {

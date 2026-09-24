@@ -102,17 +102,42 @@ export function unwrapList(response: any): any[] {
 export async function getUsers(): Promise<User[]> {
   try {
     const response = await usersAPI.getAll();
-    return unwrapList(response).map(mapUser);
+    // Фильтруем записи без имени/логина — защита от «пустых» карточек,
+    // которые могли попасть в state из устаревших моков localStorage.
+    return unwrapList(response).map(mapUser).filter((u: any) => u && u.id != null && u.name && u.login);
   } catch (error) {
     console.error('Get users error:', error);
     return [];
   }
 }
 
+// Laravel Paginate::toArray() возвращает { data, current_page, ... } —
+// и для списка пользователей, и для созданной модели (она сериализуется в
+// {"data": {...}}). Достаём первую запись из возможной обёртки пагинации.
+function unwrapOne(response: any): any {
+  if (response && typeof response === 'object' && !Array.isArray(response) &&
+      Array.isArray((response as any).data)) {
+    return (response as any).data[0] ?? null;
+  }
+  return response;
+}
+
 export async function createUser(data: any): Promise<User | null> {
   try {
-    const response = await usersAPI.create(data);
-    return response;
+    // Бэкенд принимает только поля модели (snake_case); лишние поля
+    // (createdAt, isActive и т.п.) раньше ломали создание пользователя.
+    const payload: any = {
+      name: data.name,
+      login: data.login,
+      password: data.password,
+      role: data.role || 'user',
+    };
+    if (data.phone) payload.phone = data.phone;
+    if (data.department) payload.department = data.department;
+    if (data.position) payload.position = data.position;
+    if (typeof data.isActive === 'boolean') payload.is_active = data.isActive;
+    const response = await usersAPI.create(payload);
+    return mapUser(unwrapOne(response));
   } catch (error) {
     console.error('Create user error:', error);
     return null;
@@ -121,8 +146,17 @@ export async function createUser(data: any): Promise<User | null> {
 
 export async function updateUser(id: string, data: any): Promise<User | null> {
   try {
-    const response = await usersAPI.update(id, data);
-    return response;
+    // PUT /admin/users/{id} принимает только name/login/phone/department/position.
+    // Отправляем userToApi(data) без id/createdAt/password/is_active — иначе
+    // Laravel валидация отбивалась (422) и админка «не работала».
+    const payload = userToApi(data);
+    delete payload.password;
+    delete payload.is_active;
+    delete payload.avatar;
+    delete payload.role;
+    delete payload.last_login;
+    const response = await usersAPI.update(id, payload);
+    return mapUser(unwrapOne(response));
   } catch (error) {
     console.error('Update user error:', error);
     return null;
@@ -182,8 +216,10 @@ export async function getMeetings(params?: { status?: string; date?: string; my?
 
 export async function createMeeting(data: any): Promise<Meeting | null> {
   try {
+    // Бэкенд ждёт обязательные поля (priority, reminder_minutes, recurring и
+    // формат времени H:i). Отправляем только валидные поля в snake_case.
     const response = await meetingsAPI.create(meetingToApi(data));
-    return response;
+    return mapMeeting(unwrapOne(response));
   } catch (error) {
     console.error('Create meeting error:', error);
     return null;
@@ -193,7 +229,7 @@ export async function createMeeting(data: any): Promise<Meeting | null> {
 export async function updateMeeting(id: string, data: any): Promise<Meeting | null> {
   try {
     const response = await meetingsAPI.update(id, meetingToApi(data));
-    return response;
+    return mapMeeting(unwrapOne(response));
   } catch (error) {
     console.error('Update meeting error:', error);
     return null;
