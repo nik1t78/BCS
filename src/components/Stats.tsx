@@ -24,9 +24,10 @@ export default function Stats({ user }: StatsProps) {
       ]);
       
       // Модераторы и админы видят все конференции, обычные пользователи - только свои
+      const hasAccess = (m: Meeting) => Number(m.organizerId) === Number(user.id) || (m.participants ?? []).some((pp) => Number(pp) === Number(user.id));
       const visibleMeetings = (user.role === 'admin' || user.role === 'moderator')
         ? allMeetings
-        : allMeetings.filter(m => m.participants.includes(user.id) || m.organizerId === user.id);
+        : allMeetings.filter(hasAccess);
       
       setMeetings(visibleMeetings);
       setUsers(allUsers);
@@ -53,8 +54,8 @@ export default function Stats({ user }: StatsProps) {
       return mDate >= weekStart && mDate <= weekEnd;
     }).length,
     highPriority: meetings.filter(m => m.priority === 'high').length,
-    organized: meetings.filter(m => m.organizerId === user.id).length,
-    participating: meetings.filter(m => m.participants.includes(user.id)).length,
+    organized: meetings.filter(m => Number(m.organizerId) === Number(user.id)).length,
+    participating: meetings.filter(m => (m.participants ?? []).some((pp) => Number(pp) === Number(user.id))).length,
   };
 
   const statCards = [
