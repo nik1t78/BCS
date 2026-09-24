@@ -21,18 +21,14 @@ COPY index.html ./
 COPY vite.config.js ./
 COPY tsconfig.json ./
 
-# Сборка приложения
+# Сборка приложения (результат — в /app/dist)
 RUN npm run build
 
-# Финальный образ с nginx
-FROM nginx:alpine
+# Финальный этап-экспортёр. Собранные файлы лежат в /export внутри образа.
+# При старте контейнера они копируются в /mnt/dist — точку монтирования
+# volume frontend_build (см. docker-compose.yml), тем самым наполняя его.
+FROM alpine:3.20
 
-# Копирование собранного приложения
-COPY --from=builder /app/dist /var/www/frontend
+COPY --from=builder /app/dist/ /export/
 
-# Копирование конфигурации nginx для SPA
-COPY docker/nginx/default.conf /etc/nginx/conf.d/default.conf
-
-EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["sh", "-c", "cp -a /export/. /mnt/dist/ && echo frontend_build populated"]
