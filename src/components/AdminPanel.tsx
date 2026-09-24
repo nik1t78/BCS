@@ -28,7 +28,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [userForm, setUserForm] = useState<User>(emptyUser);
 
   const emptyMeeting: Meeting = {
-    id: '', title: '', description: '', date: new Date().toISOString().split('T')[0],
+    id: '', title: '', description: '',
+    date: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`,
     startTime: '10:00', endTime: '11:00', organizerId: user.id, participants: [],
     participantEmails: [], link: '', room: '', status: 'scheduled', reminderMinutes: 15,
     recurring: 'none', priority: 'medium', createdAt: new Date().toISOString(), isPrivate: false,
@@ -88,7 +89,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     setShowPasswordModal(true);
   };
 
-  const handleResetPassword = () => {
+  const handleResetPassword = async () => {
     if (!passwordUserId) return;
     
     if (newPassword.length < 6) {
@@ -101,7 +102,11 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       return;
     }
     
-    resetUserPassword(passwordUserId, newPassword);
+    const ok = await resetUserPassword(passwordUserId, newPassword);
+    if (!ok) {
+      alert('Не удалось изменить пароль (доступно только администраторам)');
+      return;
+    }
     setShowPasswordModal(false);
     setPasswordUserId(null);
     setNewPassword('');
@@ -116,7 +121,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     }
     
     if (confirm('Удалить пользователя?')) {
-      deleteUser(id);
+      const ok = await deleteUser(id);
+      if (!ok) { alert('Не удалось удалить пользователя'); return; }
       setUsers(await getUsers());
     }
   };
@@ -127,12 +133,14 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       return; 
     }
     
-    toggleUserActive(id);
+    const ok = await toggleUserActive(id);
+    if (!ok) { alert('Не удалось изменить статус пользователя'); return; }
     setUsers(await getUsers());
   };
 
   const handleChangeRole = async (id: string, role: User['role']) => {
-    changeUserRole(id, role);
+    const ok = await changeUserRole(id, role);
+    if (!ok) { alert('Не удалось изменить роль (доступно только администраторам)'); return; }
     setUsers(await getUsers());
   };
 
@@ -173,7 +181,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     }
   };
 
-  const getUserName = (id: string) => users.find(u => u.id === id)?.name || '—';
+  const getUserName = (id: string) => users.find(u => Number(u.id) === Number(id))?.name || '—';
 
   const filteredUsers = users.filter(u =>
     u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -409,7 +417,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
               <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                 <p className="text-sm text-yellow-700 dark:text-yellow-300">
                   <i className="fas fa-info-circle mr-1"></i>
-                  Пользователь: <strong>{users.find(u => u.id === passwordUserId)?.name}</strong>
+                  Пользователь: <strong>{users.find(u => Number(u.id) === Number(passwordUserId))?.name}</strong>
                 </p>
               </div>
 
