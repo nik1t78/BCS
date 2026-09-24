@@ -40,6 +40,23 @@ class UserController extends Controller
     }
 
     /**
+     * Публичный справочник пользователей (для любого авторизованного).
+     * Нужен календарю, карточкам конференций и выбору участников, чтобы
+     * показывать ФИО организатора/участников. Возвращает только безопасные
+     * поля (id, name, login, department, position, isActive).
+     */
+    public function publicList(Request $request)
+    {
+        return response()->json(
+            User::query()
+                ->select('id', 'name', 'login', 'department', 'position', 'is_active')
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get()
+        );
+    }
+
+    /**
      * Создание пользователя (admin)
      */
     public function store(Request $request)

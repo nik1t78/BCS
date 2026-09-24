@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
-import { getMeetings, createMeeting, updateMeeting, deleteMeeting, getUsers } from '../store-api';
+import { getMeetings, createMeeting, updateMeeting, deleteMeeting, getUsersForDisplay } from '../store-api';
 import TagsSelector from './TagsSelector';
 
 interface UserPanelProps {
@@ -44,7 +44,7 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
 
   const loadData = async () => {
     setLoading(true);
-    const [allMeetings, allUsers] = await Promise.all([getMeetings(), getUsers()]);
+    const [allMeetings, allUsers] = await Promise.all([getMeetings(), getUsersForDisplay(user.role)]);
     
     // Модераторы и админы видят все конференции, обычные пользователи - тоже все
     // (но могут редактировать только свои)

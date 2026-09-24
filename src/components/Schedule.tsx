@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
-import { getMeetings, getUsers } from '../store-api';
+import { getMeetings, getUsersForDisplay } from '../store-api';
 
 interface ScheduleProps {
   user: User;
@@ -29,7 +29,7 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
 
   const loadData = async () => {
     setLoading(true);
-    const [allMeetings, users] = await Promise.all([getMeetings(), getUsers()]);
+    const [allMeetings, users] = await Promise.all([getMeetings(), getUsersForDisplay(user.role)]);
 
     // Модераторы и админы видят все конференции, обычные пользователи - только свои
     const visibleMeetings = (user.role === 'admin' || user.role === 'moderator')
@@ -86,7 +86,7 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
     }
   };
 
-  const getUserName = (id: string) => allUsers.find(u => u.id === id)?.name || '—';
+  const getUserName = (id: string) => allUsers.find(u => Number(u.id) === Number(id))?.name || '—';
 
   const weekDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
   const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];

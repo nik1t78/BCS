@@ -73,10 +73,20 @@ export const authAPI = {
 
   getUser: () =>
     apiRequest('/auth/user'),
+
+  // Любой GET-эндпоинт API с авторизацией (используется админ-панелью для
+  // постраничной загрузки полных списков).
+  rawGet: (endpoint: string) =>
+    apiRequest(endpoint),
 };
 
 // USERS API
 export const usersAPI = {
+  // Публичный справочник пользователей (ФИО участников для календаря/карточек).
+  // Доступен любому авторизованному пользователю — не требует прав админа.
+  getPublicList: () =>
+    apiRequest('/users'),
+
   getAll: () =>
     apiRequest('/admin/users'),
 
@@ -107,6 +117,9 @@ export const usersAPI = {
     apiRequest(`/admin/users/${id}/toggle-active`, {
       method: 'PUT',
     }),
+
+  getAdminStats: () =>
+    apiRequest('/admin/stats'),
 
   resetPassword: (id: string, password: string) =>
     apiRequest(`/admin/users/${id}/reset-password`, {

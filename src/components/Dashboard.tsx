@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
-import { getMeetings, getUsers } from '../store-api';
+import { getMeetings, getUsersForDisplay } from '../store-api';
 
 interface DashboardProps {
   user: User;
@@ -20,7 +20,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [m, u] = await Promise.all([getMeetings(), getUsers()]);
+        const [m, u] = await Promise.all([getMeetings(), getUsersForDisplay(user.role)]);
         setMeetings(m);
         setUsers(u);
       } catch (error) {

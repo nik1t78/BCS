@@ -34,6 +34,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/profile', [UserController::class, 'updateProfile']);
     Route::post('/profile/change-password', [UserController::class, 'changePassword']);
 
+    // Публичный справочник пользователей (ФИО для календаря/карточек) —
+    // доступен любому авторизованному, права админа не требуются
+    Route::get('/users', [UserController::class, 'publicList']);
+
     // Meetings
     Route::apiResource('meetings', MeetingController::class);
     Route::get('/meetings-stats', [MeetingController::class, 'getStats']);
