@@ -1,6 +1,9 @@
 // API клиент для работы с Laravel backend
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+// По умолчанию API доступен на том же origin через nginx (location /api/ -> Laravel),
+// поэтому относительный путь '/api' работает и в docker, и без настройки CORS.
+// Переопределить можно переменной окружения VITE_API_URL при сборке.
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 // Получение токена из localStorage
 const getToken = (): string | null => {
