@@ -17,7 +17,9 @@ class VksDatabaseSeeder extends Seeder
         $admin = User::create([
             'name' => 'Администратор Системы',
             'login' => 'admin',
-            'password' => Hash::make('admin123'),
+            // Модель User имеет каст 'password' => 'hashed', поэтому передаём
+            // пароль как есть — иначе происходит двойное хеширование и вход ломается.
+            'password' => 'admin123',
             'role' => 'admin',
             'phone' => '+7 (999) 000-00-01',
             'department' => 'IT',
@@ -28,7 +30,7 @@ class VksDatabaseSeeder extends Seeder
         $user1 = User::create([
             'name' => 'Иванов Алексей Сергеевич',
             'login' => 'ivanov',
-            'password' => Hash::make('user123'),
+            'password' => 'user123',
             'role' => 'user',
             'phone' => '+7 (999) 111-22-33',
             'department' => 'Разработка',
@@ -39,7 +41,7 @@ class VksDatabaseSeeder extends Seeder
         $user2 = User::create([
             'name' => 'Петрова Мария Владимировна',
             'login' => 'petrova',
-            'password' => Hash::make('user123'),
+            'password' => 'user123',
             'role' => 'user',
             'phone' => '+7 (999) 222-33-44',
             'department' => 'Менеджмент',
@@ -50,7 +52,7 @@ class VksDatabaseSeeder extends Seeder
         $moderator = User::create([
             'name' => 'Сидоров Константин Львович',
             'login' => 'sidorov',
-            'password' => Hash::make('mod123'),
+            'password' => 'mod123',
             'role' => 'moderator',
             'phone' => '+7 (999) 333-44-55',
             'department' => 'HR',
