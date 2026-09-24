@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
-import { getMeetings, createMeeting, updateMeeting, deleteMeeting, getUsers } from '../store';
-import { generateId } from '../store';
+import { getMeetings, createMeeting, updateMeeting, deleteMeeting, getUsers } from '../store-api';
 import TagsSelector from './TagsSelector';
 
 interface UserPanelProps {
@@ -43,10 +42,9 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
     loadData();
   }, [user.id, showForm]);
 
-  const loadData = () => {
+  const loadData = async () => {
     setLoading(true);
-    const allMeetings = getMeetings();
-    const allUsers = getUsers();
+    const [allMeetings, allUsers] = await Promise.all([getMeetings(), getUsers()]);
     
     // Модераторы и админы видят все конференции, обычные пользователи - тоже все
     // (но могут редактировать только свои)
@@ -56,12 +54,12 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
   };
 
   const filteredMeetings = meetings.filter(m => {
-    if (filter === 'organized') return m.organizerId === user.id;
-    if (filter === 'participating') return m.participants.includes(user.id) && m.organizerId !== user.id;
+    if (filter === 'organized') return isOrganizer(m);
+    if (filter === 'participating') return isParticipant(m) && !isOrganizer(m);
     return true;
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title || !formData.date || !formData.startTime || !formData.endTime) {
       alert('Заполните все обязательные поля');
@@ -69,9 +67,9 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
     }
 
     if (editingMeeting) {
-      updateMeeting(editingMeeting.id, formData);
+      await updateMeeting(editingMeeting.id, formData);
     } else {
-      createMeeting(formData);
+      await createMeeting(formData);
     }
 
     loadData();
@@ -86,12 +84,17 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
     setShowForm(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Удалить конференцию?')) {
-      deleteMeeting(id);
+      await deleteMeeting(id);
       loadData();
     }
   };
+
+  // ID из API приходят числами, а user.id — строка; сравниваем через Number,
+  // иначе фильтры «Организованные/Участие» и кнопки редактирования не срабатывают
+  const isOrganizer = (m: Meeting) => Number(m.organizerId) === Number(user.id);
+  const isParticipant = (m: Meeting) => (m.participants ?? []).some((p) => Number(p) === Number(user.id));
 
   const toggleParticipant = (userId: string) => {
     const participants = formData.participants.includes(userId)
@@ -100,7 +103,7 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
     setFormData({ ...formData, participants });
   };
 
-  const getUserName = (id: string) => users.find(u => u.id === id)?.name || 'Неизвестный';
+  const getUserName = (id: string) => users.find(u => Number(u.id) === Number(id))?.name || 'Неизвестный';
 
   if (loading) {
     return (
@@ -396,7 +399,7 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                     <i className="fas fa-video mr-1"></i>Войти
                   </a>
                 )}
-                {meeting.organizerId === user.id && (
+                {isOrganizer(meeting) && (
                   <>
                     <button
                       onClick={() => handleEdit(meeting)}

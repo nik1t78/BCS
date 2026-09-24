@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User } from '../types';
-import { updateProfile, changePassword } from '../store';
+import { updateProfile, changePassword } from '../store-api';
 
 interface ProfileProps {
   user: User;
@@ -24,8 +24,8 @@ export default function Profile({ user, onUpdate }: ProfileProps) {
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
 
-  const handleSave = () => {
-    const updatedUser = updateProfile({
+  const handleSave = async () => {
+    const updatedUser = await updateProfile({
       name: formData.name,
       phone: formData.phone,
       department: formData.department,
@@ -39,7 +39,7 @@ export default function Profile({ user, onUpdate }: ProfileProps) {
     }
   };
 
-  const handleChangePassword = (e: React.FormEvent) => {
+  const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordError('');
     setPasswordSuccess('');
@@ -54,7 +54,7 @@ export default function Profile({ user, onUpdate }: ProfileProps) {
       return;
     }
 
-    const success = changePassword(passwordData.currentPassword, passwordData.newPassword);
+    const success = await changePassword(passwordData.currentPassword, passwordData.newPassword);
     
     if (success) {
       setPasswordSuccess('Пароль успешно изменён');

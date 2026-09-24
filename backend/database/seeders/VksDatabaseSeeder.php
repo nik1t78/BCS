@@ -13,11 +13,14 @@ class VksDatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        // Создание пользователей
-        $admin = User::create([
+        // Идемпотентный сид: при повторном запуске существующие пользователи
+        // обновляются (в т.ч. перезаписывается корректным хэшем пароля),
+        // а не вызывают ошибку уникальности login.
+        // Модель User имеет каст 'password' => 'hashed', поэтому передаём
+        // пароль как есть — иначе происходит двойное хеширование и вход ломается.
+        $admin = User::updateOrCreate(['login' => 'admin'], [
             'name' => 'Администратор Системы',
-            'login' => 'admin',
-            'password' => Hash::make('admin123'),
+            'password' => 'admin123',
             'role' => 'admin',
             'phone' => '+7 (999) 000-00-01',
             'department' => 'IT',
@@ -25,10 +28,9 @@ class VksDatabaseSeeder extends Seeder
             'is_active' => true,
         ]);
 
-        $user1 = User::create([
+        $user1 = User::updateOrCreate(['login' => 'ivanov'], [
             'name' => 'Иванов Алексей Сергеевич',
-            'login' => 'ivanov',
-            'password' => Hash::make('user123'),
+            'password' => 'user123',
             'role' => 'user',
             'phone' => '+7 (999) 111-22-33',
             'department' => 'Разработка',
@@ -36,10 +38,9 @@ class VksDatabaseSeeder extends Seeder
             'is_active' => true,
         ]);
 
-        $user2 = User::create([
+        $user2 = User::updateOrCreate(['login' => 'petrova'], [
             'name' => 'Петрова Мария Владимировна',
-            'login' => 'petrova',
-            'password' => Hash::make('user123'),
+            'password' => 'user123',
             'role' => 'user',
             'phone' => '+7 (999) 222-33-44',
             'department' => 'Менеджмент',
@@ -47,10 +48,9 @@ class VksDatabaseSeeder extends Seeder
             'is_active' => true,
         ]);
 
-        $moderator = User::create([
+        $moderator = User::updateOrCreate(['login' => 'sidorov'], [
             'name' => 'Сидоров Константин Львович',
-            'login' => 'sidorov',
-            'password' => Hash::make('mod123'),
+            'password' => 'mod123',
             'role' => 'moderator',
             'phone' => '+7 (999) 333-44-55',
             'department' => 'HR',

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
-import { getMeetings, getUsers } from '../store';
+import { getMeetings, getUsers } from '../store-api';
 
 interface StatsProps {
   user: User;

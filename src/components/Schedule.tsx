@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
-import { getMeetings, getUsers } from '../store';
+import { getMeetings, getUsers } from '../store-api';
 
 interface ScheduleProps {
   user: User;
@@ -19,15 +19,14 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
     loadData();
   }, [user]);
 
-  const loadData = () => {
+  const loadData = async () => {
     setLoading(true);
-    const allMeetings = getMeetings();
-    const users = getUsers();
+    const [allMeetings, users] = await Promise.all([getMeetings(), getUsers()]);
     
     // Модераторы и админы видят все конференции, обычные пользователи - только свои
     const visibleMeetings = (user.role === 'admin' || user.role === 'moderator')
       ? allMeetings
-      : allMeetings.filter(m => m.participants.includes(user.id) || m.organizerId === user.id);
+      : allMeetings.filter(m => m.participants?.includes(user.id) || String(m.organizerId) === String(user.id));
     
     setMeetings(visibleMeetings);
     setAllUsers(users);
