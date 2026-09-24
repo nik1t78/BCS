@@ -59,7 +59,7 @@ class UserController extends Controller
             'is_active' => 'boolean',
         ]);
 
-        $validated['password'] = Hash::make($validated['password']);
+        // Каст 'password' => 'hashed' в модели сам выполнит хеширование
         $user = User::create($validated);
 
         return response()->json($user, 201);
@@ -140,7 +140,8 @@ class UserController extends Controller
             return response()->json(['message' => 'Неверный текущий пароль'], 422);
         }
 
-        $user->update(['password' => Hash::make($request->password)]);
+        // Каст 'password' => 'hashed' в модели сам выполнит хеширование
+        $user->update(['password' => $request->password]);
 
         return response()->json(['message' => 'Пароль изменён']);
     }

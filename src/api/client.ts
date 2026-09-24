@@ -32,8 +32,17 @@ const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Ошибка запроса');
+      const error = await response.json().catch(() => ({} as any));
+      // Laravel при валидации (422) возвращает { message, errors: { field: [msgs] } },
+      // а не поле "message" с текстом ошибки — достаём текст из errors
+      let message = error.message;
+      if (!message && error.errors) {
+        const firstMessages = Object.values(error.errors).flat() as string[];
+        if (firstMessages.length > 0) {
+          message = firstMessages.join('; ');
+        }
+      }
+      throw new Error(message || 'Ошибка запроса');
     }
 
     return await response.json();

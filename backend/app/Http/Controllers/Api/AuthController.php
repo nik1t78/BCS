@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\Rules;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -19,15 +18,20 @@ class AuthController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'login' => 'required|string|max:255|unique:users',
-            'password' => ['required', 'confirmed', Rules\Password::defaults()],
+            // Регистрируемся без поля подтверждения (пароль отправляется один раз),
+            // требования к паролю совпадают с фронтендом: минимум 6 символов.
+            'password' => ['required', 'string', 'min:6'],
             'phone' => 'nullable|string|max:20',
             'department' => 'nullable|string|max:255',
         ]);
 
+        // В модели User включён каст 'password' => 'hashed', поэтому передаём
+        // пароль как есть: двойное хеширование (Hash::make поверх зашифрованного
+        // значения) ломало проверку пароля при входе.
         $user = User::create([
             'name' => $request->name,
             'login' => $request->login,
-            'password' => Hash::make($request->password),
+            'password' => $request->password,
             'phone' => $request->phone,
             'department' => $request->department,
             'role' => 'user',

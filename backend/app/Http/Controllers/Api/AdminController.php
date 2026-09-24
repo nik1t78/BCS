@@ -29,17 +29,19 @@ class AdminController extends Controller
 
         $user = User::findOrFail($id);
 
+        // 'confirmed' требует поле password_confirmation, которого клиент не отправляет.
+        // Пароль задаёт админ, поэтому достаточно min:6.
         $request->validate([
             'password' => [
                 'required',
                 'string',
                 'min:6',
-                'confirmed',
             ],
         ]);
 
+        // Каст 'password' => 'hashed' в модели сам выполнит хеширование
         $user->update([
-            'password' => Hash::make($request->password),
+            'password' => $request->password,
         ]);
 
         // Логируем действие
@@ -85,6 +87,8 @@ class AdminController extends Controller
             ], 422);
         }
 
+        // Массовое обновление через query builder не проходит через касты модели,
+        // поэтому хешируем явно
         $hashedPassword = Hash::make($request->password);
         $updatedCount = User::whereIn('id', $userIds)->update(['password' => $hashedPassword]);
 
@@ -117,8 +121,9 @@ class AdminController extends Controller
         // Генерируем случайный пароль
         $tempPassword = bin2hex(random_bytes(6)); // 12 символов
 
+        // Каст 'password' => 'hashed' в модели сам выполнит хеширование
         $user->update([
-            'password' => Hash::make($tempPassword),
+            'password' => $tempPassword,
         ]);
 
         // Логируем действие
