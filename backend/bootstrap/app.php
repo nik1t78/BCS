@@ -12,7 +12,16 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        $middleware->statefulApi();
+        // Доверяем заголовкам X-Forwarded-* от nginx (иначе Laravel не
+        // распознаёт запрос как AJAX/api и включает CSRF-валидацию web-группы)
+        $middleware->trustProxies(at: '*');
+
+        // API работает по bearer-токенам Sanctum — CSRF для него не нужен.
+        // Исключаем /api из проверки токенов (решает ошибку 419).
+        $middleware->validateCsrfTokens(except: [
+            'api/*',
+            'sanctum/csrf-cookie',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
