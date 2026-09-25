@@ -78,6 +78,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
+  // Модальное окно просмотра конференции (как в «Мои конференции»)
+  const [viewMeeting, setViewMeeting] = useState<Meeting | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [apiStats, setApiStats] = useState<any>(null);
@@ -629,6 +631,79 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             </div>
           )}
 
+          {/* Просмотр конференции — как в «Мои конференции»: полные детали, вход по ссылке ВКС, редактирование */}
+          {viewMeeting && (() => {
+            const vm = viewMeeting;
+            return (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setViewMeeting(null)}>
+                <div
+                  className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="p-6">
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                      <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">{vm.title}</h2>
+                      <button onClick={() => setViewMeeting(null)} className="text-gray-400 hover:text-gray-600">
+                        <i className="fas fa-times text-xl"></i>
+                      </button>
+                    </div>
+                    <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+                      <p>
+                        <i className="far fa-calendar mr-2 text-blue-500"></i>
+                        {new Date(vm.date).toLocaleDateString('ru-RU')}
+                        <span className="mx-2">•</span>
+                        <i className="far fa-clock mr-2 text-blue-500"></i>
+                        {vm.startTime} - {vm.endTime}
+                      </p>
+                      {vm.room && (
+                        <p><i className="fas fa-map-marker-alt mr-2 text-blue-500"></i>{vm.room}</p>
+                      )}
+                      <p>
+                        <i className="fas fa-user mr-2 text-blue-500"></i>
+                        Организатор: {getUserName(vm.organizerId)}
+                      </p>
+                      <p>
+                        <i className="fas fa-users mr-2 text-blue-500"></i>
+                        Участники ({(vm.participants ?? []).length}):{' '}
+                        {(vm.participants ?? []).map(p => getUserName(p)).join(', ') || 'нет'}
+                      </p>
+                      {vm.recurring !== 'none' && (
+                        <p>
+                          <i className="fas fa-sync-alt mr-2 text-blue-500"></i>
+                          {vm.recurring === 'daily' ? 'Ежедневно' : vm.recurring === 'weekly' ? 'Еженедельно' : 'Ежемесячно'}
+                          {vm.repeatUntil ? ` до ${new Date(vm.repeatUntil).toLocaleDateString('ru-RU')}` : ''}
+                        </p>
+                      )}
+                      {vm.description && (
+                        <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg whitespace-pre-line">
+                          {vm.description}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex justify-end gap-3 pt-4 mt-4 border-t dark:border-gray-700">
+                      <button
+                        onClick={() => { setViewMeeting(null); handleEditMeeting(vm); }}
+                        className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                      >
+                        <i className="fas fa-edit mr-1"></i>Редактировать
+                      </button>
+                      {vm.link && (
+                        <a
+                          href={vm.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                          <i className="fas fa-video mr-1"></i>Войти в конференцию
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Meetings Table */}
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
@@ -647,7 +722,13 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   {filteredMeetings.map(m => (
                     <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                       <td className="px-4 py-3">
-                        <p className="font-medium text-gray-800 dark:text-gray-100 text-sm">{m.title}</p>
+                        <button
+                          onClick={() => setViewMeeting(m)}
+                          className="font-medium text-gray-800 dark:text-gray-100 text-sm hover:text-blue-600 text-left"
+                          title="Открыть конференцию"
+                        >
+                          {m.title}
+                        </button>
                         <p className="text-xs text-gray-500 dark:text-gray-400">{(m.participants ?? []).length} участник(ов)</p>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
@@ -668,6 +749,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
+                          <button onClick={() => setViewMeeting(m)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-gray-600 rounded" title="Просмотр"><i className="fas fa-eye"></i></button>
+                          {m.link && (
+                            <a href={m.link} target="_blank" rel="noopener noreferrer" className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-gray-600 rounded" title="Войти в конференцию"><i className="fas fa-video"></i></a>
+                          )}
                           <button onClick={() => handleEditMeeting(m)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-gray-600 rounded" title="Редактировать"><i className="fas fa-edit"></i></button>
                           <button onClick={() => handleDeleteMeeting(m.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-gray-600 rounded" title="Удалить"><i className="fas fa-trash"></i></button>
                         </div>

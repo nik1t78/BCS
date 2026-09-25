@@ -15,7 +15,8 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [nextMeeting, setNextMeeting] = useState<Meeting | null>(null);
+  // В одно время может быть несколько конференций — храним все «следующие» (с тем же датой/временем старта)
+  const [nextMeetings, setNextMeetings] = useState<Meeting[]>([]);
   const [countdown, setCountdown] = useState('');
 
   useEffect(() => {
@@ -61,10 +62,16 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
       })
       .sort((a, b) => a.date !== b.date ? a.date.localeCompare(b.date) : a.startTime.localeCompare(b.startTime));
 
-    setNextMeeting(upcoming[0] || null);
+    // Берём все конференции, совпадающие по дате и времени старта с ближайшей —
+    // в одно время может быть несколько конференций.
+    const first = upcoming[0] || null;
+    const simultaneous = first
+      ? upcoming.filter(m => m.date === first.date && m.startTime === first.startTime)
+      : [];
+    setNextMeetings(simultaneous);
 
-    if (upcoming[0]) {
-      const targetDate = new Date(`${upcoming[0].date}T${upcoming[0].startTime}`);
+    if (first) {
+      const targetDate = new Date(`${first.date}T${first.startTime}`);
       const diff = targetDate.getTime() - currentTime.getTime();
       if (diff > 0) {
         const hours = Math.floor(diff / (1000 * 60 * 60));
@@ -117,84 +124,100 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
         </div>
       </div>
 
-      {/* Next Meeting */}
-      {nextMeeting && (() => {
-        const canSeeDetails = user.role === 'admin' || user.role === 'moderator' ||
-                             hasAccessTo(nextMeeting);
-        
+      {/* Next Meeting(s) — в одно время может быть несколько конференций */}
+      {nextMeetings.length > 0 && (() => {
+        const multiple = nextMeetings.length > 1;
+
         return (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border-2 border-blue-200 dark:border-blue-800 p-6">
             <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">
               <i className="fas fa-arrow-right text-blue-500 mr-2"></i>
-              Следующая конференция
+              {multiple ? `Следующие конференции (${nextMeetings.length})` : 'Следующая конференция'}
             </h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
-                <p className="text-sm text-blue-600 dark:text-blue-400 font-medium">Название</p>
-                <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">
-                  {canSeeDetails ? nextMeeting.title : 'Конференция'}
-                </p>
-              </div>
-              <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4">
-                <p className="text-sm text-purple-600 dark:text-purple-400 font-medium">Дата и время</p>
-                <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">
-                  {new Date(nextMeeting.date).toLocaleDateString('ru-RU')}
-                </p>
-                <p className="text-sm text-gray-600 dark:text-gray-400">{nextMeeting.startTime} - {nextMeeting.endTime}</p>
-              </div>
-              <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-4">
-                <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">До начала</p>
-                <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">{countdown}</p>
-              </div>
-              <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4">
-                <p className="text-sm text-orange-600 dark:text-orange-400 font-medium">Место</p>
-                <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">
-                  {canSeeDetails ? (nextMeeting.room || 'Онлайн') : 'Скрыто'}
-                </p>
-              </div>
+
+            <div className={multiple ? 'space-y-6' : ''}>
+              {nextMeetings.map((nextMeeting, idx) => {
+                const canSeeDetails = user.role === 'admin' || user.role === 'moderator' ||
+                                     hasAccessTo(nextMeeting);
+
+                return (
+                  <div key={nextMeeting.id} className={multiple ? 'pb-6 border-b border-gray-200 dark:border-gray-700 last:pb-0 last:border-b-0' : ''}>
+                    {multiple && (
+                      <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 mb-2">
+                        Конференция {idx + 1} из {nextMeetings.length}
+                      </p>
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
+                        <p className="text-sm text-blue-600 dark:text-blue-400 font-medium">Название</p>
+                        <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">
+                          {canSeeDetails ? nextMeeting.title : 'Конференция'}
+                        </p>
+                      </div>
+                      <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4">
+                        <p className="text-sm text-purple-600 dark:text-purple-400 font-medium">Дата и время</p>
+                        <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">
+                          {new Date(nextMeeting.date).toLocaleDateString('ru-RU')}
+                        </p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">{nextMeeting.startTime} - {nextMeeting.endTime}</p>
+                      </div>
+                      <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-4">
+                        <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">До начала</p>
+                        <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">{countdown}</p>
+                      </div>
+                      <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4">
+                        <p className="text-sm text-orange-600 dark:text-orange-400 font-medium">Место</p>
+                        <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">
+                          {canSeeDetails ? (nextMeeting.room || 'Онлайн') : 'Скрыто'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {canSeeDetails && (
+                      <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div>
+                            <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">Организатор</p>
+                            <p className="text-gray-800 dark:text-gray-100">{getUserName(nextMeeting.organizerId)}</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">Участники</p>
+                            <p className="text-gray-800 dark:text-gray-100">{nextMeeting.participants.length} чел.</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">Кабинет</p>
+                            <p className="text-gray-800 dark:text-gray-100 font-semibold">
+                              {nextMeeting.room ? `📍 ${nextMeeting.room}` : '🌐 Онлайн'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {nextMeeting.link ? (
+                      <a
+                        href={nextMeeting.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                      >
+                        <i className="fas fa-video mr-2"></i>
+                        Подключиться к конференции
+                      </a>
+                    ) : (
+                      <button
+                        disabled
+                        className="bg-gray-400 text-white px-6 py-3 rounded-lg font-medium cursor-not-allowed"
+                      >
+                        <i className="fas fa-video mr-2"></i>
+                        Ссылка не указана
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-
-            {canSeeDetails && (
-              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">Организатор</p>
-                    <p className="text-gray-800 dark:text-gray-100">{getUserName(nextMeeting.organizerId)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">Участники</p>
-                    <p className="text-gray-800 dark:text-gray-100">{nextMeeting.participants.length} чел.</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">Кабинет</p>
-                    <p className="text-gray-800 dark:text-gray-100 font-semibold">
-                      {nextMeeting.room ? `📍 ${nextMeeting.room}` : '🌐 Онлайн'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {nextMeeting.link ? (
-              <a
-                href={nextMeeting.link}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium"
-              >
-                <i className="fas fa-video mr-2"></i>
-                Подключиться к конференции
-              </a>
-            ) : (
-              <button
-                disabled
-                className="bg-gray-400 text-white px-6 py-3 rounded-lg font-medium cursor-not-allowed"
-              >
-                <i className="fas fa-video mr-2"></i>
-                Ссылка не указана
-              </button>
-            )}
           </div>
         );
       })()}

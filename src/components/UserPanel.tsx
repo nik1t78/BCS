@@ -13,9 +13,10 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
-  const [filter, setFilter] = useState<'all' | 'organized' | 'participating'>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  // Модальное окно просмотра конференции (доступен всем участникам)
+  const [viewMeeting, setViewMeeting] = useState<Meeting | null>(null);
 
   const emptyMeeting: Meeting = {
     id: '',
@@ -57,11 +58,8 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
     setLoading(false);
   };
 
-  const filteredMeetings = meetings.filter(m => {
-    if (filter === 'organized') return isOrganizer(m);
-    if (filter === 'participating') return isParticipant(m) && !isOrganizer(m);
-    return true;
-  });
+  // Все конференции видны в списке без фильтров «Организованные/Участие»
+  const filteredMeetings = meetings;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,21 +138,6 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex gap-2">
-          {(['all', 'organized', 'participating'] as const).map(f => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                filter === f
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700'
-              }`}
-            >
-              {f === 'all' ? 'Все' : f === 'organized' ? 'Организованные' : 'Участие'}
-            </button>
-          ))}
-        </div>
         <button
           onClick={() => {
             setShowForm(true);
@@ -393,6 +376,81 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
         </div>
       )}
 
+      {/* Просмотр конференции — доступен всем, кто видит конференцию в списке */}
+      {viewMeeting && (() => {
+        const vm = viewMeeting;
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setViewMeeting(null)}>
+            <div
+              className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6">
+                <div className="flex items-start justify-between gap-3 mb-4">
+                  <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">{vm.title}</h2>
+                  <button onClick={() => setViewMeeting(null)} className="text-gray-400 hover:text-gray-600">
+                    <i className="fas fa-times text-xl"></i>
+                  </button>
+                </div>
+                <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+                  <p>
+                    <i className="far fa-calendar mr-2 text-blue-500"></i>
+                    {new Date(vm.date).toLocaleDateString('ru-RU')}
+                    <span className="mx-2">•</span>
+                    <i className="far fa-clock mr-2 text-blue-500"></i>
+                    {vm.startTime} - {vm.endTime}
+                  </p>
+                  {vm.room && (
+                    <p><i className="fas fa-map-marker-alt mr-2 text-blue-500"></i>{vm.room}</p>
+                  )}
+                  <p>
+                    <i className="fas fa-user mr-2 text-blue-500"></i>
+                    Организатор: {getUserName(vm.organizerId)}
+                  </p>
+                  <p>
+                    <i className="fas fa-users mr-2 text-blue-500"></i>
+                    Участники ({(vm.participants ?? []).length}):{' '}
+                    {(vm.participants ?? []).map(p => getUserName(p)).join(', ') || 'нет'}
+                  </p>
+                  {vm.recurring !== 'none' && (
+                    <p>
+                      <i className="fas fa-sync-alt mr-2 text-blue-500"></i>
+                      {vm.recurring === 'daily' ? 'Ежедневно' : vm.recurring === 'weekly' ? 'Еженедельно' : 'Ежемесячно'}
+                      {vm.repeatUntil ? ` до ${new Date(vm.repeatUntil).toLocaleDateString('ru-RU')}` : ''}
+                    </p>
+                  )}
+                  {vm.description && (
+                    <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg whitespace-pre-line">
+                      {vm.description}
+                    </div>
+                  )}
+                </div>
+                <div className="flex justify-end gap-3 pt-4 mt-4 border-t dark:border-gray-700">
+                  {isOrganizer(vm) && (
+                    <button
+                      onClick={() => { setViewMeeting(null); handleEdit(vm); }}
+                      className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                    >
+                      <i className="fas fa-edit mr-1"></i>Редактировать
+                    </button>
+                  )}
+                  {vm.link && (
+                    <a
+                      href={vm.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      <i className="fas fa-video mr-1"></i>Войти в конференцию
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Meetings List */}
       {error && filteredMeetings.length === 0 ? (
         <div className="text-center py-12 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 rounded-xl">
@@ -415,7 +473,13 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2">
-                  <h3 className="font-bold text-gray-800 dark:text-gray-100">{meeting.title}</h3>
+                  <button
+                    onClick={() => setViewMeeting(meeting)}
+                    className="font-bold text-gray-800 dark:text-gray-100 hover:text-blue-600 text-left"
+                    title="Открыть конференцию"
+                  >
+                    {meeting.title}
+                  </button>
                   <span
                     className={`px-2 py-0.5 rounded text-xs font-medium ${
                       meeting.priority === 'high'
@@ -466,6 +530,12 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                 )}
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setViewMeeting(meeting)}
+                  className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                >
+                  <i className="fas fa-eye mr-1"></i>Просмотр
+                </button>
                 {meeting.link && (
                   <a
                     href={meeting.link}
