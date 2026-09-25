@@ -65,13 +65,23 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
       alert('Заполните все обязательные поля');
       return;
     }
+    if (formData.endTime <= formData.startTime) {
+      alert('Время окончания должно быть позже времени начала');
+      return;
+    }
 
     // createMeeting/updateMeeting возвращают null при ошибке сервера
     // (422 валидация, истёкший токен и т.п.) — без проверки форма
     // «тихо» закрывалась, и казалось, что создание конференции не работает.
+    const payload: Meeting = { ...formData };
+    if (payload.recurring === 'none') delete payload.repeatUntil;
+    else if (payload.repeatUntil && payload.repeatUntil < payload.date) {
+      alert('Дата окончания повтора не может быть раньше даты встречи');
+      return;
+    }
     const saved = editingMeeting
-      ? await updateMeeting(editingMeeting.id, formData)
-      : await createMeeting(formData);
+      ? await updateMeeting(editingMeeting.id, payload)
+      : await createMeeting(payload);
 
     if (!saved) {
       alert('Не удалось сохранить конференцию. Проверьте поля: время начала должно быть раньше времени окончания, ссылка — корректный URL, напоминание — от 5 до 1440 минут.');
@@ -261,6 +271,36 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                   </div>
                 </div>
 
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Повтор</label>
+                    <select
+                      value={formData.recurring}
+                      onChange={(e) => setFormData({ ...formData, recurring: e.target.value as Meeting['recurring'] })}
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="none">Без повтора</option>
+                      <option value="daily">Ежедневно</option>
+                      <option value="weekly">Еженедельно</option>
+                      <option value="monthly">Ежемесячно</option>
+                    </select>
+                  </div>
+                  {formData.recurring !== 'none' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Повторять до (опционально)
+                      </label>
+                      <input
+                        type="date"
+                        value={formData.repeatUntil ?? ''}
+                        min={formData.date}
+                        onChange={(e) => setFormData({ ...formData, repeatUntil: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  )}
+                </div>
+
                 {/* Participants */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -392,7 +432,22 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                   <span className="mx-2">•</span>
                   <i className="fas fa-users mr-1"></i>
                   {meeting.participants.length} участников
+                  {meeting.recurring !== 'none' && (
+                    <>
+                      <span className="mx-2">•</span>
+                      <i className="fas fa-sync-alt text-blue-500 mr-1"></i>
+                      <span className="text-blue-600 dark:text-blue-400">
+                        {meeting.recurring === 'daily' ? 'Ежедневно' : meeting.recurring === 'weekly' ? 'Еженедельно' : 'Ежемесячно'}
+                        {meeting.repeatUntil ? ` до ${new Date(meeting.repeatUntil).toLocaleDateString('ru-RU')}` : ''}
+                      </span>
+                    </>
+                  )}
                 </p>
+                {meeting.description && (
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 line-clamp-2 whitespace-pre-line">
+                    {meeting.description}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 {meeting.link && (

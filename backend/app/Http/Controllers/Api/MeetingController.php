@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\Meeting;
 use App\Models\Notification;
 use Illuminate\Http\Request;
@@ -16,7 +17,7 @@ class MeetingController extends Controller
     {
         $user = $request->user();
         
-        $query = Meeting::with('organizer')->accessibleBy($user);
+        $query = Meeting::with(['organizer', 'tags'])->accessibleBy($user);
 
         if ($request->has('status')) {
             $query->where('status', $request->status);
@@ -66,11 +67,25 @@ class MeetingController extends Controller
             'participant_emails' => 'nullable|array',
             'participant_emails.*' => 'email',
             'is_private' => 'boolean',
+            'repeat_until' => 'nullable|date',
+            'tags' => 'nullable|array',
+            'tags.*' => 'integer|exists:tags,id',
         ]);
 
         $validated['organizer_id'] = $request->user()->id;
         
+        $tags = $validated['tags'] ?? null;
+        unset($validated['tags']);
+
+        if (($validated['recurring'] ?? 'none') === 'none') {
+            $validated['repeat_until'] = null;
+        }
+
         $meeting = Meeting::create($validated);
+
+        if ($tags !== null) {
+            $meeting->tags()->sync($tags);
+        }
 
         // Создаём уведомления для участников
         foreach ($validated['participants'] ?? [] as $participantId) {
@@ -85,7 +100,13 @@ class MeetingController extends Controller
             }
         }
 
-        return response()->json($meeting->load('organizer'), 201);
+        AuditLog::log($request, 'meeting_created', $meeting, [], [
+            'title' => $meeting->title,
+            'date' => $meeting->date,
+            'start_time' => $meeting->start_time,
+        ]);
+
+        return response()->json($meeting->load(['organizer', 'tags']), 201);
     }
 
     /**
@@ -97,7 +118,7 @@ class MeetingController extends Controller
             return response()->json(['message' => 'Доступ запрещён'], 403);
         }
 
-        return response()->json($meeting->load('organizer'));
+        return response()->json($meeting->load(['organizer', 'tags']));
     }
 
     /**
@@ -128,11 +149,29 @@ class MeetingController extends Controller
             'participant_emails' => 'nullable|array',
             'participant_emails.*' => 'email',
             'is_private' => 'boolean',
+            'repeat_until' => 'nullable|date',
+            'tags' => 'nullable|array',
+            'tags.*' => 'integer|exists:tags,id',
         ]);
 
+        $tags = $validated['tags'] ?? null;
+        unset($validated['tags']);
+
+        if (array_key_exists('recurring', $validated) && $validated['recurring'] === 'none') {
+            $validated['repeat_until'] = null;
+        }
+
+        $fields = array_keys($validated);
+        $oldValues = collect($meeting->only($fields))->toArray();
         $meeting->update($validated);
 
-        return response()->json($meeting->load('organizer'));
+        if ($tags !== null) {
+            $meeting->tags()->sync($tags);
+        }
+
+        AuditLog::log($request, 'meeting_updated', $meeting, $oldValues, $meeting->only($fields));
+
+        return response()->json($meeting->load(['organizer', 'tags']));
     }
 
     /**
@@ -145,6 +184,11 @@ class MeetingController extends Controller
         if ($meeting->organizer_id !== $user->id && !$user->isAdmin()) {
             return response()->json(['message' => 'Доступ запрещён'], 403);
         }
+
+        AuditLog::log($request, 'meeting_deleted', $meeting, [
+            'title' => $meeting->title,
+            'date' => $meeting->date,
+        ]);
 
         $meeting->delete();
 

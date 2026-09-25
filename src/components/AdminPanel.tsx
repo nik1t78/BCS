@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
 import { authAPI } from '../api/client';
 import { unwrapList, mapMeeting } from '../store-api';
+import { exportToExcel } from '../utils/export';
 import { getUsers, getMeetings, getAdminPanelStats, createUser, updateUser, deleteUser, toggleUserActive, changeUserRole, resetUserPassword, updateMeeting, deleteMeeting, createMeeting } from '../store-api';
 
 // Админский список всех конференций: обычный GET /meetings доступён только
@@ -25,10 +26,49 @@ interface AdminPanelProps {
   user: User;
 }
 
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  login: 'Вход в систему',
+  logout: 'Выход из системы',
+  meeting_created: 'Создание конференции',
+  meeting_updated: 'Изменение конференции',
+  meeting_deleted: 'Удаление конференции',
+  user_created: 'Создание пользователя',
+  user_deleted: 'Удаление пользователя',
+  user_role_changed: 'Смена роли пользователя',
+  user_blocked: 'Блокировка пользователя',
+  user_unblocked: 'Разблокировка пользователя',
+  password_changed: 'Смена пароля',
+};
+
+// Поля, которые не стоит показывать в колонке «Изменения»
+const AUDIT_HIDDEN_FIELDS = new Set(['id', 'created_at', 'updated_at', 'password', 'organizer_id']);
+
+function renderAuditChanges(log: { old_values: Record<string, unknown> | null; new_values: Record<string, unknown> | null }) {
+  const changed = Object.entries(log.new_values ?? {}).filter(
+    ([key, value]) => !AUDIT_HIDDEN_FIELDS.has(key) && String(log.old_values?.[key] ?? '') !== String(value ?? '')
+  );
+  if (changed.length === 0) return <span className="text-gray-400">—</span>;
+  return (
+    <div className="space-y-0.5">
+      {changed.slice(0, 3).map(([key, value]) => (
+        <div key={key}>
+          <span className="font-medium text-gray-600 dark:text-gray-300">{key}</span>
+          {log.old_values?.[key] !== undefined && log.old_values?.[key] !== null && (
+            <span className="text-red-500 line-through mx-1">{String(log.old_values[key]).slice(0, 20)}</span>
+          )}
+          <i className="fas fa-arrow-right text-[10px] text-gray-400 mr-1"></i>
+          <span className="text-green-600 dark:text-green-400">{String(value).slice(0, 20)}</span>
+        </div>
+      ))}
+      {changed.length > 3 && <div className="text-gray-400">…и ещё {changed.length - 3}</div>}
+    </div>
+  );
+}
+
 export default function AdminPanel({ user }: AdminPanelProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
-  const [activeTab, setActiveTab] = useState<'users' | 'meetings' | 'stats'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'meetings' | 'stats' | 'audit'>('users');
   const [searchQuery, setSearchQuery] = useState('');
   const [showUserForm, setShowUserForm] = useState(false);
   const [showMeetingForm, setShowMeetingForm] = useState(false);
@@ -41,6 +81,47 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [apiStats, setApiStats] = useState<any>(null);
+
+  // Аудит-лог (вкладка «Аудит», видна только администратору)
+  interface AuditEntry {
+    id: number;
+    action: string;
+    user?: { id: number; name: string; login: string; role: string } | null;
+    auditable_type: string | null;
+    auditable_id: number | null;
+    old_values: Record<string, unknown> | null;
+    new_values: Record<string, unknown> | null;
+    ip_address: string | null;
+    created_at: string;
+  }
+  const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditLastPage, setAuditLastPage] = useState(1);
+  const [auditAction, setAuditAction] = useState('');
+  const [auditLoading, setAuditLoading] = useState(false);
+
+  const loadAuditLogs = async (page = 1, action = auditAction) => {
+    if (user.role !== 'admin') return;
+    setAuditLoading(true);
+    try {
+      const params = new URLSearchParams({ per_page: '25', page: String(page) });
+      if (action) params.set('action', action);
+      const response = await authAPI.rawGet(`/admin/audit-logs?${params.toString()}`);
+      setAuditLogs(unwrapList(response) as AuditEntry[]);
+      setAuditPage(Number(response?.current_page ?? page));
+      setAuditLastPage(Number(response?.last_page ?? 1));
+    } catch (e) {
+      console.error('Audit logs load error:', e);
+      setAuditLogs([]);
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'audit') loadAuditLogs(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   const emptyUser: User = {
     id: '', name: '', login: '', password: '', role: 'user',
@@ -310,6 +391,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             { id: 'users', label: 'Пользователи', icon: 'fa-users', count: users.length },
             { id: 'meetings', label: 'Конференции', icon: 'fa-video', count: meetings.length },
             { id: 'stats', label: 'Статистика', icon: 'fa-chart-bar' },
+            ...(user.role === 'admin' ? [{ id: 'audit', label: 'Аудит', icon: 'fa-shield-alt' }] : []),
           ].map(tab => (
             <button key={tab.id} onClick={() => { setActiveTab(tab.id as any); setSearchQuery(''); }}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
@@ -466,10 +548,16 @@ export default function AdminPanel({ user }: AdminPanelProps) {
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <p className="text-sm text-gray-500 dark:text-gray-400">Всего: {filteredMeetings.length} конференций</p>
-            <button onClick={() => { setShowMeetingForm(true); setEditingMeeting(null); setMeetingForm({ ...emptyMeeting, date: new Date().toISOString().slice(0, 10) }); }}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2">
-              <i className="fas fa-plus"></i>Создать конференцию
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => exportToExcel(filteredMeetings, user.login || user.name)}
+                className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 flex items-center gap-2">
+                <i className="fas fa-file-excel"></i>Экспорт в Excel
+              </button>
+              <button onClick={() => { setShowMeetingForm(true); setEditingMeeting(null); setMeetingForm({ ...emptyMeeting, date: new Date().toISOString().slice(0, 10) }); }}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2">
+                <i className="fas fa-plus"></i>Создать конференцию
+              </button>
+            </div>
           </div>
 
           {/* Meeting Form Modal */}
@@ -621,6 +709,102 @@ export default function AdminPanel({ user }: AdminPanelProps) {
               <p className="text-sm text-gray-500 dark:text-gray-400">{s.label}</p>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Audit Tab (только администратор) */}
+      {activeTab === 'audit' && user.role === 'admin' && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-3">
+              <h3 className="font-bold text-gray-800 dark:text-gray-100">
+                <i className="fas fa-shield-alt text-blue-600 mr-2"></i>Журнал действий
+              </h3>
+              <select
+                value={auditAction}
+                onChange={(e) => { setAuditAction(e.target.value); loadAuditLogs(1, e.target.value); }}
+                className="px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200">
+                <option value="">Все действия</option>
+                <option value="login">Вход</option>
+                <option value="logout">Выход</option>
+                <option value="meeting_created">Создание конференции</option>
+                <option value="meeting_updated">Изменение конференции</option>
+                <option value="meeting_deleted">Удаление конференции</option>
+                <option value="user_created">Создание пользователя</option>
+                <option value="user_deleted">Удаление пользователя</option>
+                <option value="user_role_changed">Смена роли</option>
+                <option value="user_blocked">Блокировка</option>
+                <option value="user_unblocked">Разблокировка</option>
+                <option value="password_changed">Смена пароля</option>
+              </select>
+            </div>
+            <button onClick={() => loadAuditLogs(auditPage)}
+              className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-gray-700 dark:text-gray-200">
+              <i className={`fas fa-sync-alt mr-1 ${auditLoading ? 'fa-spin' : ''}`}></i>Обновить
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 dark:bg-gray-700/50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Дата / время</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Пользователь</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Действие</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Объект</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Изменения</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">IP</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {auditLogs.map(log => (
+                  <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                      {new Date(log.created_at).toLocaleString('ru-RU')}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-800 dark:text-gray-100">
+                      {log.user ? `${log.user.name} (${log.user.login})` : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      <span className="px-2 py-0.5 rounded-full text-xs bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 whitespace-nowrap">
+                        {AUDIT_ACTION_LABELS[log.action] || log.action}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                      {log.auditable_type ? `${log.auditable_type} #${log.auditable_id}` : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 max-w-xs">
+                      {renderAuditChanges(log)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                      {log.ip_address || '—'}
+                    </td>
+                  </tr>
+                ))}
+                {auditLogs.length === 0 && !auditLoading && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-gray-400 dark:text-gray-500">
+                      Записей аудита нет
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {auditLastPage > 1 && (
+            <div className="flex items-center justify-between p-4 border-t border-gray-200 dark:border-gray-700">
+              <button disabled={auditPage <= 1} onClick={() => loadAuditLogs(auditPage - 1)}
+                className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-40">
+                <i className="fas fa-chevron-left mr-1"></i>Назад
+              </button>
+              <span className="text-sm text-gray-500 dark:text-gray-400">Стр. {auditPage} из {auditLastPage}</span>
+              <button disabled={auditPage >= auditLastPage} onClick={() => loadAuditLogs(auditPage + 1)}
+                className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-40">
+                Вперёд<i className="fas fa-chevron-right ml-1"></i>
+              </button>
+            </div>
+          )}
         </div>
       )}
 
