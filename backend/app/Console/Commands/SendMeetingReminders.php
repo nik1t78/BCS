@@ -19,6 +19,8 @@ class SendMeetingReminders extends Command
 
         $now = Carbon::now();
         $today = $now->toDateString();
+        // Формат H:i — start_time хранится как TIME и Laravel возвращает строку 'H:i:s',
+        // поэтому сравнение выполняется через Carbon (см. Meeting::isStartingAt / needsReminderAt)
         $currentTime = $now->format('H:i');
 
         $meetings = Meeting::where('date', $today)
