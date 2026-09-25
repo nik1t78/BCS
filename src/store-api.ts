@@ -99,12 +99,22 @@ export function unwrapList(response: any): any[] {
 }
 
 // ============ USERS ============
+// Бэкенд пагинирует /admin/users (50 записей на страницу) — грузим ВСЕ
+// страницы, иначе список пользователей и статистика в админке считаются
+// только по первой странице и выглядят пустыми/некорректными.
 export async function getUsers(): Promise<User[]> {
   try {
-    const response = await usersAPI.getAll();
-    // Фильтруем записи без имени/логина — защита от «пустых» карточек,
-    // которые могли попасть в state из устаревших моков localStorage.
-    return unwrapList(response).map(mapUser).filter((u: any) => u && u.id != null && u.name && u.login);
+    const all: User[] = [];
+    let page = 1;
+    for (;;) {
+      const response = await usersAPI.getAll({ per_page: 200, page });
+      const items = unwrapList(response).map(mapUser).filter((u: any) => u && u.id != null && u.name && u.login) as User[];
+      all.push(...items);
+      const lastPage = Number(response?.last_page ?? page);
+      if (items.length === 0 || page >= lastPage) break;
+      page++;
+    }
+    return all;
   } catch (error) {
     console.error('Get users error:', error);
     return [];
