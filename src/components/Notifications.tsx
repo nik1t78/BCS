@@ -9,21 +9,31 @@ interface NotificationsProps {
 export default function Notifications({ user }: NotificationsProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
+  const [showAllUsers, setShowAllUsers] = useState(false); // режим админа: уведомления всех пользователей
   const [loading, setLoading] = useState(true);
+  const isAdmin = user.role === 'admin';
 
   useEffect(() => {
     loadNotifications();
-    
+
     // Обновляем уведомления каждые 30 секунд
     const timer = setInterval(loadNotifications, 30000);
     return () => clearInterval(timer);
-  }, [user.id]);
+  }, [user.id, showAllUsers]);
 
   const loadNotifications = async () => {
     setLoading(true);
     try {
-      const allNotifications = await getNotifications();
-      setNotifications((allNotifications as Notification[]).filter(n => String(n.userId) === String(user.id)));
+      const allNotifications = await getNotifications(
+        isAdmin && showAllUsers ? { all: true } : undefined
+      );
+      // В обычном режиме показываем только свои; в режиме «все» (только для админа сервер
+      // уже вернул уведомления всех пользователей) — без фильтрации.
+      setNotifications(
+        isAdmin && showAllUsers
+          ? allNotifications
+          : allNotifications.filter(n => String(n.userId) === String(user.id))
+      );
     } catch (error) {
       console.error('Error loading notifications:', error);
     } finally {
@@ -82,19 +92,26 @@ export default function Notifications({ user }: NotificationsProps) {
     <div className="space-y-6">
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
+          <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-3">
               <i className="fas fa-bell text-orange-500"></i>
               Уведомления
               {unreadCount > 0 && <span className="bg-red-500 text-white text-sm px-2 py-0.5 rounded-full">{unreadCount}</span>}
             </h1>
+            {isAdmin && (
+              <button onClick={() => setShowAllUsers(v => !v)}
+                title="Показывать уведомления всех пользователей ВКС"
+                className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${showAllUsers ? 'bg-orange-500 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}>
+                <i className="fas fa-users mr-1"></i>{showAllUsers ? 'Все пользователи' : 'Только мои'}
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button onClick={handleMarkAllRead} className="px-3 py-2 text-sm bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30">
               <i className="fas fa-check-double mr-1"></i>Прочитать все
             </button>
             <button onClick={handleClearAll} className="px-3 py-2 text-sm bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30">
-              <i className="fas fa-trash mr-1"></i>Очистить
+              <i className="fas fa-trash mr-1"></i>{isAdmin && showAllUsers ? 'Очистить мои' : 'Очистить'}
             </button>
           </div>
         </div>
@@ -131,7 +148,14 @@ export default function Notifications({ user }: NotificationsProps) {
                           <button onClick={() => handleMarkRead(notification.id)} className="text-blue-500 hover:text-blue-700 text-sm whitespace-nowrap">Прочитано</button>
                         )}
                       </div>
-                      <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">{new Date(notification.timestamp).toLocaleString('ru-RU')}</p>
+                      <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
+                        {isAdmin && showAllUsers && (
+                          <span className="mr-2 text-gray-500 dark:text-gray-400">
+                            <i className="fas fa-user mr-1"></i>{notification.userName || `Пользователь #${notification.userId}`}
+                          </span>
+                        )}
+                        {new Date(notification.timestamp).toLocaleString('ru-RU')}
+                      </p>
                     </div>
                   </div>
                 </div>

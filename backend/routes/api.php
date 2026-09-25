@@ -87,6 +87,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/admin/users/{id}', [UserController::class, 'destroy']);
         Route::put('/admin/users/{id}/role', [UserController::class, 'changeRole']);
         Route::get('/admin/stats', [UserController::class, 'getStats']);
+
+        // Аудит-лог действий пользователей (только администратор)
+        Route::get('/admin/audit-logs', [\App\Http\Controllers\Api\AuditLogController::class, 'index']);
         
         // Password management
         Route::put('/admin/users/{id}/reset-password', [\App\Http\Controllers\Api\AdminController::class, 'resetPassword']);

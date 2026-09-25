@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
 import { getMeetings, getUsersForDisplay } from '../store-api';
+import { occursOn, withDate } from '../utils/recurrence';
 
 interface DashboardProps {
   user: User;

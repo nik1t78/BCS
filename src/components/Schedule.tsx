@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
 import { getMeetings, getUsersForDisplay } from '../store-api';
+import { occursOn, withDate } from '../utils/recurrence';
 
 interface ScheduleProps {
   user: User;
@@ -67,14 +68,17 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
 
   const visibleMeetings = meetings.filter(m => {
     if (filter === 'my') return hasAccessTo(m);
-    if (filter === 'today') return m.date === toDateKey(new Date());
-    if (filter === 'upcoming') return m.date >= toDateKey(new Date()) && m.status !== 'completed' && m.status !== 'cancelled';
+    if (filter === 'today') return occursOn(m, new Date());
+    if (filter === 'upcoming') return m.status !== 'completed' && m.status !== 'cancelled';
     return true;
   });
 
+  // Разворачиваем повторы (daily/weekly/monthly) в конкретные дни,
+  // чтобы повторяющиеся встречи были видны в календаре на всех датах
   const getMeetingsForDate = (date: Date) => {
-    const dateStr = toDateKey(date);
-    return visibleMeetings.filter(m => m.date === dateStr);
+    return visibleMeetings
+      .filter(m => occursOn(m, date))
+      .map(m => (m.date === toDateKey(date) ? m : withDate(m, date)));
   };
 
   const getPriorityColor = (priority: string) => {
@@ -176,6 +180,9 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
                     <div>
                       <p className="font-semibold text-gray-800 dark:text-gray-100">
                         {canSeeDetails ? meeting.title : 'Конференция'}
+                        {meeting.recurring !== 'none' && (
+                          <i className="fas fa-sync-alt text-blue-500 ml-2 text-xs" title="Повторяющаяся встреча"></i>
+                        )}
                       </p>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                         <i className="far fa-clock mr-1"></i>{meeting.startTime} - {meeting.endTime}
@@ -222,6 +229,7 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
                     return (
                       <div key={meeting.id} className={`border-l-2 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded p-1.5 mb-1 text-xs`}>
                         <p className="font-medium text-gray-800 dark:text-gray-100 truncate">
+                          {meeting.recurring !== 'none' && <i className="fas fa-sync-alt text-blue-500 mr-1"></i>}
                           {canSeeDetails ? meeting.title : 'Конференция'}
                         </p>
                         <p className="text-gray-500 dark:text-gray-400">{meeting.startTime}</p>

@@ -28,6 +28,13 @@ class TemplateController extends Controller
             'is_private' => 'boolean',
         ]);
 
+        // Напоминание раньше 5 минут бэкенд не принимает (min:5) — из-за
+        // этого создание шаблона падало с 422. Значение по умолчанию — 5.
+        $reminderMinutes = (int) ($request->input('reminder_minutes') ?? 5);
+        if ($reminderMinutes < 5) {
+            $reminderMinutes = 5;
+        }
+
         $template = MeetingTemplate::create([
             'user_id' => $request->user()->id,
             'name' => $request->name,
@@ -36,7 +43,7 @@ class TemplateController extends Controller
             'room' => $request->room,
             'link' => $request->link,
             'priority' => $request->priority,
-            'reminder_minutes' => $request->reminder_minutes ?? 15,
+            'reminder_minutes' => min($reminderMinutes, 1440),
             'recurring' => $request->recurring,
             'is_private' => $request->is_private ?? false,
             'default_participants' => $request->default_participants ?? [],

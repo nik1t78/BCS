@@ -74,6 +74,7 @@ export function mapMeeting(raw: any): Meeting {
   if (Array.isArray(out.participants)) out.participants = out.participants.map(String);
   if (Array.isArray(out.organizer)) out.organizer = undefined;
   if (typeof out.date === 'string') out.date = out.date.slice(0, 10);
+  if (typeof out.repeatUntil === 'string') out.repeatUntil = out.repeatUntil.slice(0, 10);
   if (out.createdAt && typeof out.createdAt === 'string') out.createdAt = out.createdAt.replace(' ', 'T');
   return out as Meeting;
 }
@@ -81,12 +82,14 @@ export function mapMeeting(raw: any): Meeting {
 export function meetingToApi(data: any): any {
   const out: any = {};
   for (const k of Object.keys(data ?? {})) {
-    if (k === 'id' || k === 'createdAt' || k === 'updatedAt' || k === 'organizer') continue;
+    if (k === 'id' || k === 'createdAt' || k === 'updatedAt' || k === 'organizer' || k === '_occurrenceOf') continue;
     out[toSnake(k)] = data[k];
   }
   if (data.startTime) out.start_time = data.startTime;
   if (data.endTime) out.end_time = data.endTime;
   if (Array.isArray(out.participants)) out.participants = out.participants.map((v: any) => Number(v)).filter((v: number) => !Number.isNaN(v));
+  // Теги встречи — id тегов из справочника (meeting_tag); бэкенд валидирует их как integer[]
+  if (Array.isArray(out.tags)) out.tags = out.tags.map((v: any) => Number(v)).filter((v: number) => !Number.isNaN(v));
   delete out.start_time_text;
   delete out.end_time_text;
   return out;
@@ -318,10 +321,21 @@ export async function getMeetingStats(): Promise<any> {
 }
 
 // ============ NOTIFICATIONS ============
-export async function getNotifications(params?: { type?: string; unread?: boolean }): Promise<Notification[]> {
+const mapNotification = (n: any): Notification => ({
+  id: String(n.id),
+  userId: String(n.user_id ?? n.userId),
+  userName: n.user?.name,
+  meetingId: n.meeting_id != null ? String(n.meeting_id) : '',
+  message: n.message,
+  type: n.type,
+  timestamp: n.created_at ?? n.timestamp,
+  read: Boolean(n.read),
+});
+
+export async function getNotifications(params?: { type?: string; unread?: boolean; all?: boolean }): Promise<Notification[]> {
   try {
     const response = await notificationsAPI.getAll(params);
-    return response.data;
+    return (response.data ?? []).map(mapNotification);
   } catch (error) {
     console.error('Get notifications error:', error);
     return [];
@@ -422,10 +436,29 @@ export async function changePassword(currentPassword: string, newPassword: strin
 }
 
 // ============ TAGS ============
+function mapTag(raw: any): Tag {
+  return {
+    id: String(raw?.id ?? ''),
+    userId: String(raw?.user_id ?? raw?.userId ?? ''),
+    name: raw?.name ?? '',
+    color: raw?.color ?? '#3b82f6',
+    createdAt: typeof raw?.created_at === 'string' ? raw.created_at.replace(' ', 'T') : (raw?.createdAt ?? ''),
+  };
+}
+
+function tagToApi(data: any): any {
+  const out: any = {};
+  if (data?.name !== undefined) out.name = data.name;
+  if (data?.color !== undefined) out.color = data.color;
+  if (data?.userId !== undefined) out.user_id = data.userId;
+  return out;
+}
+
 export async function getTags(): Promise<Tag[]> {
   try {
     const response = await tagsAPI.getAll();
-    return response.data || response;
+    const list = unwrapList(response);
+    return list.map(mapTag);
   } catch (error) {
     console.error('Get tags error:', error);
     return [];
@@ -434,8 +467,8 @@ export async function getTags(): Promise<Tag[]> {
 
 export async function createTag(data: any): Promise<Tag | null> {
   try {
-    const response = await tagsAPI.create(data);
-    return response;
+    const response = await tagsAPI.create(tagToApi(data));
+    return mapTag(unwrapOne(response));
   } catch (error) {
     console.error('Create tag error:', error);
     return null;
@@ -444,8 +477,8 @@ export async function createTag(data: any): Promise<Tag | null> {
 
 export async function updateTag(id: string, data: any): Promise<Tag | null> {
   try {
-    const response = await tagsAPI.update(id, data);
-    return response;
+    const response = await tagsAPI.update(id, tagToApi(data));
+    return mapTag(unwrapOne(response));
   } catch (error) {
     console.error('Update tag error:', error);
     return null;
@@ -463,10 +496,18 @@ export async function deleteTag(id: string): Promise<boolean> {
 }
 
 // ============ TEMPLATES ============
+export function mapTemplate(raw: any): MeetingTemplate {
+  const out: any = {};
+  for (const k of Object.keys(raw ?? {})) out[toCamel(k)] = raw[k];
+  if (Array.isArray(out.defaultParticipants)) out.defaultParticipants = out.defaultParticipants.map(String);
+  if (out.createdAt && typeof out.createdAt === 'string') out.createdAt = out.createdAt.replace(' ', 'T');
+  return out as MeetingTemplate;
+}
+
 export async function getTemplates(): Promise<MeetingTemplate[]> {
   try {
     const response = await templatesAPI.getAll();
-    return response.data || response;
+    return unwrapList(response).map(mapTemplate);
   } catch (error) {
     console.error('Get templates error:', error);
     return [];
@@ -475,8 +516,8 @@ export async function getTemplates(): Promise<MeetingTemplate[]> {
 
 export async function createTemplate(data: any): Promise<MeetingTemplate | null> {
   try {
-    const response = await templatesAPI.create(data);
-    return response;
+    const response = await templatesAPI.create(userToApi(data));
+    return mapTemplate(unwrapOne(response));
   } catch (error) {
     console.error('Create template error:', error);
     return null;
@@ -485,8 +526,8 @@ export async function createTemplate(data: any): Promise<MeetingTemplate | null>
 
 export async function updateTemplate(id: string, data: any): Promise<MeetingTemplate | null> {
   try {
-    const response = await templatesAPI.update(id, data);
-    return response;
+    const response = await templatesAPI.update(id, userToApi(data));
+    return mapTemplate(unwrapOne(response));
   } catch (error) {
     console.error('Update template error:', error);
     return null;

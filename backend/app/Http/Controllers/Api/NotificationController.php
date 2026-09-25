@@ -9,13 +9,16 @@ use Illuminate\Http\Request;
 class NotificationController extends Controller
 {
     /**
-     * Список уведомлений пользователя
+     * Список уведомлений пользователя.
+     * Администратор с параметром all=1 видит уведомления всех пользователей ВКС.
      */
     public function index(Request $request)
     {
         $user = $request->user();
 
-        $query = Notification::where('user_id', $user->id);
+        $showAll = $request->boolean('all') && $user->role === 'admin';
+
+        $query = $showAll ? Notification::query() : Notification::where('user_id', $user->id);
 
         if ($request->has('type')) {
             $query->where('type', $request->type);
@@ -25,9 +28,9 @@ class NotificationController extends Controller
             $query->unread();
         }
 
-        $notifications = $query->with('meeting')
+        $notifications = $query->with(['meeting', 'user:id,name'])
             ->orderBy('created_at', 'desc')
-            ->paginate($request->get('per_page', 50));
+            ->paginate($request->get('per_page', $showAll ? 100 : 50));
 
         return response()->json($notifications);
     }
@@ -37,8 +40,12 @@ class NotificationController extends Controller
      */
     public function markAsRead(Request $request, $id)
     {
-        $notification = Notification::where('user_id', $request->user()->id)
-            ->findOrFail($id);
+        $user = $request->user();
+
+        // Администратор может отмечать прочитанными уведомления любого пользователя (режим «Все уведомления»)
+        $query = $user->role === 'admin' ? Notification::query() : Notification::where('user_id', $user->id);
+
+        $notification = $query->findOrFail($id);
 
         $notification->markAsRead();
 

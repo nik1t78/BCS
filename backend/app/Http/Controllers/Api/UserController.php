@@ -160,6 +160,8 @@ class UserController extends Controller
         // Каст 'password' => 'hashed' в модели сам выполнит хеширование
         $user->update(['password' => $request->password]);
 
+        AuditLog::log($request, 'password_changed', $user);
+
         return response()->json(['message' => 'Пароль изменён']);
     }
 
@@ -177,6 +179,9 @@ class UserController extends Controller
         }
 
         $user = User::findOrFail($id);
+
+        AuditLog::log($request, 'user_deleted', $user, ['name' => $user->name, 'login' => $user->login]);
+
         $user->delete();
 
         return response()->json(['message' => 'Пользователь удалён']);
@@ -196,7 +201,10 @@ class UserController extends Controller
         ]);
 
         $user = User::findOrFail($id);
+        $oldRole = $user->role;
         $user->update(['role' => $request->role]);
+
+        AuditLog::log($request, 'user_role_changed', $user, ['role' => $oldRole], ['role' => $request->role]);
 
         return response()->json($user);
     }
@@ -216,6 +224,8 @@ class UserController extends Controller
 
         $user = User::findOrFail($id);
         $user->update(['is_active' => !$user->is_active]);
+
+        AuditLog::log($request, $user->is_active ? 'user_unblocked' : 'user_blocked', $user);
 
         return response()->json($user);
     }

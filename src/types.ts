@@ -34,6 +34,9 @@ export interface Meeting {
   isPrivate: boolean;
   tags?: string[];
   isFavorite?: boolean;
+  repeatUntil?: string; // дата окончания повтора YYYY-MM-DD (для recurring != 'none')
+  /** Служебное: id родительской встречи у occurrence-копии из utils/recurrence */
+  _occurrenceOf?: string;
 }
 
 export interface MeetingTemplate {
@@ -86,6 +89,7 @@ export interface MeetingHistory {
 export interface Notification {
   id: string;
   userId: string;
+  userName?: string; // заполняется только в режиме «все уведомления» у админа
   meetingId: string;
   message: string;
   type: 'reminder' | 'starting' | 'info' | 'warning' | 'user-added';

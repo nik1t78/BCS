@@ -24,12 +24,14 @@ class Meeting extends Model
         'status',
         'reminder_minutes',
         'recurring',
+        'repeat_until',
         'priority',
         'is_private',
     ];
 
     protected $casts = [
         'date' => 'date',
+        'repeat_until' => 'date',
         'participants' => 'array',
         'participant_emails' => 'array',
         'is_private' => 'boolean',

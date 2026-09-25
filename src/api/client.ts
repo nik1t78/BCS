@@ -163,7 +163,7 @@ export const meetingsAPI = {
 
 // NOTIFICATIONS API
 export const notificationsAPI = {
-  getAll: (params?: { type?: string; unread?: boolean }) => {
+  getAll: (params?: { type?: string; unread?: boolean; all?: boolean }) => {
     const queryString = params ? '?' + new URLSearchParams(params as any).toString() : '';
     return apiRequest(`/notifications${queryString}`);
   },
