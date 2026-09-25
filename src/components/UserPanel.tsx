@@ -66,10 +66,16 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
       return;
     }
 
-    if (editingMeeting) {
-      await updateMeeting(editingMeeting.id, formData);
-    } else {
-      await createMeeting(formData);
+    // createMeeting/updateMeeting возвращают null при ошибке сервера
+    // (422 валидация, истёкший токен и т.п.) — без проверки форма
+    // «тихо» закрывалась, и казалось, что создание конференции не работает.
+    const saved = editingMeeting
+      ? await updateMeeting(editingMeeting.id, formData)
+      : await createMeeting(formData);
+
+    if (!saved) {
+      alert('Не удалось сохранить конференцию. Проверьте поля: время начала должно быть раньше времени окончания, ссылка — корректный URL, напоминание — от 5 до 1440 минут.');
+      return;
     }
 
     loadData();

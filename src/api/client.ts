@@ -87,8 +87,10 @@ export const usersAPI = {
   getPublicList: () =>
     apiRequest('/users'),
 
-  getAll: () =>
-    apiRequest('/admin/users'),
+  getAll: (params?: { per_page?: number; page?: number; search?: string; role?: string }) => {
+    const queryString = params ? '?' + new URLSearchParams(params as any).toString() : '';
+    return apiRequest(`/admin/users${queryString}`);
+  },
 
   create: (data: any) =>
     apiRequest('/admin/users', {

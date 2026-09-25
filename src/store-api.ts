@@ -99,12 +99,22 @@ export function unwrapList(response: any): any[] {
 }
 
 // ============ USERS ============
+// Бэкенд пагинирует /admin/users (50 записей на страницу) — грузим ВСЕ
+// страницы, иначе список пользователей и статистика в админке считаются
+// только по первой странице и выглядят пустыми/некорректными.
 export async function getUsers(): Promise<User[]> {
   try {
-    const response = await usersAPI.getAll();
-    // Фильтруем записи без имени/логина — защита от «пустых» карточек,
-    // которые могли попасть в state из устаревших моков localStorage.
-    return unwrapList(response).map(mapUser).filter((u: any) => u && u.id != null && u.name && u.login);
+    const all: User[] = [];
+    let page = 1;
+    for (;;) {
+      const response = await usersAPI.getAll({ per_page: 200, page });
+      const items = unwrapList(response).map(mapUser).filter((u: any) => u && u.id != null && u.name && u.login) as User[];
+      all.push(...items);
+      const lastPage = Number(response?.last_page ?? page);
+      if (items.length === 0 || page >= lastPage) break;
+      page++;
+    }
+    return all;
   } catch (error) {
     console.error('Get users error:', error);
     return [];
@@ -222,10 +232,27 @@ export async function resetUserPassword(id: string, password: string): Promise<b
 }
 
 // ============ MEETINGS ============
+// Бэкенд пагинирует /meetings (по умолчанию 50 записей на страницу).
+// getMeetings без явного page/per_page грузит ВСЕ страницы, иначе фильтры
+// «Организованные/Участие», календарь и статистика видят только первую
+// страницу и выглядят пустыми/некорректными.
+async function loadAllMeetingPages(params?: any): Promise<Meeting[]> {
+  const all: Meeting[] = [];
+  let page = 1;
+  for (;;) {
+    const response = await meetingsAPI.getAll({ ...(params ?? {}), per_page: 200, page });
+    const items = unwrapList(response).map(mapMeeting) as Meeting[];
+    all.push(...items);
+    const lastPage = Number(response?.last_page ?? page);
+    if (items.length === 0 || page >= lastPage) break;
+    page++;
+  }
+  return all;
+}
+
 export async function getMeetings(params?: { status?: string; date?: string; my?: boolean; search?: string }): Promise<Meeting[]> {
   try {
-    const response = await meetingsAPI.getAll(params);
-    return unwrapList(response).map(mapMeeting);
+    return await loadAllMeetingPages(params);
   } catch (error) {
     console.error('Get meetings error:', error);
     return [];
