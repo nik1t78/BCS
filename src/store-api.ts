@@ -222,10 +222,27 @@ export async function resetUserPassword(id: string, password: string): Promise<b
 }
 
 // ============ MEETINGS ============
+// Бэкенд пагинирует /meetings (по умолчанию 50 записей на страницу).
+// getMeetings без явного page/per_page грузит ВСЕ страницы, иначе фильтры
+// «Организованные/Участие», календарь и статистика видят только первую
+// страницу и выглядят пустыми/некорректными.
+async function loadAllMeetingPages(params?: any): Promise<Meeting[]> {
+  const all: Meeting[] = [];
+  let page = 1;
+  for (;;) {
+    const response = await meetingsAPI.getAll({ ...(params ?? {}), per_page: 200, page });
+    const items = unwrapList(response).map(mapMeeting) as Meeting[];
+    all.push(...items);
+    const lastPage = Number(response?.last_page ?? page);
+    if (items.length === 0 || page >= lastPage) break;
+    page++;
+  }
+  return all;
+}
+
 export async function getMeetings(params?: { status?: string; date?: string; my?: boolean; search?: string }): Promise<Meeting[]> {
   try {
-    const response = await meetingsAPI.getAll(params);
-    return unwrapList(response).map(mapMeeting);
+    return await loadAllMeetingPages(params);
   } catch (error) {
     console.error('Get meetings error:', error);
     return [];
