@@ -32,6 +32,12 @@ function App() {
       setUser(currentUser);
     };
     loadUser();
+
+    // При 401 от API (истёкший токен) store-api чистит localStorage и
+    // генерирует это событие — сбрасываем состояние, покажем экран входа.
+    const onUnauthorized = () => setUser(null);
+    window.addEventListener('vks-unauthorized', onUnauthorized);
+    return () => window.removeEventListener('vks-unauthorized', onUnauthorized);
   }, []);
 
   const handleLogin = async () => {

@@ -256,10 +256,23 @@ async function loadAllMeetingPages(params?: any): Promise<Meeting[]> {
 export async function getMeetings(params?: { status?: string; date?: string; my?: boolean; search?: string }): Promise<Meeting[]> {
   try {
     return await loadAllMeetingPages(params);
-  } catch (error) {
+  } catch (error: any) {
+    // 401 — истёкший токен Sanctum: показываем понятный экран входа, а не пустой список
+    if (String(error?.message ?? '').includes('401')) forceRelogin();
     console.error('Get meetings error:', error);
     return [];
   }
+}
+
+// При 401 на любой запрос чистим локальные данные авторизации — App.tsx
+// перерендерится на страницу входа (без «белого экрана»/вечной загрузки).
+let reloginShown = false;
+function forceRelogin() {
+  if (reloginShown) return;
+  reloginShown = true;
+  localStorage.removeItem('vks_auth');
+  window.dispatchEvent(new Event('vks-unauthorized'));
+  setTimeout(() => { reloginShown = false; }, 3000);
 }
 
 export async function createMeeting(data: any): Promise<Meeting | null> {
