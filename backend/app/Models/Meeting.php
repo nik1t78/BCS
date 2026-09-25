@@ -103,7 +103,9 @@ class Meeting extends Model
      */
     public function isStartingAt($time): bool
     {
-        return $this->date->isToday() && $this->start_time === $time;
+        // Сравнение через Carbon: MySQL отдаёт TIME-колонку в формате 'H:i:s'
+        return $this->date->isToday()
+            && Carbon::parse($this->start_time)->format('H:i') === $time;
     }
 
     /**
@@ -114,7 +116,7 @@ class Meeting extends Model
         if (!$this->date->isToday()) return false;
         
         $reminderTime = Carbon::parse($this->date->toDateString() . ' ' . $this->start_time)
-            ->subMinutes($this->reminder_minutes);
+            ->subMinutes($this->reminder_minutes ?? 15);
         
         return $reminderTime->format('H:i') === $time;
     }
