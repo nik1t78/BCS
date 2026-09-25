@@ -15,6 +15,7 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [filter, setFilter] = useState<'all' | 'organized' | 'participating'>('all');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   const emptyMeeting: Meeting = {
     id: '',
@@ -50,6 +51,9 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
     // (но могут редактировать только свои)
     setMeetings(allMeetings);
     setUsers(allUsers);
+    // getMeetings при ошибке API (401/500/нет связи с бэкендом) возвращает [] —
+    // показываем явную ошибку вместо пустого «Нет конференций»
+    setError(allMeetings.length === 0 && allUsers.length === 0);
     setLoading(false);
   };
 
@@ -390,6 +394,18 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
       )}
 
       {/* Meetings List */}
+      {error && filteredMeetings.length === 0 ? (
+        <div className="text-center py-12 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 rounded-xl">
+          <i className="fas fa-plug text-4xl text-yellow-500 mb-3"></i>
+          <p className="text-yellow-800 dark:text-yellow-200 font-medium">Не удалось загрузить данные с сервера</p>
+          <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
+            Проверьте, что бэкенд запущен (<code>php artisan serve</code> или контейнер <code>vks-backend</code>) и выполнены миграции.
+          </p>
+          <button onClick={loadData} className="mt-4 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 text-sm">
+            <i className="fas fa-redo mr-1"></i> Повторить
+          </button>
+        </div>
+      ) : (
       <div className="space-y-3">
         {filteredMeetings.map(meeting => (
           <div
@@ -487,6 +503,7 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
