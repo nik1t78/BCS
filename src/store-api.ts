@@ -365,9 +365,9 @@ export async function markNotificationRead(id: string): Promise<boolean> {
   }
 }
 
-export async function markAllNotificationsRead(): Promise<boolean> {
+export async function markAllNotificationsRead(params?: { all?: boolean }): Promise<boolean> {
   try {
-    await notificationsAPI.markAllAsRead();
+    await notificationsAPI.markAllAsRead(params);
     return true;
   } catch (error) {
     console.error('Mark all notifications read error:', error);

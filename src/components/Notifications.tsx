@@ -9,7 +9,7 @@ interface NotificationsProps {
 export default function Notifications({ user }: NotificationsProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
-  const [showAllUsers, setShowAllUsers] = useState(false); // режим админа: уведомления всех пользователей
+  const [showAllUsers, setShowAllUsers] = useState(true); // админ по умолчанию видит уведомления всех пользователей
   const [loading, setLoading] = useState(true);
   const isAdmin = user.role === 'admin';
 
@@ -47,7 +47,8 @@ export default function Notifications({ user }: NotificationsProps) {
   };
 
   const handleMarkAllRead = async () => {
-    await markAllNotificationsRead();
+    // В режиме «все пользователи» админ отмечает прочитанными уведомления всех, а не только свои
+    await markAllNotificationsRead(isAdmin && showAllUsers ? { all: true } : undefined);
     loadNotifications();
   };
 

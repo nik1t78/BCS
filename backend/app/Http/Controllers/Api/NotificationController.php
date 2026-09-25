@@ -53,12 +53,18 @@ class NotificationController extends Controller
     }
 
     /**
-     * Отметить все как прочитанные
+     * Отметить все как прочитанные.
+     * Администратор с параметром all=1 отмечает уведомления всех пользователей,
+     * остальные — только свои.
      */
     public function markAllAsRead(Request $request)
     {
-        Notification::where('user_id', $request->user()->id)
-            ->where('read', false)
+        $user = $request->user();
+        $showAll = $request->boolean('all') && $user->role === 'admin';
+
+        $query = $showAll ? Notification::query() : Notification::where('user_id', $user->id);
+
+        $query->where('read', false)
             ->update(['read' => true]);
 
         return response()->json(['message' => 'Все уведомления отмечены как прочитанные']);

@@ -173,10 +173,12 @@ export const notificationsAPI = {
       method: 'PUT',
     }),
 
-  markAllAsRead: () =>
-    apiRequest('/notifications/read-all', {
+  markAllAsRead: (params?: { all?: boolean }) => {
+    const queryString = params ? '?' + new URLSearchParams(params as any).toString() : '';
+    return apiRequest(`/notifications/read-all${queryString}`, {
       method: 'PUT',
-    }),
+    });
+  },
 
   clearAll: () =>
     apiRequest('/notifications/clear', {
