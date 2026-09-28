@@ -78,6 +78,16 @@ export const authAPI = {
   // постраничной загрузки полных списков).
   rawGet: (endpoint: string) =>
     apiRequest(endpoint),
+
+  // Скачивание файла (CSV/Excel) с авторизацией — возвращает Blob.
+  downloadBlob: async (endpoint: string): Promise<Blob> => {
+    const token = getToken();
+    const headers: Record<string, string> = { 'Accept': 'text/csv,application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, { headers });
+    if (!response.ok) throw new Error(`Ошибка скачивания: HTTP ${response.status}`);
+    return await response.blob();
+  },
 };
 
 // USERS API
@@ -157,8 +167,67 @@ export const meetingsAPI = {
       method: 'DELETE',
     }),
 
+  // Отмена встречи с уведомлением участников (сервер рассылает уведомления)
+  cancel: (id: string, reason?: string) =>
+    apiRequest(`/meetings/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify(reason ? { reason } : {}),
+    }),
+
+  // Перенос встречи на другую дату/время (drag&drop в Schedule)
+  reschedule: (id: string, data: { date: string; start_time: string; end_time?: string; notify?: boolean }) =>
+    apiRequest(`/meetings/${id}/reschedule`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
   getStats: () =>
     apiRequest('/meetings-stats'),
+};
+
+// ПРОТОКОЛ ВСТРЕЧИ (MINUTES) И ЗАДАЧИ (ACTION ITEMS) API
+export const minutesAPI = {
+  list: (meetingId: string) =>
+    apiRequest(`/meetings/${meetingId}/minutes`),
+
+  create: (meetingId: string, data: { discussion?: string; decisions?: string; responsible?: string }) =>
+    apiRequest(`/meetings/${meetingId}/minutes`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (meetingId: string, minuteId: string, data: { discussion?: string; decisions?: string; responsible?: string }) =>
+    apiRequest(`/meetings/${meetingId}/minutes/${minuteId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  remove: (meetingId: string, minuteId: string) =>
+    apiRequest(`/meetings/${meetingId}/minutes/${minuteId}`, {
+      method: 'DELETE',
+    }),
+};
+
+export const meetingTasksAPI = {
+  list: (meetingId: string) =>
+    apiRequest(`/meetings/${meetingId}/tasks`),
+
+  create: (meetingId: string, data: { title: string; assignee_id?: number | null; deadline?: string | null }) =>
+    apiRequest(`/meetings/${meetingId}/tasks`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (meetingId: string, taskId: string, data: { title?: string; assignee_id?: number | null; deadline?: string | null; status?: string }) =>
+    apiRequest(`/meetings/${meetingId}/tasks/${taskId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  remove: (meetingId: string, taskId: string) =>
+    apiRequest(`/meetings/${meetingId}/tasks/${taskId}`, {
+      method: 'DELETE',
+    }),
 };
 
 // NOTIFICATIONS API

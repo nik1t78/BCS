@@ -103,6 +103,32 @@ export interface AuthState {
   token: string | null;
 }
 
+// Протокол встречи (запись обсуждения/решения)
+export interface MeetingMinute {
+  id: string;
+  meetingId: string;
+  userId: string; // автор записи
+  authorName?: string;
+  discussion?: string;
+  decisions?: string;
+  responsible?: string;
+  createdAt: string;
+}
+
+export type MeetingTaskStatus = 'pending' | 'in_progress' | 'done';
+
+// Задача / action item внутри встречи
+export interface MeetingTask {
+  id: string;
+  meetingId: string;
+  title: string;
+  assigneeId?: string | null;
+  assigneeName?: string;
+  deadline?: string | null; // YYYY-MM-DD
+  status: MeetingTaskStatus;
+  createdAt: string;
+}
+
 export interface Settings {
   soundEnabled: boolean;
   browserNotifications: boolean;

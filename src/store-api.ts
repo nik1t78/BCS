@@ -1,14 +1,14 @@
 // Store с поддержкой API Laravel
 
-import { authAPI, usersAPI, meetingsAPI, notificationsAPI, settingsAPI, profileAPI, tagsAPI, templatesAPI, attachmentsAPI, meetingHistoryAPI } from './api/client';
-import { User, Meeting, Notification, Settings, Tag, MeetingTemplate, Attachment, MeetingHistory } from './types';
+import { authAPI, usersAPI, meetingsAPI, notificationsAPI, settingsAPI, profileAPI, tagsAPI, templatesAPI, attachmentsAPI, meetingHistoryAPI, minutesAPI, meetingTasksAPI } from './api/client';
+import { User, Meeting, Notification, Settings, Tag, MeetingTemplate, Attachment, MeetingHistory, MeetingMinute, MeetingTask } from './types';
 
 // ============ AUTH ============
 export async function login(login: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> {
   try {
     const response = await authAPI.login(login, password);
-    localStorage.setItem('vks_auth', JSON.stringify({ token: response.token, user: response.user }));
-    return { success: true, user: response.user };
+    localStorage.setItem('vks_auth', JSON.stringify({ token: response.token, user: mapUser(response.user) }));
+    return { success: true, user: mapUser(response.user) };
   } catch (error: any) {
     return { success: false, error: error.message || 'Ошибка входа' };
   }
@@ -17,8 +17,8 @@ export async function login(login: string, password: string): Promise<{ success:
 export async function register(name: string, login: string, password: string, phone?: string, department?: string): Promise<{ success: boolean; user?: User; error?: string }> {
   try {
     const response = await authAPI.register({ name, login, password, phone, department });
-    localStorage.setItem('vks_auth', JSON.stringify({ token: response.token, user: response.user }));
-    return { success: true, user: response.user };
+    localStorage.setItem('vks_auth', JSON.stringify({ token: response.token, user: mapUser(response.user) }));
+    return { success: true, user: mapUser(response.user) };
   } catch (error: any) {
     return { success: false, error: error.message || 'Ошибка регистрации' };
   }
@@ -311,6 +311,153 @@ export async function deleteMeeting(id: string): Promise<boolean> {
     return true;
   } catch (error) {
     console.error('Delete meeting error:', error);
+    return false;
+  }
+}
+
+// Отмена встречи через специальный эндпоинт: сервер уведомляет участников
+export async function cancelMeeting(id: string, reason?: string): Promise<Meeting | null> {
+  try {
+    const response = await meetingsAPI.cancel(id, reason);
+    return mapMeeting(unwrapOne(response));
+  } catch (error) {
+    console.error('Cancel meeting error:', error);
+    return null;
+  }
+}
+
+// Перенос встречи (drag&drop в Schedule / кнопка «Перенести»)
+export async function rescheduleMeeting(
+  id: string,
+  data: { date: string; startTime: string; endTime?: string; notify?: boolean },
+): Promise<Meeting | null> {
+  try {
+    const response = await meetingsAPI.reschedule(id, {
+      date: data.date,
+      start_time: data.startTime,
+      ...(data.endTime ? { end_time: data.endTime } : {}),
+      ...(data.notify !== undefined ? { notify: data.notify } : {}),
+    });
+    return mapMeeting(unwrapOne(response));
+  } catch (error) {
+    console.error('Reschedule meeting error:', error);
+    return null;
+  }
+}
+
+// ============ ПРОТОКОЛ ВСТРЕЧИ (MINUTES) ============
+function mapMinute(raw: any): MeetingMinute {
+  return {
+    id: String(raw?.id ?? ''),
+    meetingId: String(raw?.meeting_id ?? raw?.meetingId ?? ''),
+    userId: String(raw?.user_id ?? raw?.userId ?? ''),
+    authorName: raw?.author?.name,
+    discussion: raw?.discussion ?? undefined,
+    decisions: raw?.decisions ?? undefined,
+    responsible: raw?.responsible ?? undefined,
+    createdAt: typeof raw?.created_at === 'string' ? raw.created_at.replace(' ', 'T') : (raw?.createdAt ?? ''),
+  };
+}
+
+export async function getMinutes(meetingId: string): Promise<MeetingMinute[]> {
+  try {
+    const response = await minutesAPI.list(meetingId);
+    return unwrapList(response).map(mapMinute);
+  } catch (error) {
+    console.error('Get minutes error:', error);
+    return [];
+  }
+}
+
+export async function addMinute(meetingId: string, data: { discussion?: string; decisions?: string; responsible?: string }): Promise<MeetingMinute | null> {
+  try {
+    const response = await minutesAPI.create(meetingId, data);
+    return mapMinute(unwrapOne(response));
+  } catch (error) {
+    console.error('Add minute error:', error);
+    return null;
+  }
+}
+
+export async function updateMinuteApi(meetingId: string, minuteId: string, data: { discussion?: string; decisions?: string; responsible?: string }): Promise<MeetingMinute | null> {
+  try {
+    const response = await minutesAPI.update(meetingId, minuteId, data);
+    return mapMinute(unwrapOne(response));
+  } catch (error) {
+    console.error('Update minute error:', error);
+    return null;
+  }
+}
+
+export async function deleteMinuteApi(meetingId: string, minuteId: string): Promise<boolean> {
+  try {
+    await minutesAPI.remove(meetingId, minuteId);
+    return true;
+  } catch (error) {
+    console.error('Delete minute error:', error);
+    return false;
+  }
+}
+
+// ============ ЗАДАЧИ ВСТРЕЧИ (ACTION ITEMS) ============
+function mapTask(raw: any): MeetingTask {
+  return {
+    id: String(raw?.id ?? ''),
+    meetingId: String(raw?.meeting_id ?? raw?.meetingId ?? ''),
+    title: raw?.title ?? '',
+    assigneeId: raw?.assignee_id != null ? String(raw.assignee_id) : null,
+    assigneeName: raw?.assignee?.name,
+    deadline: typeof raw?.deadline === 'string' ? raw.deadline.slice(0, 10) : (raw?.deadline ?? null),
+    status: (raw?.status as MeetingTask['status']) ?? 'pending',
+    createdAt: typeof raw?.created_at === 'string' ? raw.created_at.replace(' ', 'T') : (raw?.createdAt ?? ''),
+  };
+}
+
+export async function getMeetingTasks(meetingId: string): Promise<MeetingTask[]> {
+  try {
+    const response = await meetingTasksAPI.list(meetingId);
+    return unwrapList(response).map(mapTask);
+  } catch (error) {
+    console.error('Get meeting tasks error:', error);
+    return [];
+  }
+}
+
+export async function addMeetingTask(meetingId: string, data: { title: string; assigneeId?: string | null; deadline?: string | null }): Promise<MeetingTask | null> {
+  try {
+    const response = await meetingTasksAPI.create(meetingId, {
+      title: data.title,
+      assignee_id: data.assigneeId ? Number(data.assigneeId) : null,
+      deadline: data.deadline || null,
+    });
+    return mapTask(unwrapOne(response));
+  } catch (error) {
+    console.error('Add meeting task error:', error);
+    return null;
+  }
+}
+
+export async function updateMeetingTaskApi(meetingId: string, taskId: string, data: { title?: string; assigneeId?: string | null; deadline?: string | null; status?: string }): Promise<MeetingTask | null> {
+  try {
+    const response = await meetingTasksAPI.update(meetingId, taskId, {
+      ...(data.title !== undefined ? { title: data.title } : {}),
+      ...(data.assigneeId !== undefined ? { assignee_id: data.assigneeId ? Number(data.assigneeId) : null } : {}),
+      ...(data.deadline !== undefined ? { deadline: data.deadline || null } : {}),
+      ...(data.status !== undefined ? { status: data.status } : {}),
+    });
+    return mapTask(unwrapOne(response));
+  } catch (error) {
+    console.error('Update meeting task error:', error);
+    return null;
+  }
+}
+
+export async function deleteMeetingTaskApi(meetingId: string, taskId: string): Promise<boolean> {
+  try {
+    await meetingTasksAPI.remove(meetingId, taskId);
+    return true;
+  } catch (error) {
+    console.error('Delete meeting task error:', error);
     return false;
   }
 }

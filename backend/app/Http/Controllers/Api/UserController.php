@@ -162,8 +162,12 @@ class UserController extends Controller
             return response()->json(['message' => 'Неверный текущий пароль'], 422);
         }
 
-        // Каст 'password' => 'hashed' в модели сам выполнит хеширование
-        $user->update(['password' => $request->password]);
+        // Каст 'password' => 'hashed' в модели сам выполнит хеширование.
+        // Смена пароля пользователем снимает флаг обязательной смены при первом входе.
+        $user->update([
+            'password' => $request->password,
+            'must_change_password' => false,
+        ]);
 
         AuditLog::log($request, 'password_changed', $user);
 

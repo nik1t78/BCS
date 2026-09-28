@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { User } from './types';
-import { getCurrentUser, logout } from './store-api';
+import { getCurrentUser, logout, mapUser } from './store-api';
+import { authAPI } from './api/client';
+import ForcePasswordChange from './components/ForcePasswordChange';
 import { getTheme } from './store';
 import AuthPage from './components/AuthPage';
 import Dashboard from './components/Dashboard';
@@ -54,6 +56,17 @@ function App() {
     return <AuthPage onLogin={handleLogin} />;
   }
 
+  // Требование сменить пароль при первом входе (после создания/сброса админом)
+  const handlePasswordChanged = async () => {
+    try {
+      const fresh = mapUser(await authAPI.getUser());
+      localStorage.setItem('vks_auth', JSON.stringify({ ...JSON.parse(localStorage.getItem('vks_auth') || '{}'), user: fresh }));
+      setUser(fresh);
+    } catch {
+      setUser({ ...user, mustChangePassword: false });
+    }
+  };
+
   const isAdmin = user.role === 'admin';
   const isModerator = user.role === 'moderator';
 
@@ -73,6 +86,14 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex">
+      {/* Форс-модалка смены пароля при первом входе */}
+      {user.mustChangePassword && (
+        <ForcePasswordChange
+          userName={user.name}
+          onChanged={handlePasswordChanged}
+          onLogout={handleLogout}
+        />
+      )}
       {/* Sidebar */}
       <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transition-all duration-300`}>
         <div className="p-4 border-b border-gray-100 dark:border-gray-700">
