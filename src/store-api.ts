@@ -200,13 +200,15 @@ export async function updateUser(id: string, data: any): Promise<User | null> {
   }
 }
 
-export async function deleteUser(id: string): Promise<boolean> {
+export async function deleteUser(id: string): Promise<{ ok: boolean; error?: string }> {
   try {
     await usersAPI.delete(id);
-    return true;
-  } catch (error) {
+    return { ok: true };
+  } catch (error: any) {
     console.error('Delete user error:', error);
-    return false;
+    // apiRequest бросает Error с сообщением от Laravel (message/422 errors) —
+    // прокидываем его в админ-панель, чтобы была видна реальная причина
+    return { ok: false, error: error?.message };
   }
 }
 
