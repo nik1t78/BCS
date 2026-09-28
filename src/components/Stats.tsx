@@ -6,6 +6,43 @@ interface StatsProps {
   user: User;
 }
 
+// Служебные функции для графиков и топ-рейтингов
+const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+const BarsChart = ({ data, color }: { data: { label: string; value: number }[]; color: string }) => {
+  const max = Math.max(1, ...data.map(d => d.value));
+  return (
+    <div className="flex items-end gap-1.5 h-40 pt-2">
+      {data.map((d, i) => (
+        <div key={i} className="flex-1 flex flex-col items-center justify-end h-full min-w-0" title={`${d.label}: ${d.value}`}>
+          <span className="text-[10px] text-gray-500 dark:text-gray-400 mb-0.5">{d.value > 0 ? d.value : ''}</span>
+          <div className={`w-full rounded-t ${color} transition-all duration-500`} style={{ height: `${(d.value / max) * 100}%`, minHeight: d.value > 0 ? 4 : 1 }} />
+          <span className="text-[9px] text-gray-400 dark:text-gray-500 mt-1 truncate w-full text-center">{d.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const TopList = ({ items, icon, color }: { items: { label: string; count: number }[]; icon: string; color: string }) => {
+  const max = Math.max(1, ...items.map(i => i.count));
+  if (items.length === 0) return <p className="text-sm text-gray-400 dark:text-gray-500 py-4 text-center">Нет данных</p>;
+  return (
+    <div className="space-y-3">
+      {items.map((item, i) => (
+        <div key={i} className="flex items-center gap-3">
+          <i className={`fas ${icon} ${color} w-5 text-sm`}></i>
+          <span className="text-sm text-gray-700 dark:text-gray-300 w-40 truncate" title={item.label}>{item.label}</span>
+          <div className="flex-1 bg-gray-100 dark:bg-gray-700 rounded-full h-5 overflow-hidden">
+            <div className={`h-full ${color.replace('text-', 'bg-')} rounded-full`} style={{ width: `${(item.count / max) * 100}%` }} />
+          </div>
+          <span className="text-sm font-bold text-gray-800 dark:text-gray-100 w-8 text-right">{item.count}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 export default function Stats({ user }: StatsProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -65,6 +102,62 @@ export default function Stats({ user }: StatsProps) {
     { label: 'Организовано мной', value: stats.organized, icon: 'fa-user-edit', color: 'from-green-500 to-green-600' },
   ];
 
+  // ===== Графики по дням/неделям =====
+  const [chartMode, setChartMode] = useState<'days' | 'weeks'>('days');
+
+  const dailyData = (() => {
+    const counts = new Map<string, number>();
+    meetings.forEach(m => {
+      if (m.date) counts.set(m.date, (counts.get(m.date) || 0) + 1);
+    });
+    const out: { label: string; value: number }[] = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = dayKey(d);
+      out.push({ label: `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, '0')}`, value: counts.get(key) || 0 });
+    }
+    return out;
+  })();
+
+  const weeklyData = (() => {
+    const buckets: { label: string; value: number }[] = [];
+    for (let w = 7; w >= 0; w--) {
+      const end = new Date();
+      end.setDate(end.getDate() - w * 7);
+      const start = new Date(end);
+      start.setDate(end.getDate() - 6);
+      let count = 0;
+      meetings.forEach(m => {
+        if (!m.date) return;
+        const md = new Date(m.date + 'T00:00:00');
+        if (md >= new Date(start.getFullYear(), start.getMonth(), start.getDate()) &&
+            md <= new Date(end.getFullYear(), end.getMonth(), end.getDate())) count++;
+      });
+      buckets.push({ label: w === 0 ? 'тек.' : `${start.getDate()}.${String(start.getMonth() + 1).padStart(2, '0')}`, value: count });
+    }
+    return buckets;
+  })();
+
+  // ===== Топ комнат и топ организаторов =====
+  const topRooms = Object.entries(
+    meetings.reduce<Record<string, number>>((acc, m) => {
+      const room = (m.room || '').trim();
+      if (room) acc[room] = (acc[room] || 0) + 1;
+      return acc;
+    }, {})
+  ).map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count).slice(0, 7);
+
+  const userNameById = new Map(users.map(u => [String(u.id), u.name]));
+  const topOrganizers = Object.entries(
+    meetings.reduce<Record<string, number>>((acc, m) => {
+      const key = String(m.organizerId);
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {})
+  ).map(([id, count]) => ({ label: userNameById.get(id) || `Пользователь #${id}`, count }))
+    .sort((a, b) => b.count - a.count).slice(0, 7);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -101,6 +194,45 @@ export default function Stats({ user }: StatsProps) {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Динамика ВКС по дням/неделям */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+            <i className="fas fa-chart-bar text-blue-500"></i>
+            Динамика конференций ({chartMode === 'days' ? 'за 14 дней' : 'за 8 недель'})
+          </h3>
+          <div className="flex gap-2">
+            <button onClick={() => setChartMode('days')}
+              className={`px-3 py-1 text-sm rounded-full transition-colors ${chartMode === 'days' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}>
+              По дням
+            </button>
+            <button onClick={() => setChartMode('weeks')}
+              className={`px-3 py-1 text-sm rounded-full transition-colors ${chartMode === 'weeks' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}>
+              По неделям
+            </button>
+          </div>
+        </div>
+        <BarsChart data={chartMode === 'days' ? dailyData : weeklyData} color="bg-blue-500" />
+      </div>
+
+      {/* Топ комнат и топ организаторов */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+          <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
+            <i className="fas fa-door-open text-emerald-500"></i>
+            Топ комнат
+          </h3>
+          <TopList items={topRooms} icon="fa-map-pin" color="text-emerald-500" />
+        </div>
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+          <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
+            <i className="fas fa-trophy text-amber-500"></i>
+            Топ организаторов
+          </h3>
+          <TopList items={topOrganizers} icon="fa-user" color="text-amber-500" />
+        </div>
       </div>
 
       {/* Status Breakdown */}

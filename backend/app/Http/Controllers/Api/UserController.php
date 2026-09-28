@@ -134,6 +134,7 @@ class UserController extends Controller
             'phone' => 'nullable|string|max:20',
             'department' => 'nullable|string|max:255',
             'position' => 'nullable|string|max:255',
+            'avatar' => 'nullable|string|max:3000000',
         ]);
 
         $user->update($validated);

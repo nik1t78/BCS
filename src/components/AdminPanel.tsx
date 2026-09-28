@@ -71,6 +71,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [activeTab, setActiveTab] = useState<'users' | 'meetings' | 'stats' | 'audit'>('users');
   const [searchQuery, setSearchQuery] = useState('');
+  const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'admin' | 'moderator' | 'user'>('all');
+  const [userStatusFilter, setUserStatusFilter] = useState<'all' | 'active' | 'blocked'>('all');
   // Сортировка конференций в админке (по умолчанию — «умная»: сначала сегодняшние)
   const [meetingSortMode, setMeetingSortMode] = useState<SortMode>('smart');
   const [showUserForm, setShowUserForm] = useState(false);
@@ -316,11 +318,17 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
   const getUserName = (id: string) => users.find(u => Number(u.id) === Number(id))?.name || '—';
 
-  const filteredUsers = users.filter(u =>
-    u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.login.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (u.department || '').toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredUsers = users.filter(u => {
+    if (!(
+      u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.login.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (u.department || '').toLowerCase().includes(searchQuery.toLowerCase())
+    )) return false;
+    if (userRoleFilter !== 'all' && u.role !== userRoleFilter) return false;
+    if (userStatusFilter === 'active') return u.isActive;
+    if (userStatusFilter === 'blocked') return !u.isActive;
+    return true;
+  });
 
   const filteredMeetings = sortMeetings(
     meetings.filter(m =>
@@ -424,12 +432,27 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       {/* Users Tab */}
       {activeTab === 'users' && (
         <div className="space-y-4">
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-center flex-wrap gap-3">
             <p className="text-sm text-gray-500 dark:text-gray-400">Всего: {filteredUsers.length} пользователей</p>
-            <button onClick={() => { setShowUserForm(true); setEditingUser(null); setUserForm(emptyUser); }}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2">
-              <i className="fas fa-user-plus"></i>Добавить
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <select value={userRoleFilter} onChange={(e) => setUserRoleFilter(e.target.value as any)}
+                className="text-sm px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-blue-500">
+                <option value="all">Все роли</option>
+                <option value="admin">Администраторы</option>
+                <option value="moderator">Модераторы</option>
+                <option value="user">Пользователи</option>
+              </select>
+              <select value={userStatusFilter} onChange={(e) => setUserStatusFilter(e.target.value as any)}
+                className="text-sm px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-blue-500">
+                <option value="all">Все статусы</option>
+                <option value="active">Активные</option>
+                <option value="blocked">Заблокированные</option>
+              </select>
+              <button onClick={() => { setShowUserForm(true); setEditingUser(null); setUserForm(emptyUser); }}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2">
+                <i className="fas fa-user-plus"></i>Добавить
+              </button>
+            </div>
           </div>
 
           {/* User Form Modal */}
@@ -511,8 +534,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
-                            <span className="text-blue-600 dark:text-blue-400 font-bold text-sm">{u.name.charAt(0)}</span>
+                          <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center overflow-hidden">
+                            {u.avatar ? (
+                              <img src={u.avatar} alt={u.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-blue-600 dark:text-blue-400 font-bold text-sm">{u.name.charAt(0)}</span>
+                            )}
                           </div>
                           <div>
                             <p className="font-medium text-gray-800 dark:text-gray-100 text-sm">{u.name}</p>

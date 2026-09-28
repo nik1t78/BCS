@@ -78,6 +78,25 @@ export default function Notifications({ user }: NotificationsProps) {
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
+  // Группировка: Сегодня / На этой неделе / Ранее (по дате уведомления)
+  const getGroup = (ts: string): 'today' | 'week' | 'earlier' => {
+    const d = new Date(ts);
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfWeek = new Date(startOfToday);
+    startOfWeek.setDate(startOfToday.getDate() - ((startOfToday.getDay() + 6) % 7)); // понедельник
+    if (d >= startOfToday) return 'today';
+    if (d >= startOfWeek) return 'week';
+    return 'earlier';
+  };
+
+  const sortedByDate = [...filtered].sort((a, b) => +new Date(b.timestamp) - +new Date(a.timestamp));
+  const groups: { key: string; label: string; icon: string; items: Notification[] }[] = [
+    { key: 'today', label: 'Сегодня', icon: 'fa-sun', items: sortedByDate.filter(n => getGroup(n.timestamp) === 'today') },
+    { key: 'week', label: 'На этой неделе', icon: 'fa-calendar-week', items: sortedByDate.filter(n => getGroup(n.timestamp) === 'week') },
+    { key: 'earlier', label: 'Ранее', icon: 'fa-history', items: sortedByDate.filter(n => getGroup(n.timestamp) === 'earlier') },
+  ].filter(g => g.items.length > 0);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -133,35 +152,47 @@ export default function Notifications({ user }: NotificationsProps) {
             <p className="text-lg">Нет уведомлений</p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-100 dark:divide-gray-700">
-            {filtered.map(notification => {
-              const typeInfo = getTypeInfo(notification.type);
-              return (
-                <div key={notification.id} className={`p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${!notification.read ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}>
-                  <div className="flex items-start gap-4">
-                    <div className={`${typeInfo.bg} rounded-lg p-2.5 flex-shrink-0`}>
-                      <i className={`fas ${typeInfo.icon} ${typeInfo.color}`}></i>
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className={`font-medium ${!notification.read ? 'text-gray-800 dark:text-gray-100' : 'text-gray-600 dark:text-gray-300'}`}>{notification.message}</p>
-                        {!notification.read && (
-                          <button onClick={() => handleMarkRead(notification.id)} className="text-blue-500 hover:text-blue-700 text-sm whitespace-nowrap">Прочитано</button>
-                        )}
-                      </div>
-                      <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
-                        {isAdmin && showAllUsers && (
-                          <span className="mr-2 text-gray-500 dark:text-gray-400">
-                            <i className="fas fa-user mr-1"></i>{notification.userName || `Пользователь #${notification.userId}`}
-                          </span>
-                        )}
-                        {new Date(notification.timestamp).toLocaleString('ru-RU')}
-                      </p>
-                    </div>
-                  </div>
+          <div>
+            {groups.map(group => (
+              <div key={group.key}>
+                <div className="px-4 py-2 bg-gray-50 dark:bg-gray-900/40 sticky top-0 z-10 border-b border-gray-100 dark:border-gray-700">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    <i className={`fas ${group.icon} mr-2 text-orange-400`}></i>{group.label}
+                    <span className="ml-2 text-gray-400">({group.items.length})</span>
+                  </span>
                 </div>
-              );
-            })}
+                <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {group.items.map(notification => {
+                    const typeInfo = getTypeInfo(notification.type);
+                    return (
+                      <div key={notification.id} className={`p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${!notification.read ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}>
+                        <div className="flex items-start gap-4">
+                          <div className={`${typeInfo.bg} rounded-lg p-2.5 flex-shrink-0`}>
+                            <i className={`fas ${typeInfo.icon} ${typeInfo.color}`}></i>
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className={`font-medium ${!notification.read ? 'text-gray-800 dark:text-gray-100' : 'text-gray-600 dark:text-gray-300'}`}>{notification.message}</p>
+                              {!notification.read && (
+                                <button onClick={() => handleMarkRead(notification.id)} className="text-blue-500 hover:text-blue-700 text-sm whitespace-nowrap">Прочитано</button>
+                              )}
+                            </div>
+                            <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
+                              {isAdmin && showAllUsers && (
+                                <span className="mr-2 text-gray-500 dark:text-gray-400">
+                                  <i className="fas fa-user mr-1"></i>{notification.userName || `Пользователь #${notification.userId}`}
+                                </span>
+                              )}
+                              {new Date(notification.timestamp).toLocaleString('ru-RU')}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
