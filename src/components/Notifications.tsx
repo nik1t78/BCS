@@ -91,7 +91,7 @@ export default function Notifications({ user }: NotificationsProps) {
   };
 
   const sortedByDate = [...filtered].sort((a, b) => +new Date(b.timestamp) - +new Date(a.timestamp));
-  const groups: { key: 'today' | 'week' | 'earlier'; label: string; icon: string; items: Notification[] }[] = [
+  const groups: { key: string; label: string; icon: string; items: Notification[] }[] = [
     { key: 'today', label: 'Сегодня', icon: 'fa-sun', items: sortedByDate.filter(n => getGroup(n.timestamp) === 'today') },
     { key: 'week', label: 'На этой неделе', icon: 'fa-calendar-week', items: sortedByDate.filter(n => getGroup(n.timestamp) === 'week') },
     { key: 'earlier', label: 'Ранее', icon: 'fa-history', items: sortedByDate.filter(n => getGroup(n.timestamp) === 'earlier') },

@@ -1,13 +1,54 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { User } from '../types';
-import { updateProfile, changePassword } from '../store-api';
+import { updateProfile, changePassword, getSettings, updateSettings } from '../store-api';
 
 interface ProfileProps {
   user: User;
   onUpdate: () => void;
 }
 
+const REMINDER_OPTIONS = [5, 15, 30, 60];
+
 export default function Profile({ user, onUpdate }: ProfileProps) {
+  const [notifSettings, setNotifSettings] = useState({
+    soundEnabled: true,
+    browserNotifications: true,
+    defaultReminderMinutes: 15,
+  });
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
+  const [settingsError, setSettingsError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    getSettings().then((s) => {
+      if (!cancelled && s) {
+        setNotifSettings({
+          soundEnabled: s.soundEnabled ?? true,
+          browserNotifications: s.browserNotifications ?? true,
+          defaultReminderMinutes: s.defaultReminderMinutes ?? 15,
+        });
+      }
+      if (!cancelled) setSettingsLoaded(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleSaveSettings = async () => {
+    setSettingsError('');
+    const ok = await updateSettings({
+      sound_enabled: notifSettings.soundEnabled,
+      browser_notifications: notifSettings.browserNotifications,
+      default_reminder_minutes: notifSettings.defaultReminderMinutes,
+    });
+    if (ok) {
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 3000);
+    } else {
+      setSettingsError('Не удалось сохранить настройки. Попробуйте ещё раз.');
+    }
+  };
+
   const [formData, setFormData] = useState({
     name: user.name,
     phone: user.phone || '',
@@ -193,6 +234,71 @@ export default function Profile({ user, onUpdate }: ProfileProps) {
             <i className="fas fa-save mr-2"></i>Сохранить
           </button>
         </div>
+      </div>
+
+      {/* Notification Settings */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
+        <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-1">
+          <i className="fas fa-bell mr-2 text-blue-500"></i>Настройки уведомлений
+        </h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          Напоминания о конференциях: когда и куда присылать.
+        </p>
+
+        {settingsSaved && (
+          <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-green-700 dark:text-green-400 flex items-center gap-2">
+            <i className="fas fa-check-circle"></i>Настройки сохранены!
+          </div>
+        )}
+        {settingsError && (
+          <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 flex items-center gap-2">
+            <i className="fas fa-exclamation-circle"></i>{settingsError}
+          </div>
+        )}
+
+        {!settingsLoaded ? (
+          <p className="text-sm text-gray-400"><i className="fas fa-spinner fa-spin mr-2"></i>Загрузка настроек…</p>
+        ) : (
+          <div className="space-y-4 max-w-2xl">
+            <label className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg cursor-pointer">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                <i className="fas fa-volume-up mr-2 text-purple-500"></i>Звук при уведомлении
+              </span>
+              <input type="checkbox" checked={notifSettings.soundEnabled}
+                onChange={(e) => setNotifSettings({ ...notifSettings, soundEnabled: e.target.checked })}
+                className="w-5 h-5 accent-blue-600" />
+            </label>
+            <label className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg cursor-pointer">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                <i className="fas fa-desktop mr-2 text-green-500"></i>Уведомления в браузере
+              </span>
+              <input type="checkbox" checked={notifSettings.browserNotifications}
+                onChange={(e) => setNotifSettings({ ...notifSettings, browserNotifications: e.target.checked })}
+                className="w-5 h-5 accent-blue-600" />
+            </label>
+            <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+              <span className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
+                <i className="fas fa-clock mr-2 text-orange-500"></i>Напоминать за
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {REMINDER_OPTIONS.map((m) => (
+                  <button key={m} type="button"
+                    onClick={() => setNotifSettings({ ...notifSettings, defaultReminderMinutes: m })}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      notifSettings.defaultReminderMinutes === m
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:border-blue-400'
+                    }`}>
+                    {m} мин
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button onClick={handleSaveSettings} className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+              <i className="fas fa-save mr-2"></i>Сохранить настройки
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Password Change */}
