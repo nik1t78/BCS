@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
 import { getMeetings, createMeeting, updateMeeting, deleteMeeting, getUsersForDisplay } from '../store-api';
 import TagsSelector from './TagsSelector';
+import { SortMode, SORT_OPTIONS, sortMeetings, getMeetingGroup } from '../utils/meetingSort';
 
 interface UserPanelProps {
   user: User;
@@ -58,8 +59,13 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
     setLoading(false);
   };
 
-  // Все конференции видны в списке без фильтров «Организованные/Участие»
-  const filteredMeetings = meetings;
+  // Все конференции видны в списке без фильтров «Организованные/Участие».
+  // Сортировка: по умолчанию «умная» — сначала сегодняшние ВКС, затем завтра,
+  // ближайшая неделя, поздние и в конце прошедшие/отменённые.
+  const [sortMode, setSortMode] = useState<SortMode>('smart');
+  const sortedMeetings = sortMeetings(meetings, sortMode);
+  // В «умном» режиме группы показываем заголовками-разделителями
+  const showGroups = sortMode === 'smart';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -149,6 +155,20 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
           <i className="fas fa-plus"></i>
           Создать конференцию
         </button>
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-gray-600 dark:text-gray-400">
+            <i className="fas fa-sort mr-1"></i>Сортировка:
+          </label>
+          <select
+            value={sortMode}
+            onChange={(e) => setSortMode(e.target.value as SortMode)}
+            className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
+          >
+            {SORT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Form Modal */}
@@ -452,7 +472,7 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
       })()}
 
       {/* Meetings List */}
-      {error && filteredMeetings.length === 0 ? (
+      {error && sortedMeetings.length === 0 ? (
         <div className="text-center py-12 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 rounded-xl">
           <i className="fas fa-plug text-4xl text-yellow-500 mb-3"></i>
           <p className="text-yellow-800 dark:text-yellow-200 font-medium">Не удалось загрузить данные с сервера</p>
@@ -465,11 +485,26 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
         </div>
       ) : (
       <div className="space-y-3">
-        {filteredMeetings.map(meeting => (
-          <div
-            key={meeting.id}
-            className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 hover:shadow-md transition-shadow"
-          >
+        {(() => {
+          // В «умном» режиме вставляем заголовки групп (Сегодня / Завтра / …)
+          let lastGroup = '';
+          return sortedMeetings.map(meeting => {
+            const group = showGroups ? getMeetingGroup(meeting) : null;
+            const header = group && group.key !== lastGroup ? (
+              <div key={`grp-${group.key}`} className="pt-2 pb-1 first:pt-0">
+                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-2">
+                  <i className={`fas ${group.key === 'today' ? 'fa-calendar-day text-blue-500' : group.key === 'tomorrow' ? 'fa-calendar text-indigo-500' : group.key === 'past' ? 'fa-history text-gray-400' : 'fa-calendar-week text-purple-500'}`}></i>
+                  {group.label}
+                </h3>
+              </div>
+            ) : null;
+            if (group) lastGroup = group.key;
+            return (
+              <React.Fragment key={meeting.id}>
+                {header}
+                <div
+                  className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 hover:shadow-md transition-shadow"
+                >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2">
@@ -564,9 +599,12 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                 )}
               </div>
             </div>
-          </div>
-        ))}
-        {filteredMeetings.length === 0 && (
+                </div>
+              </React.Fragment>
+            );
+          });
+        })()}
+        {sortedMeetings.length === 0 && (
           <div className="text-center py-12 text-gray-400 dark:text-gray-500 bg-white dark:bg-gray-800 rounded-xl shadow-sm">
             <i className="fas fa-video text-4xl mb-3"></i>
             <p>Нет конференций</p>

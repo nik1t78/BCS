@@ -3,6 +3,7 @@ import { User, Meeting } from '../types';
 import { authAPI } from '../api/client';
 import { unwrapList, mapMeeting } from '../store-api';
 import { exportToExcel } from '../utils/export';
+import { SortMode, SORT_OPTIONS, sortMeetings } from '../utils/meetingSort';
 import { getUsers, getMeetings, getAdminPanelStats, createUser, updateUser, deleteUser, toggleUserActive, changeUserRole, resetUserPassword, updateMeeting, deleteMeeting, createMeeting } from '../store-api';
 
 // Админский список всех конференций: обычный GET /meetings доступён только
@@ -70,6 +71,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [activeTab, setActiveTab] = useState<'users' | 'meetings' | 'stats' | 'audit'>('users');
   const [searchQuery, setSearchQuery] = useState('');
+  // Сортировка конференций в админке (по умолчанию — «умная»: сначала сегодняшние)
+  const [meetingSortMode, setMeetingSortMode] = useState<SortMode>('smart');
   const [showUserForm, setShowUserForm] = useState(false);
   const [showMeetingForm, setShowMeetingForm] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -319,9 +322,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     (u.department || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filteredMeetings = meetings.filter(m =>
-    m.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (m.room || '').toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredMeetings = sortMeetings(
+    meetings.filter(m =>
+      m.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (m.room || '').toLowerCase().includes(searchQuery.toLowerCase())
+    ),
+    meetingSortMode
   );
 
   // Базовые цифры считаем из загруженных списков; если сервер вернул
@@ -550,6 +556,20 @@ export default function AdminPanel({ user }: AdminPanelProps) {
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <p className="text-sm text-gray-500 dark:text-gray-400">Всего: {filteredMeetings.length} конференций</p>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600 dark:text-gray-400">
+                <i className="fas fa-sort mr-1"></i>Сортировка:
+              </label>
+              <select
+                value={meetingSortMode}
+                onChange={(e) => setMeetingSortMode(e.target.value as SortMode)}
+                className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
+              >
+                {SORT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
             <div className="flex items-center gap-2">
               <button onClick={() => exportToExcel(filteredMeetings, user.login || user.name)}
                 className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 flex items-center gap-2">

@@ -87,9 +87,10 @@ services:
       MYSQL_USER: vks_user
       MYSQL_PASSWORD: vks_password_2024
     volumes:
-      # Длинный (explicit) синтаксис — не зависит от пути с диском (D:\)
-      - type: volume
-        source: mysql_data
+      # Bind-mount: данные лежат в ./docker/mysql/data и НЕ удаляются
+      # при `docker compose down`, пересборке образов или удалении volumes.
+      - type: bind
+        source: ./docker/mysql/data
         target: /var/lib/mysql
     ports:
       - "3306:3306"
@@ -161,5 +162,4 @@ networks:
     driver: bridge
 
 volumes:
-  mysql_data:
   frontend_build:
