@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { User } from '../types';
 import { updateProfile, changePassword } from '../store-api';
 
@@ -14,6 +14,8 @@ export default function Profile({ user, onUpdate }: ProfileProps) {
     department: user.department || '',
     position: user.position || '',
   });
+  const [avatar, setAvatar] = useState<string>(user.avatar || '');
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const [saved, setSaved] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [passwordData, setPasswordData] = useState({
@@ -30,6 +32,7 @@ export default function Profile({ user, onUpdate }: ProfileProps) {
       phone: formData.phone,
       department: formData.department,
       position: formData.position,
+      avatar: avatar || undefined,
     });
     
     if (updatedUser) {
@@ -37,6 +40,31 @@ export default function Profile({ user, onUpdate }: ProfileProps) {
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     }
+  };
+
+  // Загрузка и сжатие аватара в data-URL (чтобы не гонять мегабайты на сервер)
+  const handleAvatarFile = (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Можно загружать только изображения');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 256;
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        setAvatar(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -78,15 +106,39 @@ export default function Profile({ user, onUpdate }: ProfileProps) {
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
         <div className="bg-gradient-to-r from-blue-500 to-purple-600 h-32 relative">
           <div className="absolute -bottom-12 left-6">
-            <div className="w-24 h-24 bg-white dark:bg-gray-700 rounded-xl shadow-lg flex items-center justify-center border-4 border-white dark:border-gray-800">
-              <span className="text-3xl font-bold text-blue-600 dark:text-blue-400">{user.name.charAt(0)}</span>
+            <div
+              onClick={() => avatarInputRef.current?.click()}
+              title="Нажмите, чтобы изменить аватар"
+              className="w-24 h-24 bg-white dark:bg-gray-700 rounded-xl shadow-lg flex items-center justify-center border-4 border-white dark:border-gray-800 overflow-hidden cursor-pointer group relative">
+              {avatar ? (
+                <img src={avatar} alt="Аватар" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-3xl font-bold text-blue-600 dark:text-blue-400">{user.name.charAt(0)}</span>
+              )}
+              <div className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <i className="fas fa-camera"></i>
+              </div>
             </div>
+            <input ref={avatarInputRef} type="file" accept="image/*" className="hidden"
+              onChange={(e) => handleAvatarFile(e.target.files?.[0])} />
           </div>
         </div>
         <div className="px-6 pt-16 pb-6">
-          <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">{user.name}</h2>
-          <p className="text-gray-500 dark:text-gray-400 capitalize mt-1">
-            {user.role === 'admin' ? '🛡️ Администратор' : user.role === 'moderator' ? '🔧 Модератор' : '👤 Пользователь'}
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">{user.name}</h2>
+              <p className="text-gray-500 dark:text-gray-400 capitalize mt-1">
+                {user.role === 'admin' ? '🛡️ Администратор' : user.role === 'moderator' ? '🔧 Модератор' : '👤 Пользователь'}
+              </p>
+            </div>
+            {avatar && (
+              <button onClick={() => setAvatar('')} className="text-sm text-red-500 hover:text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20">
+                <i className="fas fa-trash mr-1"></i>Удалить аватар
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+            <i className="fas fa-info-circle mr-1"></i>Выберите изображение кликом по аватару — изменения применятся после нажатия «Сохранить».
           </p>
         </div>
       </div>

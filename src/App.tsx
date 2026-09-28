@@ -125,8 +125,12 @@ function App() {
           <div className="flex items-center gap-3">
             <ThemeToggle />
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
-                <span className="text-blue-600 dark:text-blue-400 font-bold text-sm">{user.name.charAt(0)}</span>
+              <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center overflow-hidden">
+                {user.avatar ? (
+                  <img src={user.avatar} alt="Аватар" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-blue-600 dark:text-blue-400 font-bold text-sm">{user.name.charAt(0)}</span>
+                )}
               </div>
               <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{user.name.split(' ')[0]}</span>
             </div>
