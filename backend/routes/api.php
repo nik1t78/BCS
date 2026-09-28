@@ -8,12 +8,15 @@ use App\Http\Controllers\Api\TagController;
 use App\Http\Controllers\Api\TemplateController;
 use App\Http\Controllers\Api\AttachmentController;
 use App\Http\Controllers\Api\MeetingHistoryController;
+use App\Http\Controllers\Api\MeetingMinuteController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-// Публичные маршруты
-Route::post('/auth/register', [AuthController::class, 'register']);
-Route::post('/auth/login', [AuthController::class, 'login']);
+// Публичные маршруты (с rate limiting: общий лимит + жёсткий на подбор пароля)
+Route::middleware('throttle:api')->group(function () {
+    Route::post('/auth/register', [AuthController::class, 'register']);
+    Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:login');
+});
 
 // Health check
 Route::get('/health', function () {
@@ -25,7 +28,7 @@ Route::get('/health', function () {
 });
 
 // Защищённые маршруты
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // Auth
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/user', [AuthController::class, 'user']);
@@ -73,6 +76,21 @@ Route::middleware('auth:sanctum')->group(function () {
     // Meeting History
     Route::get('/meetings/{meetingId}/history', [MeetingHistoryController::class, 'index']);
 
+    // Протокол встречи (minutes) и задачи/action items
+    Route::get('/meetings/{meeting}/minutes', [MeetingMinuteController::class, 'minutesIndex']);
+    Route::post('/meetings/{meeting}/minutes', [MeetingMinuteController::class, 'minutesStore']);
+    Route::put('/meetings/{meeting}/minutes/{minute}', [MeetingMinuteController::class, 'minutesUpdate']);
+    Route::delete('/meetings/{meeting}/minutes/{minute}', [MeetingMinuteController::class, 'minutesDestroy']);
+
+    Route::get('/meetings/{meeting}/tasks', [MeetingMinuteController::class, 'tasksIndex']);
+    Route::post('/meetings/{meeting}/tasks', [MeetingMinuteController::class, 'tasksStore']);
+    Route::put('/meetings/{meeting}/tasks/{task}', [MeetingMinuteController::class, 'tasksUpdate']);
+    Route::delete('/meetings/{meeting}/tasks/{task}', [MeetingMinuteController::class, 'tasksDestroy']);
+
+    // Отмена встречи с уведомлением участников / перенос (drag&drop в Schedule)
+    Route::post('/meetings/{meeting}/cancel', [MeetingController::class, 'cancel']);
+    Route::put('/meetings/{meeting}/reschedule', [MeetingController::class, 'reschedule']);
+
     // Admin routes (admin + moderator)
     Route::middleware('can:admin-or-moderator')->group(function () {
         Route::get('/admin/users', [UserController::class, 'index']);
@@ -90,6 +108,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Аудит-лог действий пользователей (только администратор)
         Route::get('/admin/audit-logs', [\App\Http\Controllers\Api\AuditLogController::class, 'index']);
+        Route::get('/admin/audit-logs/export', [\App\Http\Controllers\Api\AuditLogController::class, 'export']);
         
         // Password management
         Route::put('/admin/users/{id}/reset-password', [\App\Http\Controllers\Api\AdminController::class, 'resetPassword']);

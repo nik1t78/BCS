@@ -79,6 +79,22 @@ class Meeting extends Model
     }
 
     /**
+     * Протокол встречи (записи обсуждения/решений)
+     */
+    public function minutes()
+    {
+        return $this->hasMany(MeetingMinute::class);
+    }
+
+    /**
+     * Задачи / action items встречи
+     */
+    public function tasks()
+    {
+        return $this->hasMany(MeetingTask::class);
+    }
+
+    /**
      * Scope: только предстоящие
      */
     public function scopeUpcoming($query)

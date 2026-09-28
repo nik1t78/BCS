@@ -130,6 +130,29 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
+  const [exporting, setExporting] = useState(false);
+  const exportAuditCsv = async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (auditAction) params.set('action', auditAction);
+      const blob = await authAPI.downloadBlob(`/admin/audit-logs/export?${params.toString()}`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Audit export error:', e);
+      alert('Не удалось экспортировать аудит-лог');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const emptyUser: User = {
     id: '', name: '', login: '', password: '', role: 'user',
     phone: '', department: '', position: '', createdAt: '', isActive: true,
@@ -873,6 +896,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             <button onClick={() => loadAuditLogs(auditPage)}
               className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-gray-700 dark:text-gray-200">
               <i className={`fas fa-sync-alt mr-1 ${auditLoading ? 'fa-spin' : ''}`}></i>Обновить
+            </button>
+            <button onClick={exportAuditCsv} disabled={exporting}
+              className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded-lg text-white">
+              <i className={`fas ${exporting ? 'fa-spinner fa-spin' : 'fa-file-csv'} mr-1`}></i>Экспорт CSV
             </button>
           </div>
 

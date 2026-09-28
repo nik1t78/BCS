@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
-import { getMeetings, getUsersForDisplay } from '../store-api';
+import { getMeetings, getUsersForDisplay, rescheduleMeeting } from '../store-api';
 import { occursOn, withDate } from '../utils/recurrence';
 
 interface ScheduleProps {
@@ -18,6 +18,10 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [filter, setFilter] = useState<'all' | 'my' | 'today' | 'upcoming'>('all');
   const [loading, setLoading] = useState(true);
+  // drag&drop переноса встреч между днями календаря
+  const [dragMeetingId, setDragMeetingId] = useState<string | null>(null);
+  const [dragOverDate, setDragOverDate] = useState<string | null>(null);
+  const [moving, setMoving] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -91,6 +95,57 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
   };
 
   const getUserName = (id: string) => allUsers.find(u => Number(u.id) === Number(id))?.name || '—';
+
+  // Можно ли перетаскивать встречу (только организатор или админ — как на бэкенде)
+  const canDrag = (m: Meeting) =>
+    m.status !== 'cancelled' && m.status !== 'completed' &&
+    (Number(m.organizerId) === Number(user.id) || user.role === 'admin');
+
+  // Перенос встречи на другой день календаря (drag&drop)
+  const handleDropOnDate = async (dateKey: string) => {
+    setDragOverDate(null);
+    const id = dragMeetingId;
+    setDragMeetingId(null);
+    if (!id) return;
+    const m = meetings.find((x) => String(x.id) === id);
+    if (!m) return;
+    if (m.date === dateKey) return; // бросок на тот же день — ничего не делаем
+    if (!canDrag(m)) return;
+    if (!confirm(`Перенести «${m.title}» на ${new Date(dateKey).toLocaleDateString('ru-RU')}? Участники получат уведомление.`)) return;
+
+    setMoving(true);
+    const saved = await rescheduleMeeting(id, { date: dateKey, startTime: m.startTime, endTime: m.endTime });
+    setMoving(false);
+    if (saved) loadData();
+    else alert('Не удалось перенести встречу');
+  };
+
+  const dragHandlers = (m: Meeting) =>
+    canDrag(m)
+      ? {
+          draggable: true,
+          onDragStart: (e: React.DragEvent) => {
+            setDragMeetingId(String(m.id));
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', String(m.id));
+          },
+          onDragEnd: () => { setDragMeetingId(null); setDragOverDate(null); },
+        }
+      : {};
+
+  const dropTargetProps = (date: Date) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (!dragMeetingId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      setDragOverDate(toDateKey(date));
+    },
+    onDragLeave: () => setDragOverDate((cur) => (cur === toDateKey(date) ? null : cur)),
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      handleDropOnDate(toDateKey(date));
+    },
+  });
 
   const weekDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
   const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
@@ -175,7 +230,7 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
                                    hasAccessTo(meeting);
               
               return (
-                <div key={meeting.id} className={`border-l-4 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded-r-lg p-4`}>
+                <div key={meeting.id} {...dragHandlers(meeting)} className={`border-l-4 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded-r-lg p-4 ${canDrag(meeting) ? 'cursor-grab active:cursor-grabbing' : ''}`}>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-semibold text-gray-800 dark:text-gray-100">
@@ -205,6 +260,12 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
         </div>
       )}
 
+      {moving && (
+        <div className="fixed bottom-4 right-4 z-50 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
+          <i className="fas fa-spinner fa-spin"></i> Перенос встречи...
+        </div>
+      )}
+
       {view === 'week' && (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
           <div className="grid grid-cols-7 border-b border-gray-200 dark:border-gray-700">
@@ -221,13 +282,13 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
             {getWeekDates(selectedDate).map((date, i) => {
               const dayMeetings = getMeetingsForDate(date);
               return (
-                <div key={i} className="min-h-[180px] p-2 border-r border-gray-100 dark:border-gray-700 last:border-r-0 border-b border-gray-100 dark:border-gray-700">
+                <div key={i} {...dropTargetProps(date)} className={`min-h-[180px] p-2 border-r border-gray-100 dark:border-gray-700 last:border-r-0 border-b border-gray-100 dark:border-gray-700 transition-colors ${dragOverDate === toDateKey(date) ? 'bg-blue-100 dark:bg-blue-900/40 ring-2 ring-inset ring-blue-400' : ''}`}>
                   {dayMeetings.sort((a, b) => a.startTime.localeCompare(b.startTime)).map(meeting => {
                     const canSeeDetails = user.role === 'admin' || user.role === 'moderator' || 
                                          hasAccessTo(meeting);
                     
                     return (
-                      <div key={meeting.id} className={`border-l-2 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded p-1.5 mb-1 text-xs`}>
+                      <div key={meeting.id} {...dragHandlers(meeting)} className={`border-l-2 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded p-1.5 mb-1 text-xs ${canDrag(meeting) ? 'cursor-grab active:cursor-grabbing opacity-100' : ''} ${dragMeetingId === String(meeting.id) ? 'opacity-40' : ''}`}>
                         <p className="font-medium text-gray-800 dark:text-gray-100 truncate">
                           {meeting.recurring !== 'none' && <i className="fas fa-sync-alt text-blue-500 mr-1"></i>}
                           {canSeeDetails ? meeting.title : 'Конференция'}
@@ -253,14 +314,14 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
               const dayMeetings = getMeetingsForDate(date);
               const isToday = toDateKey(date) === toDateKey(new Date());
               return (
-                <div key={i} className={`min-h-[90px] p-1.5 border-r border-gray-100 dark:border-gray-700 last:border-r-0 border-b border-gray-100 dark:border-gray-700 ${isToday ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
+                <div key={i} {...dropTargetProps(date)} className={`min-h-[90px] p-1.5 border-r border-gray-100 dark:border-gray-700 last:border-r-0 border-b border-gray-100 dark:border-gray-700 transition-colors ${isToday ? 'bg-blue-50 dark:bg-blue-900/20' : ''} ${dragOverDate === toDateKey(date) ? 'bg-blue-100 dark:bg-blue-900/40 ring-2 ring-inset ring-blue-400' : ''}`}>
                   <p className={`text-sm font-medium mb-1 ${isToday ? 'text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-300'}`}>{date.getDate()}</p>
                   {dayMeetings.slice(0, 3).map(meeting => {
                     const canSeeDetails = user.role === 'admin' || user.role === 'moderator' || 
                                          hasAccessTo(meeting);
                     
                     return (
-                      <div key={meeting.id} className={`border-l-2 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded px-1 py-0.5 mb-0.5 text-xs`}>
+                      <div key={meeting.id} {...dragHandlers(meeting)} className={`border-l-2 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded px-1 py-0.5 mb-0.5 text-xs ${canDrag(meeting) ? 'cursor-grab active:cursor-grabbing' : ''} ${dragMeetingId === String(meeting.id) ? 'opacity-40' : ''}`}>
                         <p className="truncate text-gray-700 dark:text-gray-300">
                           {meeting.startTime} {canSeeDetails ? meeting.title : 'Конференция'}
                         </p>

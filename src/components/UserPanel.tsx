@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting, Tag } from '../types';
-import { getMeetings, createMeeting, updateMeeting, deleteMeeting, getUsersForDisplay, getTags } from '../store-api';
+import { getMeetings, createMeeting, updateMeeting, deleteMeeting, cancelMeeting, getUsersForDisplay, getTags } from '../store-api';
 import TagsSelector from './TagsSelector';
 import MeetingHistoryView from './MeetingHistoryView';
+import MeetingMinutes from './MeetingMinutes';
 import { SortMode, SORT_OPTIONS, sortMeetings, getMeetingGroup } from '../utils/meetingSort';
 import { exportMeetingToIcs } from '../utils/ics';
 import { getFavoriteIds, toggleFavorite, addFavorites } from '../utils/favorites';
@@ -163,10 +164,11 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
     loadData();
   };
 
-  // Отмена встречи организатором из модалки (с уведомлением участников через серверный audit/notification)
+  // Отмена встречи организатором из модалки — специальный эндпоинт:
+  // сервер ставит статус cancelled и рассылает уведомления участникам.
   const handleCancelMeeting = async (m: Meeting) => {
-    if (!confirm('Отменить эту конференцию? Участники будут уведомлены.')) return;
-    const saved = await updateMeeting(m.id, { ...m, status: 'cancelled' });
+    const reason = window.prompt('Причина отмены (необязательно, увидят участники):', '') ?? undefined;
+    const saved = await cancelMeeting(m.id, reason?.trim() || undefined);
     if (!saved) { alert('Не удалось отменить конференцию'); return; }
     setViewMeeting(null);
     loadData();
@@ -699,6 +701,15 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                     </div>
                   </div>
                 )}
+
+                {/* Протокол встречи и задачи (action items) */}
+                <MeetingMinutes
+                  meetingId={vm.id}
+                  user={user}
+                  users={users}
+                  canWrite={isOrganizer(vm) || user.role === 'admin' || user.role === 'moderator' ||
+                    (vm.participants ?? []).some((p) => Number(p) === Number(user.id))}
+                />
 
                 {/* История изменений — audit log с бэкенда */}
                 <div className="mt-4">
