@@ -1,23 +1,51 @@
 import React, { useState, useEffect } from 'react';
-import { User, Meeting } from '../types';
-import { getMeetings, createMeeting, updateMeeting, deleteMeeting, getUsersForDisplay } from '../store-api';
+import { User, Meeting, Tag } from '../types';
+import { getMeetings, createMeeting, updateMeeting, deleteMeeting, getUsersForDisplay, getTags } from '../store-api';
 import TagsSelector from './TagsSelector';
+import MeetingHistoryView from './MeetingHistoryView';
 import { SortMode, SORT_OPTIONS, sortMeetings, getMeetingGroup } from '../utils/meetingSort';
+import { exportMeetingToIcs } from '../utils/ics';
+import { getFavoriteIds, toggleFavorite, addFavorites } from '../utils/favorites';
 
 interface UserPanelProps {
   user: User;
   onNavigate: (page: string) => void;
 }
 
+const PAGE_SIZE = 20;
+
+// Напоминания по умолчанию для новых конференций — из настроек пользователя
+const getDefaultReminder = (): number => {
+  try {
+    const raw = localStorage.getItem('vks_reminder_default');
+    const v = raw ? parseInt(raw, 10) : NaN;
+    if (!Number.isNaN(v) && v >= 5 && v <= 1440) return v;
+  } catch { /* ignore */ }
+  return 15;
+};
+
 export default function UserPanel({ user, onNavigate }: UserPanelProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   // Модальное окно просмотра конференции (доступен всем участникам)
   const [viewMeeting, setViewMeeting] = useState<Meeting | null>(null);
+  // Фильтры, календарь, избранное, массовые действия, история изменений
+  const [statusFilter, setStatusFilter] = useState<'all' | 'upcoming' | 'past' | 'cancelled'>('all');
+  const [roomFilter, setRoomFilter] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
+  const [search, setSearch] = useState('');
+  const [view, setView] = useState<'list' | 'calendar'>('list');
+  const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth(), d: d.getDate() }; });
+  const [calView, setCalView] = useState<'month' | 'week'>('month');
+  const [favorites, setFavorites] = useState<Set<string>>(() => getFavoriteIds(user.id));
+  const [onlyFavorites, setOnlyFavorites] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const emptyMeeting: Meeting = {
     id: '',
@@ -32,7 +60,7 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
     link: '',
     room: '',
     status: 'scheduled',
-    reminderMinutes: 15,
+    reminderMinutes: getDefaultReminder(),
     recurring: 'none',
     priority: 'medium',
     createdAt: new Date().toISOString(),
@@ -47,12 +75,13 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
 
   const loadData = async () => {
     setLoading(true);
-    const [allMeetings, allUsers] = await Promise.all([getMeetings(), getUsersForDisplay(user.role)]);
+    const [allMeetings, allUsers, allTags] = await Promise.all([getMeetings(), getUsersForDisplay(user.role), getTags()]);
     
     // Модераторы и админы видят все конференции, обычные пользователи - тоже все
     // (но могут редактировать только свои)
     setMeetings(allMeetings);
     setUsers(allUsers);
+    setTags(allTags);
     // getMeetings при ошибке API (401/500/нет связи с бэкендом) возвращает [] —
     // показываем явную ошибку вместо пустого «Нет конференций»
     setError(allMeetings.length === 0 && allUsers.length === 0);
@@ -63,9 +92,105 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
   // Сортировка: по умолчанию «умная» — сначала сегодняшние ВКС, затем завтра,
   // ближайшая неделя, поздние и в конце прошедшие/отменённые.
   const [sortMode, setSortMode] = useState<SortMode>('smart');
-  const sortedMeetings = sortMeetings(meetings, sortMode);
+
+  // ===== Фильтры: статус / комната / тег / поиск по названию, описанию, участникам =====
+  const nowIso = () => new Date().toISOString().slice(0, 16);
+  const rooms = Array.from(new Set(meetings.map((m) => m.room).filter(Boolean) as string[])).sort();
+  const matchSearch = (m: Meeting) => {
+    if (!search.trim()) return true;
+    const q = search.trim().toLowerCase();
+    const inTitle = m.title.toLowerCase().includes(q);
+    const inDesc = (m.description ?? '').toLowerCase().includes(q);
+    const inPeople =
+      getUserName(m.organizerId).toLowerCase().includes(q) ||
+      (m.participants ?? []).some((p) => getUserName(p).toLowerCase().includes(q));
+    return inTitle || inDesc || inPeople;
+  };
+  const filteredMeetings = meetings.filter((m) => {
+    if (onlyFavorites && !favorites.has(String(m.id))) return false;
+    if (roomFilter && (m.room ?? '') !== roomFilter) return false;
+    if (tagFilter && !(m.tags ?? []).map(String).includes(tagFilter)) return false;
+    if (statusFilter === 'cancelled' && m.status !== 'cancelled') return false;
+    if (statusFilter === 'past') {
+      const isPast = m.status === 'completed' || `${m.date}T${m.endTime || '23:59'}` < nowIso();
+      if (!isPast || m.status === 'cancelled') return false;
+    }
+    if (statusFilter === 'upcoming') {
+      const isUpcoming = m.status === 'scheduled' || m.status === 'in-progress';
+      if (!isUpcoming || `${m.date}T${m.endTime || '23:59'}` < nowIso()) return false;
+    }
+    return matchSearch(m);
+  });
+  const sortedMeetings = sortMeetings(filteredMeetings, sortMode);
   // В «умном» режиме группы показываем заголовками-разделителями
   const showGroups = sortMode === 'smart';
+
+  // Сброс пагинации при смене фильтров
+  useEffect(() => { setVisibleCount(PAGE_SIZE); setSelected(new Set()); }, [statusFilter, roomFilter, tagFilter, search, onlyFavorites, sortMode]);
+
+  const toggleFavoriteMeeting = (id: string) => setFavorites(toggleFavorite(user.id, id));
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const allVisibleSelected = sortedMeetings.length > 0 && sortedMeetings.every((m) => selected.has(String(m.id)));
+  const toggleSelectAll = () => {
+    if (allVisibleSelected) setSelected(new Set());
+    else setSelected(new Set(sortedMeetings.map((m) => String(m.id))));
+  };
+
+  // Массовые действия: отмена / удаление / избранное для выделенных чекбоксами
+  const bulkAction = async (action: 'cancel' | 'delete' | 'favorite') => {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    if (action === 'delete' && !confirm(`Удалить выбранные конференции (${ids.length})?`)) return;
+    if (action === 'cancel' && !confirm(`Отменить выбранные конференции (${ids.length})? Участники получат уведомление.`)) return;
+    if (action === 'favorite') {
+      setFavorites(addFavorites(user.id, ids));
+      setSelected(new Set());
+      return;
+    }
+    for (const id of ids) {
+      const m = meetings.find((x) => String(x.id) === id);
+      if (!m) continue;
+      if (action === 'delete') await deleteMeeting(id);
+      else if (action === 'cancel') await updateMeeting(id, { ...m, status: 'cancelled' });
+    }
+    setSelected(new Set());
+    loadData();
+  };
+
+  // Отмена встречи организатором из модалки (с уведомлением участников через серверный audit/notification)
+  const handleCancelMeeting = async (m: Meeting) => {
+    if (!confirm('Отменить эту конференцию? Участники будут уведомлены.')) return;
+    const saved = await updateMeeting(m.id, { ...m, status: 'cancelled' });
+    if (!saved) { alert('Не удалось отменить конференцию'); return; }
+    setViewMeeting(null);
+    loadData();
+  };
+
+  // Перенос встречи из модалки — открывает форму редактирования
+  const handleRescheduleMeeting = (m: Meeting) => {
+    setViewMeeting(null);
+    handleEdit(m);
+  };
+
+  // История изменений (audit log на бэкенде) выводится компонентом MeetingHistoryView внутри модалки
+
+  // Приглашение/удаление участников прямо из модалки (только организатор)
+  const manageParticipantFromModal = async (target: User, add: boolean) => {
+    if (!viewMeeting) return;
+    const cur = (viewMeeting.participants ?? []).map(String);
+    const tid = String(target.id);
+    const next = add ? [...cur, tid] : cur.filter((id) => id !== tid);
+    const saved = await updateMeeting(viewMeeting.id, { ...viewMeeting, participants: next });
+    if (!saved) { alert('Не удалось изменить список участников'); return; }
+    setViewMeeting({ ...viewMeeting, participants: next });
+    loadData();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -155,7 +280,24 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
           <i className="fas fa-plus"></i>
           Создать конференцию
         </button>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Переключатель Список / Календарь */}
+          <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
+            <button
+              onClick={() => setView('list')}
+              className={`px-3 py-2 text-sm ${view === 'list' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+              title="Список конференций"
+            >
+              <i className="fas fa-list mr-1"></i>Список
+            </button>
+            <button
+              onClick={() => setView('calendar')}
+              className={`px-3 py-2 text-sm ${view === 'calendar' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+              title="Календарь (месяц/неделя)"
+            >
+              <i className="far fa-calendar-alt mr-1"></i>Календарь
+            </button>
+          </div>
           <label className="text-sm text-gray-600 dark:text-gray-400">
             <i className="fas fa-sort mr-1"></i>Сортировка:
           </label>
@@ -169,6 +311,86 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
             ))}
           </select>
         </div>
+      </div>
+
+      {/* Панель фильтров: статус, комната, тег, поиск, избранное */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[220px]">
+            <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Поиск по названию, описанию, участникам…"
+              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+            className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
+          >
+            <option value="all">Все статусы</option>
+            <option value="upcoming">Предстоящие</option>
+            <option value="past">Прошедшие</option>
+            <option value="cancelled">Отменённые</option>
+          </select>
+          <select
+            value={roomFilter}
+            onChange={(e) => setRoomFilter(e.target.value)}
+            className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
+          >
+            <option value="">Все комнаты</option>
+            {rooms.map((r) => (<option key={r} value={r}>{r}</option>))}
+          </select>
+          <select
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
+            className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
+          >
+            <option value="">Все теги</option>
+            {tags.map((t) => (<option key={t.id} value={String(t.id)}>{t.name}</option>))}
+          </select>
+          <button
+            onClick={() => setOnlyFavorites((v) => !v)}
+            title="Показать только избранные"
+            className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
+              onlyFavorites
+                ? 'bg-yellow-400 border-yellow-500 text-yellow-900'
+                : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+            }`}
+          >
+            <i className={`fas fa-star mr-1 ${onlyFavorites ? '' : 'text-yellow-400'}`}></i>Избранные
+          </button>
+          {(statusFilter !== 'all' || roomFilter || tagFilter || search || onlyFavorites) && (
+            <button
+              onClick={() => { setStatusFilter('all'); setRoomFilter(''); setTagFilter(''); setSearch(''); setOnlyFavorites(false); }}
+              className="px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
+            >
+              <i className="fas fa-times-circle mr-1"></i>Сбросить
+            </button>
+          )}
+        </div>
+
+        {/* Массовые действия — появляются при выделении чекбоксами */}
+        {selected.size > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+            <span className="text-sm font-medium text-blue-700 dark:text-blue-300">Выбрано: {selected.size}</span>
+            <button onClick={() => bulkAction('favorite')} className="px-3 py-1.5 text-sm bg-yellow-500 text-white rounded-lg hover:bg-yellow-600">
+              <i className="fas fa-star mr-1"></i>В избранное
+            </button>
+            <button onClick={() => bulkAction('cancel')} className="px-3 py-1.5 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600">
+              <i className="fas fa-ban mr-1"></i>Отменить
+            </button>
+            <button onClick={() => bulkAction('delete')} className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">
+              <i className="fas fa-trash mr-1"></i>Удалить
+            </button>
+            <button onClick={() => setSelected(new Set())} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+              Снять выделение
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Form Modal */}
@@ -445,7 +667,69 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                     </div>
                   )}
                 </div>
-                <div className="flex justify-end gap-3 pt-4 mt-4 border-t dark:border-gray-700">
+
+                {/* Приглашение участников — организатор может добавлять/удалять прямо из модалки */}
+                {isOrganizer(vm) && (
+                  <div className="mt-4">
+                    <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+                      <i className="fas fa-user-plus mr-1 text-blue-500"></i>Участники
+                    </h4>
+                    <div className="max-h-40 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-100 dark:divide-gray-700">
+                      {users.filter((u) => Number(u.id) !== Number(vm.organizerId)).map((u) => {
+                        const isIn = (vm.participants ?? []).map(String).includes(String(u.id));
+                        return (
+                          <div key={u.id} className="flex items-center justify-between px-3 py-1.5 text-sm">
+                            <span className="text-gray-700 dark:text-gray-200">
+                              {u.name}
+                              <span className="text-gray-400 ml-1">@{u.login}</span>
+                            </span>
+                            <button
+                              onClick={() => manageParticipantFromModal(u, !isIn)}
+                              className={`px-2 py-0.5 rounded text-xs ${
+                                isIn
+                                  ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100'
+                                  : 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 hover:bg-green-100'
+                              }`}
+                            >
+                              {isIn ? 'Удалить' : 'Пригласить'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* История изменений — audit log с бэкенда */}
+                <div className="mt-4">
+                  <MeetingHistoryView meetingId={vm.id} />
+                </div>
+                <div className="flex flex-wrap justify-end gap-3 pt-4 mt-4 border-t dark:border-gray-700">
+                  <button
+                    onClick={() => exportMeetingToIcs(vm)}
+                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+                    title="Добавить в Outlook / Google Calendar"
+                  >
+                    <i className="fas fa-file-download mr-1"></i>.ics
+                  </button>
+                  {isOrganizer(vm) && vm.status !== 'cancelled' && (
+                    <>
+                      <button
+                        onClick={() => handleRescheduleMeeting(vm)}
+                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                        title="Изменить дату и время конференции"
+                      >
+                        <i className="fas fa-clock mr-1"></i>Перенести
+                      </button>
+                      <button
+                        onClick={() => handleCancelMeeting(vm)}
+                        className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+                        title="Отменить встречу (участники получат уведомление)"
+                      >
+                        <i className="fas fa-ban mr-1"></i>Отменить встречу
+                      </button>
+                    </>
+                  )}
                   {isOrganizer(vm) && (
                     <button
                       onClick={() => { setViewMeeting(null); handleEdit(vm); }}
@@ -471,8 +755,106 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
         );
       })()}
 
-      {/* Meetings List */}
-      {error && sortedMeetings.length === 0 ? (
+      {/* Meetings List / Calendar */}
+      {view === 'calendar' ? (
+        (() => {
+          const MONTH_NAMES = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+          const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          const byDate = new Map<string, Meeting[]>();
+          sortedMeetings.forEach((m) => {
+            const arr = byDate.get(m.date) ?? [];
+            arr.push(m);
+            byDate.set(m.date, arr);
+          });
+          const todayIso = isoOf(new Date());
+          const cells: { d: Date; inMonth: boolean }[] = [];
+          if (calView === 'month') {
+            const first = new Date(calMonth.y, calMonth.m, 1);
+            let startDow = first.getDay(); // 0 — воскресенье
+            if (startDow === 0) startDow = 7;
+            for (let i = startDow - 1; i >= 0; i--) cells.push({ d: new Date(first.getFullYear(), first.getMonth(), 1 - i), inMonth: false });
+            const last = new Date(calMonth.y, calMonth.m + 1, 0);
+            for (let day = 1; day <= last.getDate(); day++) cells.push({ d: new Date(calMonth.y, calMonth.m, day), inMonth: true });
+            while (cells.length % 7 !== 0) cells.push({ d: new Date(calMonth.y, calMonth.m, last.getDate() + (cells.length % 7 === 0 ? 7 : cells.length - Math.floor(cells.length / 7) * 7 - last.getDate() + 1)), inMonth: false });
+          } else {
+            const anchor = new Date(calMonth.y, calMonth.m, calMonth.d || new Date().getDate());
+            let dow = anchor.getDay(); if (dow === 0) dow = 7;
+            const monday = new Date(anchor); monday.setDate(anchor.getDate() - (dow - 1));
+            for (let i = 0; i < 7; i++) { const d = new Date(monday); d.setDate(monday.getDate() + i); cells.push({ d, inMonth: true }); }
+          }
+          const shiftMonth = (delta: number) => {
+            const nd = new Date(calMonth.y, calMonth.m + delta, 1);
+            setCalMonth({ y: nd.getFullYear(), m: nd.getMonth(), d: 1 });
+          };
+          const shiftWeek = (delta: number) => {
+            const base = new Date(calMonth.y, calMonth.m, calMonth.d || new Date().getDate());
+            base.setDate(base.getDate() + delta * 7);
+            setCalMonth({ y: base.getFullYear(), m: base.getMonth(), d: base.getDate() });
+          };
+          return (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <div className="flex items-center gap-2">
+                  <button onClick={() => (calView === 'month' ? shiftMonth(-1) : shiftWeek(-1))} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"><i className="fas fa-chevron-left"></i></button>
+                  <h3 className="font-bold text-gray-800 dark:text-gray-100 min-w-[180px] text-center">
+                    {calView === 'month'
+                      ? `${MONTH_NAMES[calMonth.m]} ${calMonth.y}`
+                      : `Неделя ${new Date(calMonth.y, calMonth.m, calMonth.d || 1).toLocaleDateString('ru-RU')} — ${(() => { const e = new Date(calMonth.y, calMonth.m, calMonth.d || 1); e.setDate(e.getDate() + 6); return e.toLocaleDateString('ru-RU'); })()}`}
+                  </h3>
+                  <button onClick={() => (calView === 'month' ? shiftMonth(1) : shiftWeek(1))} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"><i className="fas fa-chevron-right"></i></button>
+                  <button
+                    onClick={() => { const n = new Date(); setCalMonth({ y: n.getFullYear(), m: n.getMonth(), d: n.getDate() }); }}
+                    className="px-3 py-1.5 text-sm rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100"
+                  >
+                    Сегодня
+                  </button>
+                </div>
+                <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
+                  <button onClick={() => setCalView('month')} className={`px-3 py-1.5 text-sm ${calView === 'month' ? 'bg-blue-600 text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>Месяц</button>
+                  <button onClick={() => setCalView('week')} className={`px-3 py-1.5 text-sm ${calView === 'week' ? 'bg-blue-600 text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>Неделя</button>
+                </div>
+              </div>
+              <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">
+                {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((wd) => (<div key={wd} className="py-1">{wd}</div>))}
+              </div>
+              <div className={`grid grid-cols-7 gap-1 ${calView === 'week' ? '' : 'auto-rows-fr'}`}>
+                {cells.map(({ d, inMonth }, idx) => {
+                  const iso = isoOf(d);
+                  const dayMeetings = (byDate.get(iso) ?? []).slice(0, 4);
+                  const isToday = iso === todayIso;
+                  return (
+                    <div
+                      key={idx}
+                      className={`border rounded-lg p-1 min-h-[92px] text-left ${inMonth ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700' : 'bg-gray-50 dark:bg-gray-900/40 border-gray-100 dark:border-gray-700/50'} ${isToday ? 'ring-2 ring-blue-500' : ''}`}
+                    >
+                      <div className={`text-xs font-medium mb-1 ${isToday ? 'text-blue-600' : inMonth ? 'text-gray-600 dark:text-gray-300' : 'text-gray-400 dark:text-gray-500'}`}>{d.getDate()}</div>
+                      {dayMeetings.map((m) => (
+                        <button
+                          key={m.id}
+                          onClick={() => setViewMeeting(m)}
+                          title={`${m.title} ${m.startTime}`}
+                          className={`block w-full truncate text-left text-[11px] px-1 py-0.5 rounded mb-0.5 ${
+                            m.status === 'cancelled'
+                              ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 line-through'
+                              : m.priority === 'high'
+                              ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300'
+                              : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                          }`}
+                        >
+                          {m.startTime} {m.title}
+                        </button>
+                      ))}
+                      {(byDate.get(iso) ?? []).length > 4 && (
+                        <div className="text-[10px] text-gray-400">+{(byDate.get(iso) ?? []).length - 4} ещё</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()
+      ) : error && sortedMeetings.length === 0 ? (
         <div className="text-center py-12 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 rounded-xl">
           <i className="fas fa-plug text-4xl text-yellow-500 mb-3"></i>
           <p className="text-yellow-800 dark:text-yellow-200 font-medium">Не удалось загрузить данные с сервера</p>
@@ -488,7 +870,7 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
         {(() => {
           // В «умном» режиме вставляем заголовки групп (Сегодня / Завтра / …)
           let lastGroup = '';
-          return sortedMeetings.map(meeting => {
+          return sortedMeetings.slice(0, visibleCount).map(meeting => {
             const group = showGroups ? getMeetingGroup(meeting) : null;
             const header = group && group.key !== lastGroup ? (
               <div key={`grp-${group.key}`} className="pt-2 pb-1 first:pt-0">
@@ -506,6 +888,17 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                   className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 hover:shadow-md transition-shadow"
                 >
             <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex items-center gap-2 self-start mt-1">
+                {/* Чекбокс для массовых действий */}
+                <input
+                  type="checkbox"
+                  checked={selected.has(String(meeting.id))}
+                  onChange={() => toggleSelect(String(meeting.id))}
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  title="Выделить для массовых действий"
+                />
+              </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2">
                   <button
@@ -514,6 +907,14 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                     title="Открыть конференцию"
                   >
                     {meeting.title}
+                  </button>
+                  {/* Избранное — звёздочка на карточке */}
+                  <button
+                    onClick={() => toggleFavoriteMeeting(String(meeting.id))}
+                    className="text-lg leading-none"
+                    title={favorites.has(String(meeting.id)) ? 'Убрать из избранного' : 'Добавить в избранное'}
+                  >
+                    <i className={`fas fa-star ${favorites.has(String(meeting.id)) ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600 hover:text-yellow-300'}`}></i>
                   </button>
                   <span
                     className={`px-2 py-0.5 rounded text-xs font-medium ${
@@ -565,6 +966,14 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                 )}
               </div>
               <div className="flex items-center gap-2">
+                {/* Экспорт встречи в календарь (.ics — Outlook / Google Calendar) */}
+                <button
+                  onClick={() => exportMeetingToIcs(meeting)}
+                  className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-gray-700 rounded"
+                  title="Скачать .ics для Outlook / Google Calendar"
+                >
+                  <i className="fas fa-calendar-plus"></i>
+                </button>
                 <button
                   onClick={() => setViewMeeting(meeting)}
                   className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"

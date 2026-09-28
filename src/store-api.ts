@@ -76,6 +76,12 @@ export function mapMeeting(raw: any): Meeting {
   if (typeof out.date === 'string') out.date = out.date.slice(0, 10);
   if (typeof out.repeatUntil === 'string') out.repeatUntil = out.repeatUntil.slice(0, 10);
   if (out.createdAt && typeof out.createdAt === 'string') out.createdAt = out.createdAt.replace(' ', 'T');
+  // Бэкенд возвращает теги объектами ({id, name, color}) — для UI оставляем только id
+  if (Array.isArray(out.tags)) {
+    out.tags = out.tags
+      .map((t: any) => String(typeof t === 'object' && t !== null ? t.id : t))
+      .filter((s: string) => s && s !== 'undefined' && s !== 'null');
+  }
   return out as Meeting;
 }
 
