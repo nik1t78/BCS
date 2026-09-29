@@ -22,13 +22,17 @@ export interface Meeting {
   startTime: string;
   endTime: string;
   organizerId: string;
+  /** Заполняется на фронте из списка пользователей (для отображения в админке/корзине) */
+  organizerName?: string;
   participants: string[]; // user IDs
   participantEmails?: string[]; // for guests
   link?: string;
   room?: string;
   status: 'scheduled' | 'in-progress' | 'completed' | 'cancelled';
   reminderMinutes: number;
-  recurring: 'none' | 'daily' | 'weekly' | 'monthly';
+  recurring: 'none' | 'daily' | 'weekly' | 'monthly' | 'custom';
+  /** Упрощённый RRULE для recurring === 'custom', напр. FREQ=MONTHLY;BYDAY=FR;BYSETPOS=-1 */
+  rrule?: string;
   priority: 'low' | 'medium' | 'high';
   createdAt: string;
   isPrivate: boolean;
@@ -103,10 +107,111 @@ export interface AuthState {
   token: string | null;
 }
 
+// Протокол встречи (запись обсуждения/решения)
+export interface MeetingMinute {
+  id: string;
+  meetingId: string;
+  userId: string; // автор записи
+  authorName?: string;
+  discussion?: string;
+  decisions?: string;
+  responsible?: string;
+  createdAt: string;
+}
+
+export type MeetingTaskStatus = 'pending' | 'in_progress' | 'done';
+
+// Задача / action item внутри встречи
+export interface MeetingTask {
+  id: string;
+  meetingId: string;
+  title: string;
+  assigneeId?: string | null;
+  assigneeName?: string;
+  /** Множественные ответственные (id пользователей) */
+  assigneeIds?: string[];
+  /** ФИО всех ответственных (по порядку assigneeIds) */
+  assigneeNames?: string[];
+  deadline?: string | null; // YYYY-MM-DD
+  status: MeetingTaskStatus;
+  comments?: TaskComment[];
+  createdAt: string;
+}
+
+// Комментарий к задаче (action item)
+export interface TaskComment {
+  id: string;
+  meetingTaskId: string;
+  userId: string;
+  userName?: string;
+  body: string;
+  createdAt: string;
+}
+
+// Конфликт расписания (пересечение по времени у одних и тех же участников)
+export interface ScheduleConflict {
+  meeting_id: string | number;
+  title: string;
+  start_time: string;
+  end_time: string;
+  overlapping_user_ids: (string | number)[];
+}
+
 export interface Settings {
   soundEnabled: boolean;
   browserNotifications: boolean;
   defaultReminderMinutes: number;
   workHoursStart: string;
   workHoursEnd: string;
+}
+
+// RSVP — подтверждение присутствия
+export type RsvpResponse = 'yes' | 'no' | 'maybe';
+
+export interface MeetingRsvp {
+  userId: string;
+  name?: string;
+  response: RsvpResponse;
+  respondedAt?: string;
+}
+
+export interface RsvpSummary {
+  yes: number;
+  no: number;
+  maybe: number;
+  pending: number;
+  totalParticipants: number;
+}
+
+export interface RsvpData {
+  rsvps: MeetingRsvp[];
+  summary: RsvpSummary;
+  myResponse: RsvpResponse | null;
+}
+
+/** Переговорная комната / зал с оборудованием */
+export interface Room {
+  id: string;
+  name: string;
+  capacity: number;
+  location?: string;
+  equipment?: string[];
+  description?: string;
+  isActive: boolean;
+}
+
+/** Занятость комнаты на день */
+export interface RoomAvailability {
+  room: Room;
+  date: string;
+  busy: { meetingId: string; title: string; start: string; end: string }[];
+  free: { start: string; end: string }[];
+  available: boolean;
+}
+
+/** Статус интеграции с мессенджером MAX */
+export interface MaxStatus {
+  enabled: boolean;
+  botLink: string;
+  linkedChatId: string | null;
 }

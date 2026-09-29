@@ -79,7 +79,90 @@ class AuthController extends Controller
         return response()->json([
             'user' => $user,
             'token' => $token,
+            'refresh_token' => $this->issueRefreshToken($user),
+            'expires_in' => (int) config('sanctum.expiration', 0) * 60 ?: null,
         ]);
+    }
+
+    /**
+     * Обновление access-токена по refresh-токену.
+     * Refresh-токен хранится в personal_access_tokens под именем "refresh_token:*".
+     */
+    public function refresh(Request $request)
+    {
+        $request->validate(['refresh_token' => 'required|string']);
+
+        $hashed = hash('sha256', $request->refresh_token);
+        $record = \DB::table('personal_access_tokens')
+            ->where('name', 'like', 'refresh_token:%')
+            ->where('token', $hashed)
+            ->first();
+
+        if (!$record) {
+            return response()->json(['message' => 'Refresh-токен недействителен. Требуется повторный вход.'], 401);
+        }
+
+        // Одноразовость: старый refresh аннулируется
+        \DB::table('personal_access_tokens')->where('id', $record->id)->delete();
+
+        $user = User::find($record->tokenable_id);
+        if (!$user || !$user->is_active) {
+            return response()->json(['message' => 'Пользователь недоступен.'], 401);
+        }
+
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'user' => $user,
+            'token' => $token,
+            'refresh_token' => $this->issueRefreshToken($user),
+        ]);
+    }
+
+    /** Выход из всех устройств (отзывает все токены пользователя). */
+    public function logoutAll(Request $request)
+    {
+        $user = $request->user();
+        $user->tokens()->delete();
+        AuditLog::log($request, 'logout_all', $user);
+
+        return response()->json(['message' => 'Вы вышли из системы на всех устройствах']);
+    }
+
+    /** Список активных сессий текущего пользователя (по audit-логам входов). */
+    public function sessions(Request $request)
+    {
+        $logs = AuditLog::query()
+            ->where('user_id', $request->user()->id)
+            ->where('action', 'login')
+            ->orderByDesc('created_at')
+            ->limit(30)
+            ->get()
+            ->map(fn ($l) => [
+                'id' => $l->id,
+                'ip' => $l->ip_address,
+                'user_agent' => $l->user_agent,
+                'created_at' => $l->created_at?->toIso8601String(),
+            ]);
+
+        return response()->json(['data' => $logs]);
+    }
+
+    /** Выпуск refresh-токена: возвращает plain-значение, храним SHA-256-хеш. */
+    private function issueRefreshToken(User $user): string
+    {
+        $plain = bin2hex(random_bytes(32));
+        \DB::table('personal_access_tokens')->insert([
+            'tokenable_type' => get_class($user),
+            'tokenable_id' => $user->id,
+            'name' => 'refresh_token:' . time(),
+            'token' => hash('sha256', $plain),
+            'abilities' => json_encode(['*']),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $plain;
     }
 
     /**

@@ -117,7 +117,7 @@ export default function JoinMeetingModal({ meeting, onClose }: JoinMeetingModalP
                   Как подключиться
                 </h4>
                 <ol className="text-sm text-blue-800 dark:text-blue-200 space-y-2 list-decimal list-inside">
-                  <li>Нажмите кнопку "Открыть ссылку на конференцию" выше</li>
+                  <li>Нажмите кнопку «Открыть ссылку на конференцию» выше</li>
                   <li>Откроется новая вкладка с конференцией</li>
                   <li>Разрешите доступ к камере и микрофону (если потребуется)</li>
                   <li>Дождитесь подключения к конференции</li>

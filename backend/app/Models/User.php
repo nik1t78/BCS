@@ -17,11 +17,15 @@ class User extends Authenticatable
         'password',
         'role',
         'phone',
+        'max_chat_id',
+        'telegram_chat_id',
+        'telegram_link_code',
         'department',
         'position',
         'avatar',
         'is_active',
         'last_login',
+        'must_change_password',
     ];
 
     protected $hidden = [

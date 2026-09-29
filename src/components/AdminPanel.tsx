@@ -4,7 +4,8 @@ import { authAPI } from '../api/client';
 import { unwrapList, mapMeeting } from '../store-api';
 import { exportToExcel } from '../utils/export';
 import { SortMode, SORT_OPTIONS, sortMeetings } from '../utils/meetingSort';
-import { getUsers, getMeetings, getAdminPanelStats, createUser, updateUser, deleteUser, toggleUserActive, changeUserRole, resetUserPassword, updateMeeting, deleteMeeting, createMeeting } from '../store-api';
+import RoomsManager from './RoomsManager';
+import { getUsers, getMeetings, getAdminPanelStats, getTrashedMeetings, restoreMeetingFromTrash, deleteMeetingForever, createUser, updateUser, deleteUser, toggleUserActive, changeUserRole, resetUserPassword, updateMeeting, deleteMeeting, createMeeting } from '../store-api';
 
 // Админский список всех конференций: обычный GET /meetings доступён только
 // по роли/приватности и на бэкенде пагинируется (50 записей на страницу).
@@ -66,10 +67,112 @@ function renderAuditChanges(log: { old_values: Record<string, unknown> | null; n
   );
 }
 
+// Тепловая карта загрузки конференций (дни недели × часы) по данным
+// GET /admin/heatmap (AnalyticsController::heatmap). Считает, сколько встреч
+// «закрывают» каждый слот день/час за выбранный период в неделях.
+function LoadHeatmap() {
+  const [weeks, setWeeks] = useState(8);
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    authAPI
+      .heatmap(weeks)
+      .then((res: any) => { if (!cancelled) setData(res); })
+      .catch(e => { console.error('Heatmap load error:', e); if (!cancelled) setData(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [weeks]);
+
+  const dayNames = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+  const matrix: number[][] = data?.matrix ?? [];
+  // matrix индексируется по dow 0..6 (вс..сб), days задаёт порядок Пн..Вс
+  const days: number[] = data?.days ?? [1, 2, 3, 4, 5, 6, 0];
+  const hours: number[] = data?.hours ?? [];
+  const maxVal = Math.max(1, ...matrix.flat());
+
+  const cellColor = (v: number) => {
+    if (!v) return 'bg-gray-100 dark:bg-gray-700/40';
+    const t = v / maxVal;
+    if (t > 0.75) return 'bg-red-500';
+    if (t > 0.5) return 'bg-orange-400';
+    if (t > 0.25) return 'bg-yellow-300';
+    return 'bg-green-400';
+  };
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h3 className="font-bold text-gray-800 dark:text-gray-100">
+          <i className="fas fa-fire text-orange-500 mr-2"></i>Тепловая карта загрузки
+        </h3>
+        <select
+          value={weeks}
+          onChange={e => setWeeks(Number(e.target.value))}
+          className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100"
+        >
+          <option value={4}>За 4 недели</option>
+          <option value={8}>За 8 недель</option>
+          <option value={12}>За 12 недель</option>
+          <option value={26}>За 26 недель</option>
+        </select>
+      </div>
+
+      {loading ? (
+        <p className="text-center text-gray-400 py-8"><i className="fas fa-spinner fa-spin mr-2"></i>Загрузка…</p>
+      ) : !data ? (
+        <p className="text-center text-gray-400 py-8">Нет данных</p>
+      ) : (
+        <>
+          <div className="overflow-x-auto">
+            <table className="border-separate" style={{ borderSpacing: '3px' }}>
+              <thead>
+                <tr>
+                  <th></th>
+                  {hours.map(h => (
+                    <th key={h} className="text-[10px] font-normal text-gray-500 dark:text-gray-400 w-8">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {dayNames.map((name, i) => (
+                  <tr key={name}>
+                    <td className="text-xs font-medium text-gray-600 dark:text-gray-300 pr-2 whitespace-nowrap">{name}</td>
+                    {hours.map(h => {
+                      const v = matrix[days[i]]?.[h] ?? 0;
+                      return (
+                        <td key={h} title={`${name} ${h}:00 — встреч: ${v}`}
+                          className={`w-8 h-7 rounded text-[10px] text-center align-middle ${cellColor(v)} ${v > 0 ? 'text-white font-semibold' : 'text-transparent'}`}>
+                          {v || '·'}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex flex-wrap items-center gap-4 mt-3 text-xs text-gray-500 dark:text-gray-400">
+            <span><span className="inline-block w-3 h-3 rounded bg-green-400 mr-1"></span>низкая</span>
+            <span><span className="inline-block w-3 h-3 rounded bg-yellow-300 mr-1"></span>средняя</span>
+            <span><span className="inline-block w-3 h-3 rounded bg-orange-400 mr-1"></span>высокая</span>
+            <span><span className="inline-block w-3 h-3 rounded bg-red-500 mr-1"></span>пик</span>
+            <span className="ml-auto">Всего слотов заполнено: {data.total_meetings}</span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPanel({ user }: AdminPanelProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
-  const [activeTab, setActiveTab] = useState<'users' | 'meetings' | 'stats' | 'audit'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'meetings' | 'rooms' | 'stats' | 'trash' | 'audit'>('users');
+  const [trashed, setTrashed] = useState<Meeting[]>([]);
+  const [trashLoading, setTrashLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'admin' | 'moderator' | 'user'>('all');
   const [userStatusFilter, setUserStatusFilter] = useState<'all' | 'active' | 'blocked'>('all');
@@ -127,8 +230,48 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
   useEffect(() => {
     if (activeTab === 'audit') loadAuditLogs(1);
+    if (activeTab === 'trash') loadTrashed();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
+
+  const [exporting, setExporting] = useState(false);
+  const loadTrashed = async () => {
+    setTrashLoading(true);
+    try { setTrashed(await getTrashedMeetings()); } finally { setTrashLoading(false); }
+  };
+
+  const handleRestoreMeeting = async (id: string) => {
+    const saved = await restoreMeetingFromTrash(id);
+    if (saved) { loadTrashed(); loadData(); } else alert('Не удалось восстановить встречу');
+  };
+
+  const handleDeleteForever = async (id: string) => {
+    if (!confirm('Удалить встречу навсегда? Это действие необратимо.')) return;
+    const ok = await deleteMeetingForever(id);
+    if (ok) loadTrashed(); else alert('Не удалось удалить встречу навсегда');
+  };
+
+  const exportAuditCsv = async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (auditAction) params.set('action', auditAction);
+      const blob = await authAPI.downloadBlob(`/admin/audit-logs/export?${params.toString()}`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Audit export error:', e);
+      alert('Не удалось экспортировать аудит-лог');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const emptyUser: User = {
     id: '', name: '', login: '', password: '', role: 'user',
@@ -406,7 +549,9 @@ export default function AdminPanel({ user }: AdminPanelProps) {
           {[
             { id: 'users', label: 'Пользователи', icon: 'fa-users', count: users.length },
             { id: 'meetings', label: 'Конференции', icon: 'fa-video', count: meetings.length },
+            { id: 'rooms', label: 'Комнаты', icon: 'fa-door-open' },
             { id: 'stats', label: 'Статистика', icon: 'fa-chart-bar' },
+            ...(user.role === 'admin' ? [{ id: 'trash', label: 'Корзина', icon: 'fa-trash-restore' }] : []),
             ...(user.role === 'admin' ? [{ id: 'audit', label: 'Аудит', icon: 'fa-shield-alt' }] : []),
           ].map(tab => (
             <button key={tab.id} onClick={() => { setActiveTab(tab.id as any); setSearchQuery(''); }}
@@ -821,7 +966,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       )}
 
       {/* Stats Tab */}
+      {activeTab === 'rooms' && (
+        <RoomsManager isAdmin={user.role === 'admin' || user.role === 'moderator'} />
+      )}
+
       {activeTab === 'stats' && (
+        <div className="space-y-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
             { label: 'Пользователей', value: stats.totalUsers, icon: 'fa-users', color: 'text-blue-600 bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400' },
@@ -841,6 +991,60 @@ export default function AdminPanel({ user }: AdminPanelProps) {
               <p className="text-sm text-gray-500 dark:text-gray-400">{s.label}</p>
             </div>
           ))}
+        </div>
+
+        {/* Тепловая карта загрузки: дни недели × часы, за N недель */}
+        <LoadHeatmap />
+        </div>
+      )}
+
+      {/* Корзина удалённых встреч (только администратор) */}
+      {activeTab === 'trash' && user.role === 'admin' && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+            <h3 className="font-bold text-gray-800 dark:text-gray-100">
+              <i className="fas fa-trash-restore text-red-500 mr-2"></i>Корзина удалённых конференций ({trashed.length})
+            </h3>
+            <button onClick={loadTrashed} disabled={trashLoading}
+              className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-gray-700 dark:text-gray-200">
+              <i className={`fas fa-sync-alt mr-1 ${trashLoading ? 'fa-spin' : ''}`}></i>Обновить
+            </button>
+          </div>
+          {trashed.length === 0 && !trashLoading ? (
+            <p className="p-8 text-center text-gray-400">Корзина пуста</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 dark:bg-gray-700/50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Название</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Дата / время</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Организатор</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Действия</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {trashed.map(m => (
+                    <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-800 dark:text-gray-100">{m.title}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{m.date} {m.startTime}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{getUserName(String(m.organizerId))}</td>
+                      <td className="px-4 py-3 text-sm text-right whitespace-nowrap">
+                        <button onClick={() => handleRestoreMeeting(String(m.id))}
+                          className="px-3 py-1 mr-2 text-xs bg-green-600 hover:bg-green-700 text-white rounded-lg">
+                          <i className="fas fa-undo mr-1"></i>Восстановить
+                        </button>
+                        <button onClick={() => handleDeleteForever(String(m.id))}
+                          className="px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded-lg">
+                          <i className="fas fa-times mr-1"></i>Навсегда
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
@@ -873,6 +1077,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             <button onClick={() => loadAuditLogs(auditPage)}
               className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-gray-700 dark:text-gray-200">
               <i className={`fas fa-sync-alt mr-1 ${auditLoading ? 'fa-spin' : ''}`}></i>Обновить
+            </button>
+            <button onClick={exportAuditCsv} disabled={exporting}
+              className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded-lg text-white">
+              <i className={`fas ${exporting ? 'fa-spinner fa-spin' : 'fa-file-csv'} mr-1`}></i>Экспорт CSV
             </button>
           </div>
 
