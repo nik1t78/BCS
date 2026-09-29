@@ -370,6 +370,98 @@ class MeetingController extends Controller
     }
 
     /**
+     * Отмена конференции с уведомлением всех участников
+     */
+    public function cancel(Request $request, Meeting $meeting)
+    {
+        $user = $request->user();
+
+        if ($meeting->organizer_id !== $user->id && !$user->isAdmin()) {
+            return response()->json(['message' => 'Доступ запрещён'], 403);
+        }
+
+        if ($meeting->status === 'cancelled') {
+            return response()->json(['message' => 'Конференция уже отменена'], 422);
+        }
+
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        $oldStatus = $meeting->status;
+        $meeting->update(['status' => 'cancelled']);
+
+        $suffix = !empty($validated['reason']) ? " Причина: {$validated['reason']}" : '';
+        $targets = array_unique(array_merge([$meeting->organizer_id], $meeting->participants ?? []));
+        foreach ($targets as $userId) {
+            if ($userId === $user->id) continue; // инициатору уведомление не нужно
+            Notification::create([
+                'user_id' => $userId,
+                'meeting_id' => $meeting->id,
+                'message' => "❌ Конференция \"{$meeting->title}\" ({$meeting->date->format('d.m.Y')} {$meeting->start_time}) отменена.{$suffix}",
+                'type' => 'warning',
+                'read' => false,
+            ]);
+        }
+
+        AuditLog::log($request, 'meeting_cancelled', $meeting, ['status' => $oldStatus], ['status' => 'cancelled', 'reason' => $validated['reason'] ?? null]);
+
+        return response()->json($meeting->load(['organizer', 'tags']));
+    }
+
+    /**
+     * Перенос конференции на другую дату/время (drag&drop в Schedule).
+     * Уведомляет участников об изменении расписания.
+     */
+    public function reschedule(Request $request, Meeting $meeting)
+    {
+        $user = $request->user();
+
+        if ($meeting->organizer_id !== $user->id && !$user->isAdmin()) {
+            return response()->json(['message' => 'Доступ запрещён'], 403);
+        }
+
+        $validated = $request->validate([
+            'date' => 'required|date',
+            'start_time' => 'required|date_format:H:i',
+            'end_time' => 'sometimes|date_format:H:i',
+            'notify' => 'sometimes|boolean',
+        ]);
+
+        $oldDate = $meeting->date->toDateString();
+        $oldStart = substr((string) $meeting->start_time, 0, 5);
+
+        $meeting->update([
+            'date' => $validated['date'],
+            'start_time' => $validated['start_time'],
+            'end_time' => $validated['end_time'] ?? $meeting->end_time,
+        ]);
+
+        if ($request->boolean('notify', true)) {
+            $suffix = ($oldDate !== $meeting->date->toDateString())
+                ? " было: {$oldDate} {$oldStart}"
+                : " время было: {$oldStart}";
+            $targets = array_unique(array_merge([$meeting->organizer_id], $meeting->participants ?? []));
+            foreach ($targets as $userId) {
+                if ($userId === $user->id) continue;
+                Notification::create([
+                    'user_id' => $userId,
+                    'meeting_id' => $meeting->id,
+                    'message' => "📅 Конференция \"{$meeting->title}\" перенесена на {$meeting->date->format('d.m.Y')} {$validated['start_time']},{$suffix}",
+                    'type' => 'info',
+                    'read' => false,
+                ]);
+            }
+        }
+
+        AuditLog::log($request, 'meeting_rescheduled', $meeting,
+            ['date' => $oldDate, 'start_time' => $oldStart],
+            ['date' => $meeting->date->toDateString(), 'start_time' => $validated['start_time']]);
+
+        return response()->json($meeting->load(['organizer', 'tags']));
+    }
+
+    /**
      * Статистика конференций
      */
     public function getStats(Request $request)
