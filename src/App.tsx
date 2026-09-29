@@ -9,7 +9,7 @@ import Dashboard from './components/Dashboard';
 import Schedule from './components/Schedule';
 import UserPanel from './components/UserPanel';
 import AdminPanel from './components/AdminPanel';
-import Notifications from './components/Notifications';
+import Notifications, { useNewNotificationToasts, NotificationToasts } from './components/Notifications';
 import Profile from './components/Profile';
 import Stats from './components/Stats';
 import Templates from './components/Templates';
@@ -22,7 +22,8 @@ type Page = 'dashboard' | 'schedule' | 'meetings' | 'templates' | 'tags' | 'stat
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(true);   // десктоп: свёрнут/развёрнут
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false); // мобильный off-canvas
 
   useEffect(() => {
     const theme = getTheme();
@@ -51,6 +52,9 @@ function App() {
     await logout();
     setUser(null);
   };
+
+  // Toast-уведомления о новых уведомлениях — всплывают на любом экране.
+  const { toasts: newToasts, dismiss: dismissToast } = useNewNotificationToasts(!!user);
 
   if (!user) {
     return <AuthPage onLogin={handleLogin} />;
@@ -85,7 +89,7 @@ function App() {
   const visibleNavItems = navItems.filter(item => item.roles.includes(user.role));
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 md:flex block">
       {/* Форс-модалка смены пароля при первом входе */}
       {user.mustChangePassword && (
         <ForcePasswordChange
@@ -94,19 +98,32 @@ function App() {
           onLogout={handleLogout}
         />
       )}
-      {/* Sidebar */}
-      <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transition-all duration-300`}>
+      {/* Мобильный оверлей затемнения */}
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Sidebar: на мобильных — off-canvas (fixed), на десктопе — статичный */}
+      <aside
+        className={`bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transition-all duration-300 z-50 flex flex-col
+          fixed inset-y-0 left-0 w-64 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static
+          ${sidebarOpen ? 'md:w-64' : 'md:w-20'}`}
+      >
         <div className="p-4 border-b border-gray-100 dark:border-gray-700">
           <div className="flex items-center gap-3">
             <div className="bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg p-2 flex-shrink-0">
               <i className="fas fa-video text-white text-lg"></i>
             </div>
-            {sidebarOpen && (
+            <div className={`${sidebarOpen ? 'block' : 'hidden md:block'}`}>
               <div>
                 <h1 className="font-bold text-gray-800 dark:text-gray-100 text-lg">ВКС</h1>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Расписание</p>
               </div>
-            )}
+            </div>
           </div>
         </div>
 
@@ -114,7 +131,7 @@ function App() {
           {visibleNavItems.map(item => (
             <button
               key={item.id}
-              onClick={() => setCurrentPage(item.id as Page)}
+              onClick={() => { setCurrentPage(item.id as Page); setMobileMenuOpen(false); }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
                 currentPage === item.id
                   ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
@@ -122,12 +139,12 @@ function App() {
               }`}
             >
               <i className={`fas ${item.icon} w-5 text-center`}></i>
-              {sidebarOpen && <span className="text-sm font-medium">{item.label}</span>}
+              <span className={`text-sm font-medium ${sidebarOpen ? '' : 'hidden md:inline'}`}>{item.label}</span>
             </button>
           ))}
         </nav>
 
-        <div className="p-3 border-t border-gray-100 dark:border-gray-700">
+        <div className="p-3 border-t border-gray-100 dark:border-gray-700 mt-auto hidden md:block">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="w-full flex items-center justify-center gap-2 px-3 py-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg"
@@ -139,10 +156,21 @@ function App() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col">
-        <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">
-            {visibleNavItems.find(n => n.id === currentPage)?.label}
-          </h2>
+        <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-3 sm:px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 min-w-0">
+            {/* Бургер для мобильного off-canvas сайдбара */}
+            <button
+              onClick={() => setMobileMenuOpen(true)}
+              className="md:hidden text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+              title="Меню"
+              aria-label="Открыть меню"
+            >
+              <i className="fas fa-bars text-lg"></i>
+            </button>
+            <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100 truncate">
+              {visibleNavItems.find(n => n.id === currentPage)?.label}
+            </h2>
+          </div>
           <div className="flex items-center gap-3">
             <ThemeToggle />
             <div className="flex items-center gap-2">
@@ -153,7 +181,7 @@ function App() {
                   <span className="text-blue-600 dark:text-blue-400 font-bold text-sm">{user.name.charAt(0)}</span>
                 )}
               </div>
-              <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{user.name.split(' ')[0]}</span>
+              <span className="text-sm font-medium text-gray-800 dark:text-gray-100 hidden sm:inline">{user.name.split(' ')[0]}</span>
             </div>
             <button
               onClick={handleLogout}
@@ -165,7 +193,7 @@ function App() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-6">
           {currentPage === 'dashboard' && <Dashboard user={user} onNavigate={(page: string) => setCurrentPage(page as Page)} />}
           {currentPage === 'schedule' && <Schedule user={user} onNavigate={(page: string) => setCurrentPage(page as Page)} />}
           {currentPage === 'meetings' && <UserPanel user={user} onNavigate={(page: string) => setCurrentPage(page as Page)} />}
@@ -179,6 +207,7 @@ function App() {
       </main>
 
       {isAdmin && <ResetData />}
+      <NotificationToasts toasts={newToasts} onDismiss={dismissToast} />
     </div>
   );
 }

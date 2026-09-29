@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { MeetingMinute, MeetingTask, User } from '../types';
+import { MeetingMinute, MeetingTask, TaskComment, User } from '../types';
 import {
   getMinutes, addMinute, updateMinuteApi, deleteMinuteApi,
   getMeetingTasks, addMeetingTask, updateMeetingTaskApi, deleteMeetingTaskApi,
+  addTaskCommentApi, deleteTaskCommentApi,
 } from '../store-api';
 
 interface MeetingMinutesProps {
@@ -40,10 +41,15 @@ export default function MeetingMinutes({ meetingId, user, users, canWrite }: Mee
   const [responsible, setResponsible] = useState('');
   const [editingMinute, setEditingMinute] = useState<MeetingMinute | null>(null);
 
-  // Форма новой задачи
+  // Форма новой задачи (множественные ответственные — чекбоксы)
   const [taskTitle, setTaskTitle] = useState('');
-  const [taskAssignee, setTaskAssignee] = useState<string>('');
+  const [taskAssignees, setTaskAssignees] = useState<string[]>([]);
   const [taskDeadline, setTaskDeadline] = useState<string>('');
+  const [assigneesOpen, setAssigneesOpen] = useState(false);
+
+  // Комментарии к задачам
+  const [openComments, setOpenComments] = useState<Record<string, boolean>>({});
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     loadAll();
@@ -104,12 +110,12 @@ export default function MeetingMinutes({ meetingId, user, users, canWrite }: Mee
     if (!taskTitle.trim()) return;
     const created = await addMeetingTask(meetingId, {
       title: taskTitle.trim(),
-      assigneeId: taskAssignee || null,
+      assigneeIds: taskAssignees,
       deadline: taskDeadline || null,
     });
     if (created) {
       setTasks([...tasks, created]);
-      setTaskTitle(''); setTaskAssignee(''); setTaskDeadline('');
+      setTaskTitle(''); setTaskAssignees([]); setTaskDeadline('');
     } else {
       alert('Не удалось создать задачу');
     }
@@ -126,6 +132,32 @@ export default function MeetingMinutes({ meetingId, user, users, canWrite }: Mee
     if (!confirm('Удалить задачу?')) return;
     const ok = await deleteMeetingTaskApi(meetingId, id);
     if (ok) setTasks(tasks.filter((t) => t.id !== id));
+  };
+
+  const toggleAssignee = (uid: string) => {
+    setTaskAssignees((prev) => prev.includes(uid) ? prev.filter((x) => x !== uid) : [...prev, uid]);
+  };
+
+  const toggleComments = (taskId: string) => {
+    setOpenComments((prev) => ({ ...prev, [taskId]: !prev[taskId] }));
+  };
+
+  const handleAddComment = async (taskId: string) => {
+    const body = (commentDrafts[taskId] ?? '').trim();
+    if (!body) return;
+    const created = await addTaskCommentApi(meetingId, taskId, body);
+    if (created) {
+      setTasks(tasks.map((t) => t.id === taskId ? { ...t, comments: [created, ...(t.comments ?? [])] } : t));
+      setCommentDrafts({ ...commentDrafts, [taskId]: '' });
+    } else {
+      alert('Не удалось добавить комментарий');
+    }
+  };
+
+  const handleDeleteComment = async (taskId: string, commentId: string) => {
+    if (!confirm('Удалить комментарий?')) return;
+    const ok = await deleteTaskCommentApi(meetingId, taskId, commentId);
+    if (ok) setTasks(tasks.map((t) => t.id === taskId ? { ...t, comments: (t.comments ?? []).filter((c) => c.id !== commentId) } : t));
   };
 
   const isOverdue = (t: MeetingTask) =>
@@ -268,12 +300,31 @@ export default function MeetingMinutes({ meetingId, user, users, canWrite }: Mee
                   className={`${inputCls} flex-1 min-w-[180px]`}
                   onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
                 />
-                <select value={taskAssignee} onChange={(e) => setTaskAssignee(e.target.value)} className={`${inputCls} w-auto`}>
-                  <option value="">Без ответственного</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>{u.name}</option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setAssigneesOpen(!assigneesOpen)}
+                    className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 whitespace-nowrap"
+                  >
+                    <i className="fas fa-users mr-1"></i>
+                    {taskAssignees.length ? `Отв.: ${taskAssignees.length}` : 'Ответственные'}
+                    <i className={`fas fa-chevron-${assigneesOpen ? 'up' : 'down'} ml-1 text-xs`}></i>
+                  </button>
+                  {assigneesOpen && (
+                    <div className="absolute z-20 mt-1 w-56 max-h-48 overflow-y-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg p-2">
+                      {users.length === 0 && <p className="text-xs text-gray-400 p-1">Нет доступных пользователей</p>}
+                      {users.map((u) => (
+                        <label key={u.id} className="flex items-center gap-2 px-1.5 py-1 text-sm rounded hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer text-gray-700 dark:text-gray-200">
+                          <input type="checkbox" checked={taskAssignees.includes(u.id)} onChange={() => toggleAssignee(u.id)} />
+                          <span className="truncate">{u.name}</span>
+                        </label>
+                      ))}
+                      {taskAssignees.length > 0 && (
+                        <button type="button" onClick={() => setTaskAssignees([])} className="mt-1 w-full text-xs text-red-500 hover:underline">Сбросить</button>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <input type="date" value={taskDeadline} onChange={(e) => setTaskDeadline(e.target.value)} className={`${inputCls} w-auto`} />
                 <button onClick={handleAddTask} className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">
                   <i className="fas fa-plus mr-1"></i>Добавить
@@ -286,7 +337,7 @@ export default function MeetingMinutes({ meetingId, user, users, canWrite }: Mee
             )}
 
             {tasks.map((t) => (
-              <div key={t.id} className={`flex items-center gap-3 p-2.5 rounded-lg border ${isOverdue(t) ? 'border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'}`}>
+              <div key={t.id} className={`flex items-start gap-3 p-2.5 rounded-lg border ${isOverdue(t) ? 'border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'}`}>
                 {canWrite ? (
                   <button
                     onClick={() => cycleTaskStatus(t)}
@@ -306,16 +357,59 @@ export default function MeetingMinutes({ meetingId, user, users, canWrite }: Mee
                 )}
                 <div className="flex-1 min-w-0">
                   <p className={`text-sm ${t.status === 'done' ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-100'}`}>{t.title}</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                    {t.assigneeName && <span><i className="fas fa-user mr-1"></i>{t.assigneeName}</span>}
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                    {(t.assigneeNames?.length ? t.assigneeNames : (t.assigneeName ? [t.assigneeName] : [])).map((name, i) => (
+                      <span key={i}><i className="fas fa-user mr-1"></i>{name}{i === 0 && (t.assigneeNames?.length ?? 0) > 1 ? ' и др.' : ''}</span>
+                    ))}
                     {t.deadline && (
-                      <span className={`ml-2 ${isOverdue(t) ? 'text-red-500 font-medium' : ''}`}>
+                      <span className={isOverdue(t) ? 'text-red-500 font-medium' : ''}>
                         <i className="far fa-calendar mr-1"></i>{new Date(t.deadline).toLocaleDateString('ru-RU')}
                         {isOverdue(t) && ' · просрочено'}
                       </span>
                     )}
-                    <span className={`ml-2 px-1.5 py-0.5 rounded ${STATUS_BADGE[t.status]}`}>{STATUS_LABELS[t.status]}</span>
+                    <span className={`px-1.5 py-0.5 rounded ${STATUS_BADGE[t.status]}`}>{STATUS_LABELS[t.status]}</span>
+                    <button
+                      onClick={() => toggleComments(t.id)}
+                      className="px-1.5 py-0.5 rounded text-gray-500 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <i className="far fa-comment mr-1"></i>{(t.comments ?? []).length}
+                    </button>
                   </p>
+                  {openComments[t.id] && (
+                    <div className="mt-2 pl-2 border-l-2 border-gray-200 dark:border-gray-700 space-y-2">
+                      {(t.comments ?? []).length === 0 && (
+                        <p className="text-xs text-gray-400 dark:text-gray-500">Комментариев пока нет</p>
+                      )}
+                      {(t.comments ?? []).map((c: TaskComment) => (
+                        <div key={c.id} className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-xs text-gray-700 dark:text-gray-200 whitespace-pre-line break-words">{c.body}</p>
+                            <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">{c.userName || 'Участник'} · {new Date(c.createdAt).toLocaleString('ru-RU')}</p>
+                          </div>
+                          {canWrite && (
+                            <button onClick={() => handleDeleteComment(t.id, c.id)} title="Удалить комментарий"
+                              className="p-0.5 text-[11px] text-gray-400 hover:text-red-600 shrink-0">
+                              <i className="fas fa-times"></i>
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      {canWrite && (
+                        <div className="flex gap-2">
+                          <input
+                            value={commentDrafts[t.id] ?? ''}
+                            onChange={(e) => setCommentDrafts({ ...commentDrafts, [t.id]: e.target.value })}
+                            onKeyDown={(e) => e.key === 'Enter' && handleAddComment(t.id)}
+                            placeholder="Комментарий к задаче..."
+                            className="flex-1 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                          <button onClick={() => handleAddComment(t.id)} className="px-2 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                            <i className="fas fa-paper-plane"></i>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 {canWrite && (
                   <button onClick={() => handleDeleteTask(t.id)} title="Удалить задачу"

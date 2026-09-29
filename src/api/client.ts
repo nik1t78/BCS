@@ -12,8 +12,40 @@ const getToken = (): string | null => {
   return JSON.parse(auth).token;
 };
 
+// Обновление пары токенов по одноразовому refresh-токену (POST /auth/refresh)
+let refreshPromise: Promise<boolean> | null = null;
+const tryRefreshToken = (): Promise<boolean> => {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    try {
+      const raw = localStorage.getItem('vks_auth');
+      if (!raw) return false;
+      const auth = JSON.parse(raw);
+      if (!auth.refreshToken) return false;
+      const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ refresh_token: auth.refreshToken }),
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      localStorage.setItem('vks_auth', JSON.stringify({
+        ...auth,
+        token: data.token,
+        refreshToken: data.refresh_token ?? auth.refreshToken,
+      }));
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
+};
+
 // Базовая функция для запросов
-const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
+const apiRequest = async (endpoint: string, options: RequestInit = {}, _retried = false): Promise<any> => {
   const token = getToken();
   
   const headers: Record<string, string> = {
@@ -30,6 +62,12 @@ const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
       ...options,
       headers,
     });
+
+    // Истёк access-токен — один раз пробуем обновить его по refresh-токену
+    if (response.status === 401 && !_retried) {
+      const refreshed = await tryRefreshToken();
+      if (refreshed) return apiRequest(endpoint, options, true);
+    }
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({} as any));
@@ -70,6 +108,13 @@ export const authAPI = {
     apiRequest('/auth/logout', {
       method: 'POST',
     }),
+
+  logoutAll: () =>
+    apiRequest('/auth/logout-all', { method: 'POST' }),
+
+  sessions: () => apiRequest('/auth/sessions'),
+
+  heatmap: (weeks = 8) => apiRequest(`/admin/heatmap?weeks=${weeks}`),
 
   getUser: () =>
     apiRequest('/auth/user'),
@@ -175,7 +220,7 @@ export const meetingsAPI = {
     }),
 
   // Перенос встречи на другую дату/время (drag&drop в Schedule)
-  reschedule: (id: string, data: { date: string; start_time: string; end_time?: string; notify?: boolean }) =>
+  reschedule: (id: string, data: { date: string; start_time: string; end_time?: string; notify?: boolean; force?: boolean }) =>
     apiRequest(`/meetings/${id}/reschedule`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -183,6 +228,92 @@ export const meetingsAPI = {
 
   getStats: () =>
     apiRequest('/meetings-stats'),
+
+  // Проверка конфликтов расписания: пересекающиеся встречи у тех же людей
+  checkConflicts: (params: { date: string; start_time: string; end_time: string; users: string; exclude?: string | number }) =>
+    apiRequest(`/meetings/check-conflicts?${new URLSearchParams(params as any).toString()}`),
+};
+
+// КОРЗИНА (soft-deleted встречи)
+export const trashAPI = {
+  list: (params?: { per_page?: number; page?: number }) => {
+    const qs = params ? '?' + new URLSearchParams(params as any).toString() : '';
+    return apiRequest(`/trash${qs}`);
+  },
+
+  restore: (id: string) =>
+    apiRequest(`/trash/${id}/restore`, { method: 'POST' }),
+
+  destroyForever: (id: string) =>
+    apiRequest(`/trash/${id}`, { method: 'DELETE' }),
+};
+
+// ПРОТОКОЛ ВСТРЕЧИ (MINUTES) И ЗАДАЧИ (ACTION ITEMS) API
+export const minutesAPI = {
+  list: (meetingId: string) =>
+    apiRequest(`/meetings/${meetingId}/minutes`),
+
+  create: (meetingId: string, data: { discussion?: string; decisions?: string; responsible?: string }) =>
+    apiRequest(`/meetings/${meetingId}/minutes`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (meetingId: string, minuteId: string, data: { discussion?: string; decisions?: string; responsible?: string }) =>
+    apiRequest(`/meetings/${meetingId}/minutes/${minuteId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  remove: (meetingId: string, minuteId: string) =>
+    apiRequest(`/meetings/${meetingId}/minutes/${minuteId}`, {
+      method: 'DELETE',
+    }),
+};
+
+export const meetingTasksAPI = {
+  list: (meetingId: string) =>
+    apiRequest(`/meetings/${meetingId}/tasks`),
+
+  create: (meetingId: string, data: { title: string; assignee_id?: number | null; assignee_ids?: number[]; deadline?: string | null }) =>
+    apiRequest(`/meetings/${meetingId}/tasks`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (meetingId: string, taskId: string, data: { title?: string; assignee_id?: number | null; assignee_ids?: number[]; deadline?: string | null; status?: string }) =>
+    apiRequest(`/meetings/${meetingId}/tasks/${taskId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  remove: (meetingId: string, taskId: string) =>
+    apiRequest(`/meetings/${meetingId}/tasks/${taskId}`, {
+      method: 'DELETE',
+    }),
+
+  addComment: (meetingId: string, taskId: string, body: string) =>
+    apiRequest(`/meetings/${meetingId}/tasks/${taskId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    }),
+
+  removeComment: (meetingId: string, taskId: string, commentId: string) =>
+    apiRequest(`/meetings/${meetingId}/tasks/${taskId}/comments/${commentId}`, {
+      method: 'DELETE',
+    }),
+};
+
+// RSVP — подтверждение присутствия
+export const rsvpAPI = {
+  get: (meetingId: string) =>
+    apiRequest(`/meetings/${meetingId}/rsvp`),
+
+  respond: (meetingId: string, response: 'yes' | 'no' | 'maybe') =>
+    apiRequest(`/meetings/${meetingId}/rsvp`, {
+      method: 'POST',
+      body: JSON.stringify({ response }),
+    }),
 };
 
 // ПРОТОКОЛ ВСТРЕЧИ (MINUTES) И ЗАДАЧИ (ACTION ITEMS) API
@@ -232,7 +363,7 @@ export const meetingTasksAPI = {
 
 // NOTIFICATIONS API
 export const notificationsAPI = {
-  getAll: (params?: { type?: string; unread?: boolean; all?: boolean }) => {
+  getAll: (params?: { type?: string; unread?: boolean; all?: boolean; per_page?: number }) => {
     const queryString = params ? '?' + new URLSearchParams(params as any).toString() : '';
     return apiRequest(`/notifications${queryString}`);
   },
@@ -359,4 +490,34 @@ export const meetingHistoryAPI = {
 export const healthAPI = {
   check: () =>
     apiRequest('/health'),
+};
+
+// ROOMS API — переговорные комнаты и доступность (резервирование)
+export const roomsAPI = {
+  list: () => apiRequest('/rooms'),
+  availability: (roomId: string | number, params: { date: string; start_time?: string; end_time?: string; exclude?: string | number }) =>
+    apiRequest(`/rooms/${roomId}/availability?${new URLSearchParams(params as any).toString()}`),
+  create: (data: Record<string, unknown>) =>
+    apiRequest('/rooms', { method: 'POST', body: JSON.stringify(data) }),
+  update: (roomId: string | number, data: Record<string, unknown>) =>
+    apiRequest(`/rooms/${roomId}`, { method: 'PUT', body: JSON.stringify(data) }),
+  remove: (roomId: string | number) =>
+    apiRequest(`/rooms/${roomId}`, { method: 'DELETE' }),
+};
+
+// MAX MESSENGER API — привязка аккаунта мессенджера MAX для уведомлений
+export const maxAPI = {
+  status: () => apiRequest('/max/status'),
+  link: (chatId: string) =>
+    apiRequest('/max/link', { method: 'PUT', body: JSON.stringify({ chat_id: chatId }) }),
+  unlink: () => apiRequest('/max/link', { method: 'DELETE' }),
+};
+
+// TELEGRAM API — привязка Telegram-бота для push-уведомлений о встречах
+export const telegramAPI = {
+  status: (): Promise<{ enabled: boolean; driver: string; linked: boolean; botLink: string }> =>
+    apiRequest('/telegram/status'),
+  link: (): Promise<{ botLink: string; linkCode: string; instruction: string }> =>
+    apiRequest('/telegram/link', { method: 'POST' }),
+  unlink: () => apiRequest('/telegram/link', { method: 'DELETE' }),
 };

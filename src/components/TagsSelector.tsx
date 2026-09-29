@@ -56,7 +56,7 @@ export default function TagsSelector({ selectedTags, onTagsChange }: TagsSelecto
       <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
         <p className="text-sm text-gray-500 dark:text-gray-400">
           <i className="fas fa-info-circle mr-1"></i>
-          Нет доступных тегов. Создайте теги в разделе "Теги".
+          Нет доступных тегов. Создайте теги в разделе «Теги».
         </p>
       </div>
     );

@@ -29,5 +29,10 @@ class Kernel extends ConsoleKernel
         // Очистка кэша
         $schedule->command('cache:prune-stale-tags')
                  ->hourly();
+
+        // Ежедневный бэкап базы данных в 02:30 (хранится 14 копий)
+        $schedule->command('db:backup --keep=14')
+                 ->dailyAt('02:30')
+                 ->withoutOverlapping();
     }
 }

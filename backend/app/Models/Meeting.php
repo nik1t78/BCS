@@ -4,11 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Carbon\Carbon;
 
 class Meeting extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'title',
@@ -25,6 +26,7 @@ class Meeting extends Model
         'reminder_minutes',
         'recurring',
         'repeat_until',
+        'rrule',
         'priority',
         'is_private',
     ];
@@ -92,6 +94,23 @@ class Meeting extends Model
     public function tasks()
     {
         return $this->hasMany(MeetingTask::class);
+    }
+
+    /**
+     * Подтверждения присутствия (RSVP)
+     */
+    public function rsvps()
+    {
+        return $this->hasMany(MeetingRsvp::class);
+    }
+
+    /**
+     * Scope: корзина (только мягко удалённые), виден админу/модератору целиком,
+     * обычному пользователю — только его встречи
+     */
+    public function scopeOnlyTrashed($query)
+    {
+        return $query->onlyTrashed();
     }
 
     /**

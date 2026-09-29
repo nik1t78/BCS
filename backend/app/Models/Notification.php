@@ -12,6 +12,7 @@ class Notification extends Model
     protected $fillable = [
         'user_id',
         'meeting_id',
+        'title',
         'message',
         'type',
         'read',
@@ -20,6 +21,26 @@ class Notification extends Model
     protected $casts = [
         'read' => 'boolean',
     ];
+
+    /**
+     * После создания in-app уведомления — продублировать его в мессенджер
+     * (Telegram/MAX) получателя, если он привязан и интеграция включена.
+     */
+    protected static function booted(): void
+    {
+        static::created(function (Notification $notification) {
+            try {
+                if (\App\Services\MessengerNotifier::isEnabled()) {
+                    $user = $notification->user()->first();
+                    if ($user) {
+                        \App\Services\MessengerNotifier::notifyMeeting($user, $notification);
+                    }
+                }
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Messenger delivery failed: ' . $e->getMessage());
+            }
+        });
+    }
 
     /**
      * Пользователь уведомления

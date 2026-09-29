@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { User, Meeting, Tag } from '../types';
-import { getMeetings, createMeeting, updateMeeting, deleteMeeting, cancelMeeting, getUsersForDisplay, getTags } from '../store-api';
+import { User, Meeting, Tag, ScheduleConflict } from '../types';
+import { roomsAPI } from '../api/client';
+import { getMeetings, createMeeting, updateMeeting, deleteMeeting, cancelMeeting, getUsersForDisplay, getTags, checkConflictsApi } from '../store-api';
 import TagsSelector from './TagsSelector';
+import MeetingRsvp from './MeetingRsvp';
+import { describeRRule } from '../utils/recurrence';
 import MeetingHistoryView from './MeetingHistoryView';
 import MeetingMinutes from './MeetingMinutes';
 import { SortMode, SORT_OPTIONS, sortMeetings, getMeetingGroup } from '../utils/meetingSort';
@@ -38,6 +41,7 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
   // Фильтры, календарь, избранное, массовые действия, история изменений
   const [statusFilter, setStatusFilter] = useState<'all' | 'upcoming' | 'past' | 'cancelled'>('all');
   const [roomFilter, setRoomFilter] = useState('');
+  const [roomsCatalog, setRoomsCatalog] = useState<{ name: string; capacity: number; equipment: string[] }[]>([]);
   const [tagFilter, setTagFilter] = useState('');
   const [search, setSearch] = useState('');
   const [view, setView] = useState<'list' | 'calendar'>('list');
@@ -47,6 +51,14 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
   const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  // Компактный режим списка (адаптивен для мобильных и «плотного» просмотра)
+  const [compact, setCompact] = useState<boolean>(() => {
+    try { return localStorage.getItem('vks_compact_list') === '1'; } catch { return false; }
+  });
+  const toggleCompact = () => setCompact((c) => {
+    try { localStorage.setItem('vks_compact_list', c ? '0' : '1'); } catch { /* ignore */ }
+    return !c;
+  });
 
   const emptyMeeting: Meeting = {
     id: '',
@@ -96,7 +108,18 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
 
   // ===== Фильтры: статус / комната / тег / поиск по названию, описанию, участникам =====
   const nowIso = () => new Date().toISOString().slice(0, 16);
-  const rooms = Array.from(new Set(meetings.map((m) => m.room).filter(Boolean) as string[])).sort();
+  useEffect(() => {
+    roomsAPI.list().then((res: any) => {
+      setRoomsCatalog((res?.data ?? []).map((r: any) => ({
+        name: r.name, capacity: r.capacity ?? 0, equipment: r.equipment ?? [],
+      })));
+    }).catch(() => {});
+  }, []);
+
+  const rooms = Array.from(new Set([
+    ...meetings.map((m) => m.room).filter(Boolean) as string[],
+    ...roomsCatalog.map((r) => r.name),
+  ])).sort();
   const matchSearch = (m: Meeting) => {
     if (!search.trim()) return true;
     const q = search.trim().toLowerCase();
@@ -194,6 +217,27 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
     loadData();
   };
 
+  // Конфликты расписания при создании/редактировании встречи
+  const [conflicts, setConflicts] = useState<ScheduleConflict[]>([]);
+  const [conflictChecked, setConflictChecked] = useState(false);
+  const [forceSave, setForceSave] = useState(false);
+
+  const runConflictCheck = async (): Promise<ScheduleConflict[]> => {
+    const userIds = [
+      ...(formData.participants ?? []),
+      editingMeeting ? editingMeeting.organizerId : user.id,
+    ].map((x) => String(x)).filter(Boolean);
+    const found = await checkConflictsApi({
+      date: formData.date,
+      startTime: formData.startTime,
+      endTime: formData.endTime,
+      userIds,
+      excludeMeetingId: editingMeeting?.id,
+    });
+    setConflicts(found);
+    return found;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title || !formData.date || !formData.startTime || !formData.endTime) {
@@ -203,6 +247,22 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
     if (formData.endTime <= formData.startTime) {
       alert('Время окончания должно быть позже времени начала');
       return;
+    }
+
+    // Валидация пересечений у тех же участников (кроме принудительного сохранения)
+    if (!conflictChecked && !forceSave) {
+      const found = await runConflictCheck();
+      setConflictChecked(true);
+      if (found.length > 0) {
+        const NL = String.fromCharCode(10);
+        const proceed = window.confirm(
+          `Обнаружены конфликты расписания (${found.length}):` + NL +
+          found.map((c) => `• «${c.title}» ${c.start_time}–${c.end_time}`).join(NL) + NL + NL +
+          'Создать встречу всё равно?'
+        );
+        if (!proceed) return;
+        setForceSave(true);
+      }
     }
 
     // createMeeting/updateMeeting возвращают null при ошибке сервера
@@ -227,12 +287,14 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
     setShowForm(false);
     setEditingMeeting(null);
     setFormData(emptyMeeting);
+    setConflicts([]); setConflictChecked(false); setForceSave(false);
   };
 
   const handleEdit = (meeting: Meeting) => {
     setEditingMeeting(meeting);
     setFormData(meeting);
     setShowForm(true);
+    setConflicts([]); setConflictChecked(false); setForceSave(false);
   };
 
   const handleDelete = async (id: string) => {
@@ -300,6 +362,20 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
               <i className="far fa-calendar-alt mr-1"></i>Календарь
             </button>
           </div>
+          {/* Переключатель компактного режима списка */}
+          {view === 'list' && (
+            <button
+              onClick={toggleCompact}
+              className={`px-3 py-2 text-sm rounded-lg border ${
+                compact
+                  ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400'
+                  : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+              title={compact ? 'Обычный режим' : 'Компактный режим'}
+            >
+              <i className="fas fa-compress-alt mr-1"></i>{compact ? 'Компактно' : 'Обычно'}
+            </button>
+          )}
           <label className="text-sm text-gray-600 dark:text-gray-400">
             <i className="fas fa-sort mr-1"></i>Сортировка:
           </label>
@@ -404,12 +480,22 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                 <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">
                   {editingMeeting ? 'Редактировать конференцию' : 'Новая конференция'}
                 </h2>
-                <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600">
+                <button onClick={() => { setShowForm(false); setConflicts([]); setConflictChecked(false); setForceSave(false); }} className="text-gray-400 hover:text-gray-600">
                   <i className="fas fa-times text-xl"></i>
                 </button>
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
+                {conflicts.length > 0 && (
+                  <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 text-sm text-amber-800 dark:text-amber-200">
+                    <p className="font-medium mb-1"><i className="fas fa-exclamation-triangle mr-1"></i>Конфликты расписания ({conflicts.length}):</p>
+                    <ul className="list-disc list-inside space-y-0.5">
+                      {conflicts.map((c: ScheduleConflict) => (
+                        <li key={String(c.meeting_id)}>«{c.title}» {c.start_time}–{c.end_time}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Название *</label>
@@ -447,12 +533,17 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Комната</label>
                     <input
-                      type="text"
+                      type="text" list="rooms-catalog"
                       value={formData.room}
                       onChange={(e) => setFormData({ ...formData, room: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
                       placeholder="Переговорная №1"
                     />
+                    <datalist id="rooms-catalog">
+                      {roomsCatalog.map((r) => (
+                        <option key={r.name} value={r.name}>{`${r.capacity} мест${r.equipment.length ? ' • ' + r.equipment.join(', ') : ''}`}</option>
+                      ))}
+                    </datalist>
                   </div>
 
                   <div>
@@ -514,8 +605,40 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                       <option value="daily">Ежедневно</option>
                       <option value="weekly">Еженедельно</option>
                       <option value="monthly">Ежемесячно</option>
+                      <option value="custom">По правилу (RRULE)…</option>
                     </select>
                   </div>
+                  {formData.recurring === 'custom' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Правило RRULE</label>
+                      <input
+                        type="text"
+                        value={formData.rrule ?? ''}
+                        placeholder="FREQ=MONTHLY;BYDAY=FR;BYSETPOS=-1"
+                        onChange={(e) => setFormData({ ...formData, rrule: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500 font-mono text-xs"
+                      />
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {[
+                          ['FREQ=WEEKLY;INTERVAL=2;BYDAY=MO', 'кажд. 2 нед. пн'],
+                          ['FREQ=MONTHLY;BYDAY=FR;BYSETPOS=-1', 'послед. пятница мес.'],
+                          ['FREQ=MONTHLY;BYDAY=MO;BYSETPOS=1', 'перв. понедельник мес.'],
+                          ['FREQ=DAILY;INTERVAL=3', 'каждые 3 дня'],
+                        ].map(([val, label]) => (
+                          <button
+                            key={val}
+                            type="button"
+                            onClick={() => setFormData({ ...formData, rrule: val })}
+                            className={`px-2 py-0.5 rounded text-[11px] border ${formData.rrule === val ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                            title={val}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {formData.rrule && <p className="text-[11px] text-gray-400 mt-1"><i className="fas fa-sync-alt mr-1"></i>{describeRRule(formData.rrule)}</p>}
+                    </div>
+                  )}
                   {formData.recurring !== 'none' && (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -602,7 +725,7 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                 <div className="flex justify-end gap-3 pt-4 border-t dark:border-gray-700">
                   <button
                     type="button"
-                    onClick={() => setShowForm(false)}
+                    onClick={() => { setShowForm(false); setConflicts([]); setConflictChecked(false); setForceSave(false); }}
                     className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
                   >
                     Отмена
@@ -701,6 +824,9 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                     </div>
                   </div>
                 )}
+
+                {/* RSVP — подтверждение участия */}
+                <MeetingRsvp meeting={vm} user={user} />
 
                 {/* Протокол встречи и задачи (action items) */}
                 <MeetingMinutes
@@ -896,7 +1022,7 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
               <React.Fragment key={meeting.id}>
                 {header}
                 <div
-                  className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 hover:shadow-md transition-shadow"
+                  className={`bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-shadow ${compact ? 'p-2.5' : 'p-4'}`}
                 >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex items-center gap-2 self-start mt-1">
@@ -911,7 +1037,7 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                 />
               </div>
               <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
+                <div className={`flex items-center gap-2 ${compact ? '' : 'mb-2'}`}>
                   <button
                     onClick={() => setViewMeeting(meeting)}
                     className="font-bold text-gray-800 dark:text-gray-100 hover:text-blue-600 text-left"
@@ -939,7 +1065,7 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                     {meeting.priority === 'high' ? 'Высокий' : meeting.priority === 'medium' ? 'Средний' : 'Низкий'}
                   </span>
                 </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
+                <p className={`${compact ? 'text-xs' : 'text-sm'} text-gray-600 dark:text-gray-400`}>
                   <i className="far fa-calendar mr-1"></i>
                   {new Date(meeting.date).toLocaleDateString('ru-RU')}
                   <span className="mx-2">•</span>
@@ -965,7 +1091,7 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                       <i className="fas fa-sync-alt text-blue-500 mr-1"></i>
                       <span className="text-blue-600 dark:text-blue-400">
                         {meeting.recurring === 'daily' ? 'Ежедневно' : meeting.recurring === 'weekly' ? 'Еженедельно' : 'Ежемесячно'}
-                        {meeting.repeatUntil ? ` до ${new Date(meeting.repeatUntil).toLocaleDateString('ru-RU')}` : ''}
+                        {meeting.recurring === 'custom' && meeting.rrule ? ` (${describeRRule(meeting.rrule)})` : ''}{meeting.repeatUntil ? ` до ${new Date(meeting.repeatUntil).toLocaleDateString('ru-RU')}` : ''}
                       </span>
                     </>
                   )}

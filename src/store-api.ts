@@ -1,13 +1,17 @@
 // Store с поддержкой API Laravel
 
-import { authAPI, usersAPI, meetingsAPI, notificationsAPI, settingsAPI, profileAPI, tagsAPI, templatesAPI, attachmentsAPI, meetingHistoryAPI, minutesAPI, meetingTasksAPI } from './api/client';
-import { User, Meeting, Notification, Settings, Tag, MeetingTemplate, Attachment, MeetingHistory, MeetingMinute, MeetingTask } from './types';
+import { authAPI, usersAPI, meetingsAPI, notificationsAPI, settingsAPI, profileAPI, tagsAPI, templatesAPI, attachmentsAPI, meetingHistoryAPI, minutesAPI, meetingTasksAPI, rsvpAPI, trashAPI } from './api/client';
+import { User, Meeting, Notification, Settings, Tag, MeetingTemplate, Attachment, MeetingHistory, MeetingMinute, MeetingTask, TaskComment, ScheduleConflict, RsvpData, MeetingRsvp, RsvpResponse } from './types';
 
 // ============ AUTH ============
 export async function login(login: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> {
   try {
     const response = await authAPI.login(login, password);
-    localStorage.setItem('vks_auth', JSON.stringify({ token: response.token, user: mapUser(response.user) }));
+    localStorage.setItem('vks_auth', JSON.stringify({
+      token: response.token,
+      refreshToken: response.refresh_token ?? null,
+      user: mapUser(response.user),
+    }));
     return { success: true, user: mapUser(response.user) };
   } catch (error: any) {
     return { success: false, error: error.message || 'Ошибка входа' };
@@ -17,7 +21,11 @@ export async function login(login: string, password: string): Promise<{ success:
 export async function register(name: string, login: string, password: string, phone?: string, department?: string): Promise<{ success: boolean; user?: User; error?: string }> {
   try {
     const response = await authAPI.register({ name, login, password, phone, department });
-    localStorage.setItem('vks_auth', JSON.stringify({ token: response.token, user: mapUser(response.user) }));
+    localStorage.setItem('vks_auth', JSON.stringify({
+      token: response.token,
+      refreshToken: response.refresh_token ?? null,
+      user: mapUser(response.user),
+    }));
     return { success: true, user: mapUser(response.user) };
   } catch (error: any) {
     return { success: false, error: error.message || 'Ошибка регистрации' };
@@ -329,7 +337,7 @@ export async function cancelMeeting(id: string, reason?: string): Promise<Meetin
 // Перенос встречи (drag&drop в Schedule / кнопка «Перенести»)
 export async function rescheduleMeeting(
   id: string,
-  data: { date: string; startTime: string; endTime?: string; notify?: boolean },
+  data: { date: string; startTime: string; endTime?: string; notify?: boolean; force?: boolean },
 ): Promise<Meeting | null> {
   try {
     const response = await meetingsAPI.reschedule(id, {
@@ -337,12 +345,33 @@ export async function rescheduleMeeting(
       start_time: data.startTime,
       ...(data.endTime ? { end_time: data.endTime } : {}),
       ...(data.notify !== undefined ? { notify: data.notify } : {}),
+      ...(data.force !== undefined ? { force: data.force } : {}),
     });
     return mapMeeting(unwrapOne(response));
-  } catch (error) {
+  } catch (error: any) {
+    // Помечаем ошибку конфликта, чтобы UI мог предложить повтор с force=true
+    if (String(error?.message ?? '').includes('409')) error.isConflict = true;
     console.error('Reschedule meeting error:', error);
     return null;
   }
+}
+
+// Проверка конфликтов перед drag&drop-переносом в Schedule
+export async function checkRescheduleConflicts(
+  meeting: Meeting,
+  newDateKey: string,
+): Promise<ScheduleConflict[]> {
+  const userIds = [
+    ...(meeting.participants ?? []),
+    meeting.organizerId,
+  ].map(String).filter(Boolean);
+  return checkConflictsApi({
+    date: newDateKey,
+    startTime: meeting.startTime,
+    endTime: meeting.endTime,
+    userIds,
+    excludeMeetingId: meeting.id,
+  });
 }
 
 // ============ ПРОТОКОЛ ВСТРЕЧИ (MINUTES) ============
@@ -400,15 +429,35 @@ export async function deleteMinuteApi(meetingId: string, minuteId: string): Prom
 }
 
 // ============ ЗАДАЧИ ВСТРЕЧИ (ACTION ITEMS) ============
+function mapTaskComment(raw: any): TaskComment {
+  return {
+    id: String(raw?.id ?? ''),
+    meetingTaskId: String(raw?.meeting_task_id ?? raw?.meetingTaskId ?? ''),
+    userId: String(raw?.user_id ?? ''),
+    userName: raw?.user?.name,
+    body: raw?.body ?? '',
+    createdAt: typeof raw?.created_at === 'string' ? raw.created_at.replace(' ', 'T') : (raw?.createdAt ?? ''),
+  };
+}
+
 function mapTask(raw: any): MeetingTask {
+  const assigneeIds: string[] = Array.isArray(raw?.assignee_ids)
+    ? raw.assignee_ids.map(String)
+    : (Array.isArray(raw?.assignees) ? raw.assignees.map((u: any) => String(u.id)) : []);
+  const assigneeNames: string[] = Array.isArray(raw?.assignees)
+    ? raw.assignees.map((u: any) => u.name).filter(Boolean)
+    : (raw?.assignee?.name ? [raw.assignee.name] : []);
   return {
     id: String(raw?.id ?? ''),
     meetingId: String(raw?.meeting_id ?? raw?.meetingId ?? ''),
     title: raw?.title ?? '',
     assigneeId: raw?.assignee_id != null ? String(raw.assignee_id) : null,
     assigneeName: raw?.assignee?.name,
+    assigneeIds,
+    assigneeNames,
     deadline: typeof raw?.deadline === 'string' ? raw.deadline.slice(0, 10) : (raw?.deadline ?? null),
     status: (raw?.status as MeetingTask['status']) ?? 'pending',
+    comments: Array.isArray(raw?.comments) ? raw.comments.map(mapTaskComment) : [],
     createdAt: typeof raw?.created_at === 'string' ? raw.created_at.replace(' ', 'T') : (raw?.createdAt ?? ''),
   };
 }
@@ -423,11 +472,20 @@ export async function getMeetingTasks(meetingId: string): Promise<MeetingTask[]>
   }
 }
 
-export async function addMeetingTask(meetingId: string, data: { title: string; assigneeId?: string | null; deadline?: string | null }): Promise<MeetingTask | null> {
+export async function addMeetingTask(
+  meetingId: string,
+  data: { title: string; assigneeId?: string | null; assigneeIds?: string[]; deadline?: string | null },
+): Promise<MeetingTask | null> {
   try {
+    const ids = (data.assigneeIds ?? []).map(Number).filter((n) => !Number.isNaN(n));
+    if (data.assigneeId) {
+      const single = Number(data.assigneeId);
+      if (!ids.includes(single)) ids.unshift(single);
+    }
     const response = await meetingTasksAPI.create(meetingId, {
       title: data.title,
-      assignee_id: data.assigneeId ? Number(data.assigneeId) : null,
+      assignee_ids: ids.length ? ids : undefined,
+      assignee_id: ids.length ? ids[0] : null,
       deadline: data.deadline || null,
     });
     return mapTask(unwrapOne(response));
@@ -437,14 +495,24 @@ export async function addMeetingTask(meetingId: string, data: { title: string; a
   }
 }
 
-export async function updateMeetingTaskApi(meetingId: string, taskId: string, data: { title?: string; assigneeId?: string | null; deadline?: string | null; status?: string }): Promise<MeetingTask | null> {
+export async function updateMeetingTaskApi(
+  meetingId: string,
+  taskId: string,
+  data: { title?: string; assigneeId?: string | null; assigneeIds?: string[]; deadline?: string | null; status?: string },
+): Promise<MeetingTask | null> {
   try {
-    const response = await meetingTasksAPI.update(meetingId, taskId, {
-      ...(data.title !== undefined ? { title: data.title } : {}),
-      ...(data.assigneeId !== undefined ? { assignee_id: data.assigneeId ? Number(data.assigneeId) : null } : {}),
-      ...(data.deadline !== undefined ? { deadline: data.deadline || null } : {}),
-      ...(data.status !== undefined ? { status: data.status } : {}),
-    });
+    const payload: any = {};
+    if (data.title !== undefined) payload.title = data.title;
+    if (data.assigneeIds !== undefined) {
+      const ids = data.assigneeIds.map(Number).filter((n) => !Number.isNaN(n));
+      payload.assignee_ids = ids;
+      payload.assignee_id = ids[0] ?? null;
+    } else if (data.assigneeId !== undefined) {
+      payload.assignee_id = data.assigneeId ? Number(data.assigneeId) : null;
+    }
+    if (data.deadline !== undefined) payload.deadline = data.deadline || null;
+    if (data.status !== undefined) payload.status = data.status;
+    const response = await meetingTasksAPI.update(meetingId, taskId, payload);
     return mapTask(unwrapOne(response));
   } catch (error) {
     console.error('Update meeting task error:', error);
@@ -458,6 +526,111 @@ export async function deleteMeetingTaskApi(meetingId: string, taskId: string): P
     return true;
   } catch (error) {
     console.error('Delete meeting task error:', error);
+    return false;
+  }
+}
+
+export async function addTaskCommentApi(meetingId: string, taskId: string, body: string): Promise<TaskComment | null> {
+  try {
+    const response = await meetingTasksAPI.addComment(meetingId, taskId, body);
+    return mapTaskComment(unwrapOne(response));
+  } catch (error) {
+    console.error('Add task comment error:', error);
+    return null;
+  }
+}
+
+export async function deleteTaskCommentApi(meetingId: string, taskId: string, commentId: string): Promise<boolean> {
+  try {
+    await meetingTasksAPI.removeComment(meetingId, taskId, commentId);
+    return true;
+  } catch (error) {
+    console.error('Delete task comment error:', error);
+    return false;
+  }
+}
+
+// ============ КОНФЛИКТЫ РАСПИСАНИЯ ============
+export async function checkConflictsApi(params: {
+  date: string;
+  startTime: string;
+  endTime: string;
+  userIds: (string | number)[];
+  excludeMeetingId?: string | number;
+}): Promise<ScheduleConflict[]> {
+  try {
+    const response = await meetingsAPI.checkConflicts({
+      date: params.date,
+      start_time: params.startTime,
+      end_time: params.endTime,
+      users: params.userIds.join(','),
+      ...(params.excludeMeetingId ? { exclude: String(params.excludeMeetingId) } : {}),
+    });
+    const data = response?.conflicts ?? unwrapList(response);
+    return Array.isArray(data) ? (data as ScheduleConflict[]) : [];
+  } catch (error) {
+    console.error('Check conflicts error:', error);
+    return [];
+  }
+}
+
+// ============ СЕССИИ И ВЫХОД НА ВСЕХ УСТРОЙСТВАХ ============
+export async function logoutAllDevices(): Promise<boolean> {
+  try {
+    await authAPI.logoutAll();
+    return true;
+  } catch (error) {
+    console.error('Logout all devices error:', error);
+    return false;
+  } finally {
+    localStorage.removeItem('vks_auth');
+  }
+}
+
+export interface SessionInfo {
+  id: number;
+  ip: string | null;
+  user_agent: string | null;
+  created_at: string | null;
+}
+
+export async function getActiveSessions(): Promise<SessionInfo[]> {
+  try {
+    const response = await authAPI.sessions();
+    return (response?.data ?? []) as SessionInfo[];
+  } catch (error) {
+    console.error('Get sessions error:', error);
+    return [];
+  }
+}
+
+// ============ КОРЗИНА (УДАЛЁННЫЕ ВСТРЕЧИ) ============
+export async function getTrashedMeetings(): Promise<Meeting[]> {
+  try {
+    const response = await trashAPI.list();
+    return unwrapList(response).map(mapMeeting);
+  } catch (error) {
+    console.error('Get trashed meetings error:', error);
+    return [];
+  }
+}
+
+export async function restoreMeetingFromTrash(id: string): Promise<Meeting | null> {
+  try {
+    const response = await trashAPI.restore(id);
+    return mapMeeting(unwrapOne(response));
+  } catch (error) {
+    console.error('Restore meeting error:', error);
+    return null;
+  }
+}
+
+export async function deleteMeetingForever(id: string): Promise<boolean> {
+  try {
+    await trashAPI.destroyForever(id);
+    return true;
+  } catch (error) {
+    console.error('Delete meeting forever error:', error);
     return false;
   }
 }
@@ -759,4 +932,44 @@ export async function getMeetingHistory(meetingId: string): Promise<MeetingHisto
 // ============ UTILS ============
 export function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substr(2);
+}
+
+// ==================== RSVP ====================
+function mapRsvp(raw: any): MeetingRsvp {
+  return {
+    userId: String(raw?.user_id ?? raw?.userId ?? ''),
+    name: raw?.name ?? raw?.user?.name,
+    response: (raw?.response as RsvpResponse) ?? 'maybe',
+    respondedAt: typeof raw?.responded_at === 'string' ? raw.responded_at : (raw?.respondedAt ?? undefined),
+  };
+}
+
+export async function getMeetingRsvp(meetingId: string): Promise<RsvpData | null> {
+  try {
+    const data = await rsvpAPI.get(meetingId);
+    return {
+      rsvps: (data?.rsvps ?? []).map(mapRsvp),
+      summary: {
+        yes: data?.summary?.yes ?? 0,
+        no: data?.summary?.no ?? 0,
+        maybe: data?.summary?.maybe ?? 0,
+        pending: data?.summary?.pending ?? 0,
+        totalParticipants: data?.summary?.total_participants ?? data?.summary?.totalParticipants ?? 0,
+      },
+      myResponse: (data?.my_response ?? data?.myResponse ?? null) as RsvpResponse | null,
+    };
+  } catch (error) {
+    console.error('Get RSVP error:', error);
+    return null;
+  }
+}
+
+export async function respondRsvp(meetingId: string, response: RsvpResponse): Promise<boolean> {
+  try {
+    await rsvpAPI.respond(meetingId, response);
+    return true;
+  } catch (error) {
+    console.error('Respond RSVP error:', error);
+    return false;
+  }
 }

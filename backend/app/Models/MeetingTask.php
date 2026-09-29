@@ -10,12 +10,14 @@ class MeetingTask extends Model
         'meeting_id',
         'title',
         'assignee_id',
+        'assignee_ids',
         'deadline',
         'status',
     ];
 
     protected $casts = [
         'deadline' => 'date',
+        'assignee_ids' => 'array',
     ];
 
     /**
@@ -27,10 +29,26 @@ class MeetingTask extends Model
     }
 
     /**
-     * Ответственный за задачу
+     * Ответственный за задачу (основной, обратная совместимость)
      */
     public function assignee()
     {
         return $this->belongsTo(User::class, 'assignee_id');
+    }
+
+    /**
+     * Все ответственные (множественное назначение)
+     */
+    public function assignees()
+    {
+        return $this->belongsToMany(User::class, 'meeting_task_assignees', 'meeting_task_id', 'user_id');
+    }
+
+    /**
+     * Комментарии к задаче
+     */
+    public function comments()
+    {
+        return $this->hasMany(TaskComment::class)->latest('created_at');
     }
 }

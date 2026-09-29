@@ -1,6 +1,102 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { User, Notification } from '../types';
 import { getNotifications, markNotificationRead, markAllNotificationsRead, clearAllNotifications } from '../store-api';
+import { notificationsAPI } from '../api/client';
+
+// --- Toast-уведомления: всплывают на любом экране (правый нижний угол) ---
+interface ToastItem {
+  id: string;
+  message: string;
+  type: string;
+}
+
+export function useNewNotificationToasts(enabled: boolean) {
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const lastSeenRef = useRef<string | null>(null); // id самого нового уведомления при последней проверке
+
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+
+    const check = async () => {
+      try {
+        const res = await notificationsAPI.getAll({ unread: true, per_page: 10 });
+        if (cancelled) return;
+        const items: any[] = res.data ?? [];
+        const newestId = items.length ? String(items[0].id) : null;
+
+        if (lastSeenRef.current === null) {
+          // Первая проверка после входа — не показываем старые непрочитанные
+          lastSeenRef.current = newestId;
+          return;
+        }
+
+        const known = new Set<string>();
+        let current = newestId;
+        while (current && current !== lastSeenRef.current) {
+          const found = items.find((n) => String(n.id) === current);
+          if (!found) break;
+          known.add(current);
+          if (found.message) {
+            setToasts((prev) =>
+              prev.some((t) => t.id === current)
+                ? prev
+                : [...prev.slice(-4), { id: current!, message: found.message, type: found.type ?? 'info' }]
+            );
+          }
+          const idx = items.findIndex((n) => String(n.id) === current);
+          current = idx + 1 < items.length ? String(items[idx + 1].id) : null;
+        }
+        if (newestId) lastSeenRef.current = newestId;
+
+        // Автоскрытие через 6 секунд
+        window.setTimeout(() => {
+          if (cancelled || known.size === 0) return;
+          setToasts((prev) => prev.filter((t) => !known.has(t.id)));
+        }, 6000);
+      } catch {
+        /* сеть недоступна — молча пропускаем цикл */
+      }
+    };
+
+    check();
+    const timer = setInterval(check, 20000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [enabled]);
+
+  const dismiss = (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id));
+
+  return { toasts, dismiss };
+}
+
+export function NotificationToasts({ toasts, onDismiss }: { toasts: ToastItem[]; onDismiss: (id: string) => void }) {
+  const iconFor = (type: string) =>
+    type === 'starting' ? '🔴' : type === 'reminder' ? '⏰' : type === 'warning' ? '⚠️' : type === 'user-added' ? '👤' : '📅';
+
+  return (
+    <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 max-w-sm w-[calc(100vw-2rem)] sm:w-80 pointer-events-none">
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          className="pointer-events-auto bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-800 shadow-lg rounded-xl p-3 flex items-start gap-2 animate-[slideInRight_0.25s_ease-out]"
+        >
+          <span className="text-xl leading-none shrink-0">{iconFor(t.type)}</span>
+          <p className="text-sm text-gray-800 dark:text-gray-100 flex-1 break-words">{t.message}</p>
+          <button
+            onClick={() => onDismiss(t.id)}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 shrink-0"
+            aria-label="Закрыть"
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 interface NotificationsProps {
   user: User;

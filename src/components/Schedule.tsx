@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Meeting } from '../types';
-import { getMeetings, getUsersForDisplay, rescheduleMeeting } from '../store-api';
+import { getMeetings, getUsersForDisplay, rescheduleMeeting, checkRescheduleConflicts } from '../store-api';
 import { occursOn, withDate } from '../utils/recurrence';
 
 interface ScheduleProps {
@@ -113,8 +113,19 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
     if (!canDrag(m)) return;
     if (!confirm(`Перенести «${m.title}» на ${new Date(dateKey).toLocaleDateString('ru-RU')}? Участники получат уведомление.`)) return;
 
+    // Проверка конфликтов расписания у участников на новой дате
+    try {
+      const found = await checkRescheduleConflicts(m, dateKey);
+      if (found.length > 0) {
+        const names = found.map((c) => `«${c.title}» ${c.start_time}–${c.end_time}`).join('\n');
+        if (!confirm(`⚠️ Конфликты при переносе на ${new Date(dateKey).toLocaleDateString('ru-RU')}:\n${names}\n\nПеренести всё равно?`)) {
+          return;
+        }
+      }
+    } catch { /* если проверка недоступна — продолжаем без неё */ }
+
     setMoving(true);
-    const saved = await rescheduleMeeting(id, { date: dateKey, startTime: m.startTime, endTime: m.endTime });
+    const saved = await rescheduleMeeting(id, { date: dateKey, startTime: m.startTime, endTime: m.endTime, force: true });
     setMoving(false);
     if (saved) loadData();
     else alert('Не удалось перенести встречу');

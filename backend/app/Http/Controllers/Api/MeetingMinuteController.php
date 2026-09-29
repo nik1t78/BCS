@@ -125,12 +125,17 @@ class MeetingMinuteController extends Controller
         if ($denied = $this->ensureAccess($request, $meeting)) return $denied;
 
         return response()->json(
-            $meeting->tasks()->with('assignee')->orderByRaw("case when status = 'done' then 1 else 0 end")->orderBy('deadline')->get()
+            $meeting->tasks()
+                ->with(['assignee', 'assignees', 'comments.user'])
+                ->orderByRaw("case when status = 'done' then 1 else 0 end")
+                ->orderBy('deadline')
+                ->get()
         );
     }
 
     /**
-     * Создать задачу
+     * Создать задачу. Поддерживает множественных ответственных:
+     * assignee_ids: [1,2] (или одиночный assignee_id для обратной совместимости).
      */
     public function tasksStore(Request $request, Meeting $meeting)
     {
@@ -139,15 +144,29 @@ class MeetingMinuteController extends Controller
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'assignee_id' => 'nullable|integer|exists:users,id',
+            'assignee_ids' => 'nullable|array',
+            'assignee_ids.*' => 'integer|exists:users,id',
             'deadline' => 'nullable|date',
         ]);
 
-        $task = $meeting->tasks()->create($validated + ['status' => 'pending']);
+        $ids = collect($validated['assignee_ids'] ?? [])
+            ->merge(array_filter([$validated['assignee_id'] ?? null]))
+            ->unique()->values()->all();
 
-        // Уведомляем ответственного
-        if ($task->assignee_id && $task->assignee_id !== $request->user()->id) {
+        $task = $meeting->tasks()->create([
+            'title' => $validated['title'],
+            'deadline' => $validated['deadline'] ?? null,
+            'assignee_id' => $ids[0] ?? null,
+            'assignee_ids' => $ids ?: null,
+            'status' => 'pending',
+        ]);
+        $task->assignees()->sync($ids);
+
+        // Уведомляем каждого ответственного
+        foreach ($ids as $assigneeId) {
+            if ($assigneeId === $request->user()->id) continue;
             Notification::create([
-                'user_id' => $task->assignee_id,
+                'user_id' => $assigneeId,
                 'meeting_id' => $meeting->id,
                 'message' => "📌 Вам поставлена задача по встрече \"{$meeting->title}\": {$task->title}",
                 'type' => 'info',
@@ -155,11 +174,11 @@ class MeetingMinuteController extends Controller
             ]);
         }
 
-        return response()->json($task->load('assignee'), 201);
+        return response()->json($task->load(['assignee', 'assignees']), 201);
     }
 
     /**
-     * Обновить задачу (статус/ответственный/дедлайн)
+     * Обновить задачу (статус/ответственные/дедлайн)
      */
     public function tasksUpdate(Request $request, Meeting $meeting, MeetingTask $task)
     {
@@ -168,13 +187,40 @@ class MeetingMinuteController extends Controller
         $validated = $request->validate([
             'title' => 'sometimes|string|max:255',
             'assignee_id' => 'nullable|integer|exists:users,id',
+            'assignee_ids' => 'nullable|array',
+            'assignee_ids.*' => 'integer|exists:users,id',
             'deadline' => 'nullable|date',
             'status' => 'sometimes|in:pending,in_progress,done',
         ]);
 
-        $task->update($validated);
+        $payload = collect($validated)->except(['assignee_id', 'assignee_ids'])->filter(fn($v) => !is_null($v) || array_key_exists($v, $validated))->all();
 
-        return response()->json($task->load('assignee'));
+        if (array_key_exists('assignee_ids', $validated) || array_key_exists('assignee_id', $validated)) {
+            $ids = collect($validated['assignee_ids'] ?? [])
+                ->merge(array_filter([$validated['assignee_id'] ?? null]))
+                ->unique()->values()->all();
+            $payload['assignee_id'] = $ids[0] ?? null;
+            $payload['assignee_ids'] = $ids ?: null;
+            $task->assignees()->sync($ids);
+
+            // Уведомления новым ответственным
+            $oldIds = array_column($task->assignees()->getRelated()->whereIn('id', $task->assignees()->pluck('user_id')->all())->get()->keyBy('id')->all(), 'id');
+            $newOnes = array_diff($ids, $oldIds ?: []);
+            foreach ($newOnes as $uid) {
+                if ($uid === $request->user()->id) continue;
+                Notification::create([
+                    'user_id' => $uid,
+                    'meeting_id' => $meeting->id,
+                    'message' => "📌 Вы назначены ответственным по задаче \"{$task->title}\" (встреча \"{$meeting->title}\")",
+                    'type' => 'info',
+                    'read' => false,
+                ]);
+            }
+        }
+
+        $task->update($payload);
+
+        return response()->json($task->load(['assignee', 'assignees', 'comments.user']));
     }
 
     /**
@@ -187,5 +233,56 @@ class MeetingMinuteController extends Controller
         $task->delete();
 
         return response()->json(['message' => 'Задача удалена']);
+    }
+
+    // ==================== КОММЕНТАРИИ К ЗАДАЧАМ ====================
+
+    /**
+     * Добавить комментарий к задаче
+     */
+    public function taskCommentStore(Request $request, Meeting $meeting, MeetingTask $task)
+    {
+        if ($denied = $this->ensureAccess($request, $meeting, true)) return $denied;
+
+        $validated = $request->validate([
+            'body' => 'required|string|max:5000',
+        ]);
+
+        $comment = \App\Models\TaskComment::create([
+            'meeting_task_id' => $task->id,
+            'user_id' => $request->user()->id,
+            'body' => $validated['body'],
+        ]);
+
+        // Уведомление ответственным (кроме автора комментария)
+        foreach ($task->assignees()->pluck('user_id') as $uid) {
+            if ($uid === $request->user()->id) continue;
+            Notification::create([
+                'user_id' => $uid,
+                'meeting_id' => $meeting->id,
+                'message' => "💬 Новый комментарий к задаче \"{$task->title}\": " . mb_substr($validated['body'], 0, 80),
+                'type' => 'info',
+                'read' => false,
+            ]);
+        }
+
+        return response()->json($comment->load('user'), 201);
+    }
+
+    /**
+     * Удалить комментарий (автор, организатор или админ)
+     */
+    public function taskCommentDestroy(Request $request, Meeting $meeting, MeetingTask $task, \App\Models\TaskComment $comment)
+    {
+        if ($denied = $this->ensureAccess($request, $meeting, true)) return $denied;
+
+        $user = $request->user();
+        if ($comment->user_id !== $user->id && $meeting->organizer_id !== $user->id && !$user->isAdmin()) {
+            return response()->json(['message' => 'Удалить комментарий может только его автор или организатор'], 403);
+        }
+
+        $comment->delete();
+
+        return response()->json(['message' => 'Комментарий удалён']);
     }
 }
