@@ -3,3 +3,7 @@ node_modules/
 
 # Build artifacts
 dist/
+# Локальные дампы БД (не коммитить)
+backend/database/backups/*
+!backend/database/backups/.gitkeep
+storage/app/backups/
