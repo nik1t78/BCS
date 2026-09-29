@@ -3,10 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\User;
 use App\Models\UserSetting;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 
 class UserController extends Controller
 {
@@ -172,6 +176,14 @@ class UserController extends Controller
 
     /**
      * Удаление пользователя (admin)
+     *
+     * Ранее удалялся только сам пользователь, из-за чего MySQL/MariaDB
+     * отклонял DELETE при наличии связанных записей (FOREIGN_KEY_CONSTRAINT_VIOLATION):
+     *   - personal_access_tokens (morph-связь, каскад по id не срабатывает);
+     *   - audit_logs.user_id — в старых миграциях FK был без "set null",
+     *     поэтому удаление пользователя, совершавшего действия, падало с 500.
+     * Теперь в транзакции сначала чистятся зависимые записи токенов, а записи
+     * аудита отвязываются (user_id = NULL), после чего пользователь удаляется.
      */
     public function destroy(Request $request, $id)
     {
@@ -185,9 +197,41 @@ class UserController extends Controller
 
         $user = User::findOrFail($id);
 
-        AuditLog::log($request, 'user_deleted', $user, ['name' => $user->name, 'login' => $user->login]);
+        try {
+            DB::transaction(function () use ($user, $request) {
+                // Токены Sanctum (morph: tokenable_type/tokenable_id)
+                DB::table('personal_access_tokens')
+                    ->where('tokenable_type', get_class($user))
+                    ->where('tokenable_id', $user->id)
+                    ->delete();
 
-        $user->delete();
+                // Записи аудита, где пользователь указан как "user_id"
+                // (в базе может быть FK без ON DELETE SET NULL — отвязываем явно)
+                if (Schema::hasColumn('audit_logs', 'user_id')) {
+                    DB::table('audit_logs')
+                        ->where('user_id', $user->id)
+                        ->update(['user_id' => null]);
+                }
+
+                $user->delete();
+            });
+        } catch (QueryException $e) {
+            // Остались связи, которые нельзя снять автоматически (например,
+            // таблицы, добавленные сторонними миграциями) — возвращаем
+            // понятную ошибку вместо «Не удалось удалить пользователя».
+            \Log::error('User delete failed due to related records', [
+                'target_user_id' => $user->id,
+                'sql_state' => $e->getCode(),
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Не удалось удалить пользователя: у него остались связанные записи, '
+                    . 'которые блокируют удаление. Сначала удалите его конференции или заблокируйте аккаунт.',
+            ], 409);
+        }
+
+        AuditLog::log($request, 'user_deleted', null, ['name' => $user->name, 'login' => $user->login]);
 
         return response()->json(['message' => 'Пользователь удалён']);
     }

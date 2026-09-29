@@ -386,8 +386,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     }
     
     if (confirm('Удалить пользователя?')) {
-      const ok = await deleteUser(id);
-      if (!ok) { alert('Не удалось удалить пользователя'); return; }
+      const res = await deleteUser(id);
+      if (!res.ok) { alert(res.error || 'Не удалось удалить пользователя'); return; }
       setUsers(await getUsers());
       setApiStats(await getAdminPanelStats(user.role));
     }
