@@ -128,3 +128,55 @@
     opacity: 1;
   }
 }
+
+/* ==================== Печать / PDF-экспорт протокола ====================
+   Кнопка «Печать/PDF» в MeetingMinutes вызывает window.print().
+   Печатается только контейнер .print-area (протокол + задачи); остальной
+   интерфейс (шапка, сайдбар, toast'ы, кнопки редактирования) скрывается. */
+.print-only {
+  display: none;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+    background: #fff;
+    color: #111;
+  }
+  .print-only {
+    display: block;
+  }
+  /* Скрываем элементы управления даже внутри области печати */
+  .print-area button,
+  .print-area input,
+  .print-area textarea,
+  .print-area select,
+  .print-area [contenteditable="true"] {
+    display: none !important;
+  }
+  /* Тёмная тема при печати всегда светлая */
+  .dark .print-area,
+  .dark .print-area * {
+    background: #fff !important;
+    color: #111 !important;
+    border-color: #ccc !important;
+  }
+  .print-area p,
+  .print-area div {
+    white-space: normal;
+  }
+  @page {
+    margin: 2cm 1.5cm;
+  }
+}

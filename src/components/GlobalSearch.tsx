@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Meeting, MeetingTask, User } from "../types";
 
 // Глобальный поиск по встречам, задачам протоколов и пользователям.
-// Вызывается сочетанием Ctrl+K / Cmd+K; данные берутся из уже загруженных
-// списков (App хранит их не будет — тянем сами через store-api лениво).
+// Вызывается сочетанием Ctrl+F / Cmd+F (учитывает русскую раскладку: клавиша «а»);
+// данные берутся из уже загруженных списков (тянем сами через store-api лениво).
 
 interface Props {
   user: User;
@@ -42,10 +42,11 @@ export default function GlobalSearch({ user }: Props) {
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Горячие клавиши: Ctrl/Cmd+K — открыть, Esc — закрыть
+  // Горячие клавиши: Ctrl/Cmd+F — открыть (F — латинская раскладка, а — русская,
+  // физически одна клавиша), Esc — закрыть. preventDefault подавляет поиск браузера.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      if ((e.ctrlKey || e.metaKey) && ["f", "а"].includes(e.key.toLowerCase())) {
         e.preventDefault();
         setOpen((v) => !v);
       } else if (e.key === "Escape") {
@@ -173,7 +174,7 @@ export default function GlobalSearch({ user }: Props) {
       >
         <i className="fas fa-search" aria-hidden="true"></i>
         Поиск
-        <kbd className="text-[10px] border border-gray-300 dark:border-gray-600 rounded px-1">Ctrl K</kbd>
+        <kbd className="text-[10px] border border-gray-300 dark:border-gray-600 rounded px-1">Ctrl F</kbd>
       </button>
     );
   }
@@ -183,7 +184,9 @@ export default function GlobalSearch({ user }: Props) {
     if (r.type === "meeting") {
       window.dispatchEvent(new CustomEvent("vks-open-meeting", { detail: r.id }));
     } else if (r.type === "task") {
-      window.dispatchEvent(new CustomEvent("vks-open-meeting", { detail: (r.raw as any).meetingId ?? (r.raw as any).meeting_id }));
+      window.dispatchEvent(
+        new CustomEvent("vks-open-meeting", { detail: (r.raw as any).meetingId ?? (r.raw as any).meeting_id })
+      );
     } else {
       window.dispatchEvent(new CustomEvent("vks-open-user", { detail: r.id }));
     }

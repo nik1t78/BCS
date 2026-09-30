@@ -258,7 +258,7 @@ export async function updateUser(id: string, data: any): Promise<User | null> {
   }
 }
 
-export async function deleteUser(id: string): Promise<{ ok: boolean; error?: string }> {
+export async function deleteUser(id: string): Promise<boolean> {
   try {
     await usersAPI.delete(id);
     return true;
