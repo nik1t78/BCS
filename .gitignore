@@ -1,5 +1,23 @@
 # Dependencies
 node_modules/
 
-# Build artifacts
+# Build output
 dist/
+
+# Env & secrets (never commit)
+.env
+.env.local
+backend/.env
+backend/.env.*.local
+!backend/.env.example
+
+# Local dumps/backups
+*.sql
+*.sql.gz
+backend/database/backups/*
+backend/storage/app/backups/*
+
+# IDE/OS
+.idea/
+.vscode/
+.DS_Store

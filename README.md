@@ -6,12 +6,12 @@
 
 ## Стек
 
-| Слой        | Технологии                                                                 |
-|-------------|-----------------------------------------------------------------------------|
-| Frontend    | React 18 + TypeScript, Vite 6, Tailwind CSS 4, dnd-kit, Recharts, Framer Motion |
-| Backend     | PHP 8.2 / Laravel, Sanctum (Bearer-токены + refresh), MySQL 8, Redis (queue/cache) |
-| Инфраструктура | Docker Compose: nginx, php-fpm, mysql, redis, queue-worker, scheduler   |
-| Качество    | ESLint + Prettier, `tsc --noEmit`, GitHub Actions CI                        |
+| Слой           | Технологии                                                                         |
+| -------------- | ---------------------------------------------------------------------------------- |
+| Frontend       | React 18 + TypeScript, Vite 6, Tailwind CSS 4, dnd-kit, Recharts, Framer Motion    |
+| Backend        | PHP 8.2 / Laravel, Sanctum (Bearer-токены + refresh), MySQL 8, Redis (queue/cache) |
+| Инфраструктура | Docker Compose: nginx, php-fpm, mysql, redis, queue-worker, scheduler              |
+| Качество       | ESLint + Prettier, `tsc --noEmit`, GitHub Actions CI                               |
 
 ## Архитектура
 
@@ -107,7 +107,7 @@ npm run dev
 ### Демо-доступы (после сидинга)
 
 | Роль          | Логин       | Пароль         |
-|---------------|-------------|----------------|
+| ------------- | ----------- | -------------- |
 | Администратор | `admin`     | `admin123`     |
 | Модератор     | `moderator` | `moderator123` |
 | Пользователь  | `user`      | `user123`      |
@@ -136,7 +136,7 @@ php artisan migrate                    # применить миграции (в
   - MAX: `MAX_ENABLED=true`, `MAX_BOT_TOKEN`, `MAX_API_URL=https://maxapi.ru/v1`;
   - Настройка webhook бота: `curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<ваш-домен>/api/telegram/webhook?secret=<SECRET>"`;
   - Пользователь привязывает аккаунт в Профиле: «Привязать Telegram» → код → `/start <код>` в чате бота.
-  Без настроек дублирование уведомлений просто пропускается (in-app работает всегда).
+    Без настроек дублирование уведомлений просто пропускается (in-app работает всегда).
 - `SANCTUM_TOKEN_EXPIRATION` / срок refresh-токенов — настройка жизни сессий.
 
 ## CI
@@ -147,5 +147,6 @@ backend — `composer install → php artisan test`.
 
 ## Документация
 
+- [START_HERE.md](START_HERE.md) — быстрая инструкция: как запустить проект (Docker/dev) и пошаговая настройка уведомлений в Telegram (@BotFather → .env → webhook → привязка аккаунта);
 - [DEPLOYMENT.md](DEPLOYMENT.md) — пошаговая установка на сервер;
 - [RESTART.md](RESTART.md) — перезапуск сервисов и типовые проблемы.

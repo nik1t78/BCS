@@ -371,6 +371,31 @@ class UserController extends Controller
             'moderators' => User::where('role', 'moderator')->count(),
             'users' => User::where('role', 'user')->count(),
             'new_this_month' => User::whereMonth('created_at', now()->month)->count(),
+            // Продуктовая аналитика (журнал user_activity, см. middleware TrackActivity).
+            // Таблица появляется после php artisan migrate — до этого отдаём нули.
+            ...$this->engagementStats(),
         ]);
+    }
+
+    /** DAU/MAU и тренд за 14 дней из daily_stats/user_activity */
+    private function engagementStats(): array
+    {
+        try {
+            if (!\Illuminate\Support\Facades\DB::getSchemaBuilder()->hasTable('daily_stats')) {
+                return ['dau' => null, 'mau' => null, 'trend' => []];
+            }
+            $today = \Illuminate\Support\Facades\DB::table('daily_stats')->where('date', now()->toDateString())->first();
+            $trend = \Illuminate\Support\Facades\DB::table('daily_stats')
+                ->where('date', '>=', now()->subDays(13)->toDateString())
+                ->orderBy('date')
+                ->get(['date', 'dau', 'mau', 'actions']);
+            return [
+                'dau' => $today?->dau,
+                'mau' => $today?->mau,
+                'trend' => $trend,
+            ];
+        } catch (\Throwable $e) {
+            return ['dau' => null, 'mau' => null, 'trend' => []];
+        }
     }
 }

@@ -3,10 +3,10 @@
 // 'monthly') и опциональной датой окончания repeatUntil. Календарь и ICS-экспорт
 // показывают встречу во всех подходящих днях, а не только в день создания.
 
-import { Meeting } from '../types';
+import { Meeting } from "../types";
 
 const toDateKey = (d: Date): string =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 export const MEETING_OCCURRENCES_LIMIT_DAYS = 92; // ~3 месяца вперёд
 
@@ -18,8 +18,8 @@ export function occursOn(meeting: Meeting, date: Date): boolean {
   const dayKey = toDateKey(date);
   if (meeting.date === dayKey) return true;
 
-  if (!meeting.recurring || meeting.recurring === 'none') return false;
-  if (meeting.status === 'cancelled') return false;
+  if (!meeting.recurring || meeting.recurring === "none") return false;
+  if (meeting.status === "cancelled") return false;
   if (meeting.repeatUntil && dayKey > meeting.repeatUntil) return false;
   if (dayKey <= meeting.date) return false;
 
@@ -30,14 +30,14 @@ export function occursOn(meeting: Meeting, date: Date): boolean {
 
   const base = new Date(`${meeting.date}T00:00:00`);
   switch (meeting.recurring) {
-    case 'daily':
+    case "daily":
       return true;
-    case 'weekly':
+    case "weekly":
       return base.getDay() === date.getDay();
-    case 'monthly':
+    case "monthly":
       return base.getDate() === date.getDate();
-    case 'custom':
-      return matchesRrule(meeting.rrule ?? '', base, date);
+    case "custom":
+      return matchesRrule(meeting.rrule ?? "", base, date);
     default:
       return false;
   }
@@ -48,12 +48,12 @@ export function occursOn(meeting: Meeting, date: Date): boolean {
 // BYSETPOS=-1 (например «последняя пятница месяца»: FREQ=MONTHLY;BYDAY=FR;BYSETPOS=-1);
 // COUNT=n. UNTIL обрабатывается через repeatUntil в основной модели.
 
-const DAY_CODES = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+const DAY_CODES = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 
 export interface ParsedRRule {
-  freq: 'DAILY' | 'WEEKLY' | 'MONTHLY';
+  freq: "DAILY" | "WEEKLY" | "MONTHLY";
   interval: number;
-  byDay: number[];   // 0=Sun..6=Sat, пусто = день базовой даты
+  byDay: number[]; // 0=Sun..6=Sat, пусто = день базовой даты
   bySetPos: number | null; // -1 = последний, 1 = первый и т.д.
   count: number | null;
 }
@@ -61,20 +61,24 @@ export interface ParsedRRule {
 export function parseRRule(rrule: string): ParsedRRule | null {
   if (!rrule) return null;
   const parts = Object.fromEntries(
-    rrule.replace(/^RRULE:/i, '').split(';').filter(Boolean).map((kv) => {
-      const [k, v] = kv.split('=');
-      return [(k ?? '').trim().toUpperCase(), (v ?? '').trim().toUpperCase()];
-    })
+    rrule
+      .replace(/^RRULE:/i, "")
+      .split(";")
+      .filter(Boolean)
+      .map((kv) => {
+        const [k, v] = kv.split("=");
+        return [(k ?? "").trim().toUpperCase(), (v ?? "").trim().toUpperCase()];
+      })
   );
   const freqRaw = parts.FREQ as string;
-  if (!['DAILY', 'WEEKLY', 'MONTHLY'].includes(freqRaw)) return null;
-  const byDay = (parts.BYDAY ?? '')
-    .split(',')
-    .map((d) => DAY_CODES.indexOf(d.replace(/^[+-]?\d+/, '')))
+  if (!["DAILY", "WEEKLY", "MONTHLY"].includes(freqRaw)) return null;
+  const byDay = (parts.BYDAY ?? "")
+    .split(",")
+    .map((d) => DAY_CODES.indexOf(d.replace(/^[+-]?\d+/, "")))
     .filter((d) => d >= 0);
   return {
-    freq: freqRaw as ParsedRRule['freq'],
-    interval: Math.max(1, parseInt(parts.INTERVAL ?? '1', 10) || 1),
+    freq: freqRaw as ParsedRRule["freq"],
+    interval: Math.max(1, parseInt(parts.INTERVAL ?? "1", 10) || 1),
     byDay,
     bySetPos: parts.BYSETPOS != null ? parseInt(parts.BYSETPOS, 10) || null : null,
     count: parts.COUNT != null ? parseInt(parts.COUNT, 10) || null : null,
@@ -84,15 +88,14 @@ export function parseRRule(rrule: string): ParsedRRule | null {
 /** Человекочитаемое описание простого RRULE для UI */
 export function describeRRule(rrule: string): string {
   const r = parseRRule(rrule);
-  if (!r) return rrule || '';
-  const days = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
-  const every = r.interval > 1 ? `каждые ${r.interval} ` : 'кажд.';
-  if (r.freq === 'DAILY') return `${every}${r.interval > 1 ? 'дн.' : 'день'}`;
-  if (r.freq === 'WEEKLY')
-    return `${every}нед.${r.byDay.length ? ' ' + r.byDay.map((d) => days[d]).join(', ') : ''}`;
+  if (!r) return rrule || "";
+  const days = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
+  const every = r.interval > 1 ? `каждые ${r.interval} ` : "кажд.";
+  if (r.freq === "DAILY") return `${every}${r.interval > 1 ? "дн." : "день"}`;
+  if (r.freq === "WEEKLY") return `${every}нед.${r.byDay.length ? " " + r.byDay.map((d) => days[d]).join(", ") : ""}`;
   if (r.bySetPos != null && r.byDay.length) {
-    const posLabel = r.bySetPos === -1 ? 'последн.' : `#${r.bySetPos}`;
-    return `кажд. мес., ${posLabel} ${r.byDay.map((d) => days[d]).join(', ')}`;
+    const posLabel = r.bySetPos === -1 ? "последн." : `#${r.bySetPos}`;
+    return `кажд. мес., ${posLabel} ${r.byDay.map((d) => days[d]).join(", ")}`;
   }
   return `${every}мес.`;
 }
@@ -123,11 +126,11 @@ function matchesRruleNoCount(r: ParsedRRule, base: Date, date: Date): boolean {
   const dayDiff = Math.round((date.getTime() - base.getTime()) / 86400000);
   if (dayDiff <= 0) return false;
 
-  if (r.freq === 'DAILY') {
+  if (r.freq === "DAILY") {
     return dayDiff % r.interval === 0 && (r.byDay.length === 0 || r.byDay.includes(date.getDay()));
   }
 
-  if (r.freq === 'WEEKLY') {
+  if (r.freq === "WEEKLY") {
     const baseWeek = Math.floor(dayDiff / 7);
     if (baseWeek % r.interval !== 0) return false;
     const targetDays = r.byDay.length ? r.byDay : [base.getDay()];
@@ -183,7 +186,7 @@ export function expandOccurrences(meetings: Meeting[], fromDate: Date, toDate: D
   const toKey = toDateKey(toDate);
 
   for (const m of meetings) {
-    if (!m.recurring || m.recurring === 'none') {
+    if (!m.recurring || m.recurring === "none") {
       if (m.date >= fromKey && m.date <= toKey) result.push(m);
       continue;
     }

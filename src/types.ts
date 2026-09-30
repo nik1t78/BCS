@@ -3,7 +3,7 @@ export interface User {
   name: string;
   login: string;
   password: string; // In real Laravel this would be hashed on server
-  role: 'admin' | 'user' | 'moderator';
+  role: "admin" | "user" | "moderator";
   avatar?: string;
   phone?: string;
   department?: string;
@@ -28,12 +28,12 @@ export interface Meeting {
   participantEmails?: string[]; // for guests
   link?: string;
   room?: string;
-  status: 'scheduled' | 'in-progress' | 'completed' | 'cancelled';
+  status: "scheduled" | "in-progress" | "completed" | "cancelled";
   reminderMinutes: number;
-  recurring: 'none' | 'daily' | 'weekly' | 'monthly' | 'custom';
+  recurring: "none" | "daily" | "weekly" | "monthly" | "custom";
   /** Упрощённый RRULE для recurring === 'custom', напр. FREQ=MONTHLY;BYDAY=FR;BYSETPOS=-1 */
   rrule?: string;
-  priority: 'low' | 'medium' | 'high';
+  priority: "low" | "medium" | "high";
   createdAt: string;
   isPrivate: boolean;
   tags?: string[];
@@ -51,9 +51,9 @@ export interface MeetingTemplate {
   durationMinutes: number;
   room: string;
   link: string;
-  priority: 'low' | 'medium' | 'high';
+  priority: "low" | "medium" | "high";
   reminderMinutes: number;
-  recurring: 'none' | 'daily' | 'weekly' | 'monthly';
+  recurring: "none" | "daily" | "weekly" | "monthly";
   isPrivate: boolean;
   defaultParticipants: string[];
   createdAt: string;
@@ -82,7 +82,7 @@ export interface MeetingHistory {
   id: string;
   meetingId: string;
   userId: string;
-  action: 'created' | 'updated' | 'status_changed' | 'deleted';
+  action: "created" | "updated" | "status_changed" | "deleted";
   oldValues: any;
   newValues: any;
   ipAddress: string;
@@ -96,7 +96,7 @@ export interface Notification {
   userName?: string; // заполняется только в режиме «все уведомления» у админа
   meetingId: string;
   message: string;
-  type: 'reminder' | 'starting' | 'info' | 'warning' | 'user-added';
+  type: "reminder" | "starting" | "info" | "warning" | "user-added";
   timestamp: string;
   read: boolean;
 }
@@ -119,7 +119,7 @@ export interface MeetingMinute {
   createdAt: string;
 }
 
-export type MeetingTaskStatus = 'pending' | 'in_progress' | 'done';
+export type MeetingTaskStatus = "pending" | "in_progress" | "done";
 
 // Задача / action item внутри встречи
 export interface MeetingTask {
@@ -166,7 +166,7 @@ export interface Settings {
 }
 
 // RSVP — подтверждение присутствия
-export type RsvpResponse = 'yes' | 'no' | 'maybe';
+export type RsvpResponse = "yes" | "no" | "maybe";
 
 export interface MeetingRsvp {
   userId: string;
@@ -195,6 +195,8 @@ export interface Room {
   name: string;
   capacity: number;
   location?: string;
+  /** Привязка к подразделению (RBAC). null/undefined — публичная комната */
+  departmentId?: number | null;
   equipment?: string[];
   description?: string;
   isActive: boolean;
