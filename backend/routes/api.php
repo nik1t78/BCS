@@ -71,6 +71,10 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::delete('/notifications/clear', [NotificationController::class, 'clearAll']);
     Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
 
+    // Realtime-канал уведомлений (Server-Sent Events). Отдельный лимит:
+    // это долгоживущее соединение, его throttle не должен считать каждый heartbeat.
+    Route::middleware('throttle:10,1')->get('/notifications/stream', [\App\Http\Controllers\Api\NotificationStreamController::class, 'stream']);
+
     // Settings
     Route::get('/settings', [UserController::class, 'getSettings']);
     Route::put('/settings', [UserController::class, 'updateSettings']);

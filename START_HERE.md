@@ -99,10 +99,10 @@ vi .env
 ```ini
 MESSENGER=telegram
 TELEGRAM_ENABLED=true
-TELEGRAM_BOT_TOKEN=8041712972:AAHKGDvQi5Q2fIjMVbJLjXg8WO46Gfo9JZU
+TELEGRAM_BOT_TOKEN=<токен от @BotFather>
 TELEGRAM_API_URL=https://api.telegram.org
 TELEGRAM_BOT_LINK=https://t.me/Kolekt_bot
-TELEGRAM_WEBHOOK_SECRET=3sBKB39sNEGyWJsFb0Avt4bmttA18zQw   # любая длинная случайная строка
+TELEGRAM_WEBHOOK_SECRET=<любая длинная случайная строка, напр. openssl rand -hex 24>
 ```
 
 Перезагрузите конфиг и очередь:
@@ -117,11 +117,11 @@ docker restart vks-queue-worker vks-scheduler
 ⚠️ Нужен **публичный HTTPS-адрес** приложения (Telegram не принимает http/IP без сертификата). Если домена ещё нет — получите сертификат через nginx + certbot (см. DEPLOYMENT.md) или временно используйте long-polling-обходимость ниже.
 
 ```bash
-curl "https://api.telegram.org/bot8041712972:AAHKGDvQi5Q2fIjMVbJLjXg8WO46Gfo9JZU/setWebhook?url=https://ВАШ_ДОМЕН/api/telegram/webhook?secret=3sBKB39sNEGyWJsFb0Avt4bmttA18zQw"
+curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://ВАШ_ДОМЕН/api/telegram/webhook?secret=<WEBHOOK_SECRET>"
 # ожидаемый ответ: {"ok":true,"result":true,"description":"Webhook was set"}
 
 # проверка:
-curl "https://api.telegram.org/bot8041712972:AAHKGDvQi5Q2fIjMVbJLjXg8WO46Gfo9JZU/getWebhookInfo"
+curl "https://api.telegram.org/bot<TOKEN>/getWebhookInfo"
 # url должен = https://ВАШ_ДОМЕН/api/telegram/webhook?secret=..., pending_update_count = 0
 ```
 

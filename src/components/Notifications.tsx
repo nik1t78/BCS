@@ -10,13 +10,57 @@ interface ToastItem {
   type: string;
 }
 
+interface RealtimeEvent {
+  id: string;
+  message?: string;
+  type?: string;
+}
+
+// Подписка на realtime-канал уведомлений (SSE). Возвращает функцию отписки
+// или null, если EventSource недоступен / нет токена — тогда работают только
+// поллинг-циклы (обратная совместимость гарантирована).
+export function subscribeToNotifications(onNotification: (n: RealtimeEvent) => void): (() => void) | null {
+  const es = notificationsAPI.stream();
+  if (!es) return null;
+  const handler = (e: MessageEvent) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (data && data.id) onNotification(data);
+    } catch {
+      /* игнорируем битые кадры */
+    }
+  };
+  es.addEventListener("notification", handler);
+  return () => es.close();
+}
+
 export function useNewNotificationToasts(enabled: boolean) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const lastSeenRef = useRef<string | null>(null); // id самого нового уведомления при последней проверке
 
+  const pushToast = (id: string, message?: string, type?: string) => {
+    if (!message) return;
+    setToasts((prev) =>
+      prev.some((t) => t.id === id) ? prev : [...prev.slice(-4), { id, message, type: type ?? "info" }]
+    );
+    window.setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 6000);
+  };
+
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
+
+    // Мгновенная доставка через SSE (если сервер её отдаёт). Поллинг ниже
+    // остаётся запасным механизмом: при недоступном Redis/прокси-буферизации
+    // EventSource просто молча не получит ни одного кадра.
+    const unsubscribe = subscribeToNotifications((n) => {
+      if (cancelled) return;
+      // помечаем как известный, чтобы поллинг не показал это же повторно
+      if (lastSeenRef.current === null || Number(n.id) > Number(lastSeenRef.current)) {
+        lastSeenRef.current = n.id;
+      }
+      pushToast(n.id, n.message, n.type);
+    });
 
     const check = async () => {
       try {
@@ -64,6 +108,7 @@ export function useNewNotificationToasts(enabled: boolean) {
     return () => {
       cancelled = true;
       clearInterval(timer);
+      if (unsubscribe) unsubscribe();
     };
   }, [enabled]);
 
@@ -116,13 +161,27 @@ export default function Notifications({ user }: NotificationsProps) {
   const [showAllUsers, setShowAllUsers] = useState(true); // админ по умолчанию видит уведомления всех пользователей
   const [loading, setLoading] = useState(true);
   const isAdmin = user.role === "admin";
+  const cancelledRef = useRef(false); // защита от setState после размонтирования (SSE-колбэк)
 
   useEffect(() => {
+    cancelledRef.current = false;
     loadNotifications();
 
-    // Обновляем уведомления каждые 30 секунд
+    // Обновляем уведомления каждые 30 секунд (запасной механизм при недоступном SSE)
     const timer = setInterval(loadNotifications, 30000);
-    return () => clearInterval(timer);
+
+    // Realtime: мгновенное обновление списка при новом уведомлении.
+    // В режиме «все пользователи» (админ) SSE-событие касается другого
+    // пользователя — перезагрузку делаем только в персональном режиме.
+    const unsubscribe = subscribeToNotifications(() => {
+      if (!cancelledRef.current && !(isAdmin && showAllUsers)) loadNotifications();
+    });
+
+    return () => {
+      cancelledRef.current = true;
+      clearInterval(timer);
+      if (unsubscribe) unsubscribe();
+    };
   }, [user.id, showAllUsers]);
 
   const loadNotifications = async () => {

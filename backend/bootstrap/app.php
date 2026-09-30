@@ -12,6 +12,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Продуктовая аналитика: журнал действий для DAU/MAU (user_activity).
+        $middleware->api(append: [
+            \App\Http\Middleware\TrackActivity::class,
+        ]);
+
         // Доверяем заголовкам X-Forwarded-* от nginx (иначе Laravel не
         // распознаёт запрос как AJAX/api и включает CSRF-валидацию web-группы)
         $middleware->trustProxies(at: '*');
