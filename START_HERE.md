@@ -32,7 +32,7 @@ docker exec vks-backend php artisan db:seed --class=VksDatabaseSeeder --force
 **Демо-доступы (после сидинга):**
 
 | Роль          | Логин       | Пароль         |
-|---------------|-------------|----------------|
+| ------------- | ----------- | -------------- |
 | Администратор | `admin`     | `admin123`     |
 | Модератор     | `moderator` | `moderator123` |
 | Пользователь  | `user`      | `user123`      |
@@ -143,6 +143,7 @@ curl "https://api.telegram.org/bot8041712972:AAHKGDvQi5Q2fIjMVbJLjXg8WO46Gfo9JZU
 4. Поставьте задачу → ответственный получит «📌 Вам поставлена задача …».
 
 Если push не пришёл:
+
 ```bash
 docker exec vks-backend tail -20 storage/logs/laravel.log      # ошибки Bot API
 docker exec vks-backend php artisan queue:work --once          # если доставка в очереди
@@ -160,13 +161,13 @@ docker exec vks-backend php artisan queue:work --once          # если дос
 
 ## Шпаргалка: что где лежит
 
-| Что                          | Где                                                  |
-|------------------------------|------------------------------------------------------|
-| Запуск/развёртывание         | эта инструкция + DEPLOYMENT.md + RESTART.md          |
-| Контейнеры                   | docker-compose.yml, Dockerfile, docker/              |
-| Фронтенд                     | src/ (компоненты, api/client.ts, store-api.ts, utils)|
-| Бэкенд                       | backend/ (routes/api.php, app/, database/migrations) |
-| Telegram/MAX сервисы         | backend/app/Services/MessengerNotifier.php, MaxMessengerService.php |
-| RRULE на сервере             | backend/app/Services/RecurrenceService.php           |
-| Telegram-эндпоинты           | webhook: NotificationController::telegramWebhook; привязка: UserController (telegramStatus/Link/Unlink) — маршруты в backend/routes/api.php |
-| CI                           | .github/workflows/ci.yml                             |
+| Что                  | Где                                                                                                                                         |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Запуск/развёртывание | эта инструкция + DEPLOYMENT.md + RESTART.md                                                                                                 |
+| Контейнеры           | docker-compose.yml, Dockerfile, docker/                                                                                                     |
+| Фронтенд             | src/ (компоненты, api/client.ts, store-api.ts, utils)                                                                                       |
+| Бэкенд               | backend/ (routes/api.php, app/, database/migrations)                                                                                        |
+| Telegram/MAX сервисы | backend/app/Services/MessengerNotifier.php, MaxMessengerService.php                                                                         |
+| RRULE на сервере     | backend/app/Services/RecurrenceService.php                                                                                                  |
+| Telegram-эндпоинты   | webhook: NotificationController::telegramWebhook; привязка: UserController (telegramStatus/Link/Unlink) — маршруты в backend/routes/api.php |
+| CI                   | .github/workflows/ci.yml                                                                                                                    |
