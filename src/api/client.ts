@@ -316,51 +316,6 @@ export const rsvpAPI = {
     }),
 };
 
-// ПРОТОКОЛ ВСТРЕЧИ (MINUTES) И ЗАДАЧИ (ACTION ITEMS) API
-export const minutesAPI = {
-  list: (meetingId: string) =>
-    apiRequest(`/meetings/${meetingId}/minutes`),
-
-  create: (meetingId: string, data: { discussion?: string; decisions?: string; responsible?: string }) =>
-    apiRequest(`/meetings/${meetingId}/minutes`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-
-  update: (meetingId: string, minuteId: string, data: { discussion?: string; decisions?: string; responsible?: string }) =>
-    apiRequest(`/meetings/${meetingId}/minutes/${minuteId}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    }),
-
-  remove: (meetingId: string, minuteId: string) =>
-    apiRequest(`/meetings/${meetingId}/minutes/${minuteId}`, {
-      method: 'DELETE',
-    }),
-};
-
-export const meetingTasksAPI = {
-  list: (meetingId: string) =>
-    apiRequest(`/meetings/${meetingId}/tasks`),
-
-  create: (meetingId: string, data: { title: string; assignee_id?: number | null; deadline?: string | null }) =>
-    apiRequest(`/meetings/${meetingId}/tasks`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-
-  update: (meetingId: string, taskId: string, data: { title?: string; assignee_id?: number | null; deadline?: string | null; status?: string }) =>
-    apiRequest(`/meetings/${meetingId}/tasks/${taskId}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    }),
-
-  remove: (meetingId: string, taskId: string) =>
-    apiRequest(`/meetings/${meetingId}/tasks/${taskId}`, {
-      method: 'DELETE',
-    }),
-};
-
 // NOTIFICATIONS API
 export const notificationsAPI = {
   getAll: (params?: { type?: string; unread?: boolean; all?: boolean; per_page?: number }) => {
