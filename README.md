@@ -147,5 +147,6 @@ backend — `composer install → php artisan test`.
 
 ## Документация
 
+- [START_HERE.md](START_HERE.md) — быстрая инструкция: как запустить проект (Docker/dev) и пошаговая настройка уведомлений в Telegram (@BotFather → .env → webhook → привязка аккаунта);
 - [DEPLOYMENT.md](DEPLOYMENT.md) — пошаговая установка на сервер;
 - [RESTART.md](RESTART.md) — перезапуск сервисов и типовые проблемы.
