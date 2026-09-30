@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Meeting;
+use App\Services\RecurrenceService;
 use Illuminate\Http\Request;
 
 class ScheduleConflictController extends Controller
@@ -12,11 +13,27 @@ class ScheduleConflictController extends Controller
      * Конфликтует ли встреча с другим слотом того же пользователя.
      * Используется сервером при переносе (reschedule), чтобы не пускать
      * пересечение без явного флага force.
+     *
+     * Учитывает ПОВТОРЯЮЩИЕСЯ встречи: серия recurring != 'none' конфликтует
+     * на целевую дату, если в этот день у неё occurrence
+     * (см. App\Services\RecurrenceService — серверный эквивалент
+     * фронтенд-парсера src/utils/recurrence.ts).
      */
     public static function userHasConflict(int $userId, string $date, string $startTime, string $endTime, ?int $excludeMeetingId = null): bool
     {
+        $day = \Carbon\CarbonImmutable::parse($date);
+
         $q = Meeting::query()
-            ->whereDate('date', $date)
+            ->where(function ($w) use ($day) {
+                $w->whereDate('date', $day->toDateString())
+                  // повторяющиеся серии: базовая дата раньше, но occurrence может быть в этот день
+                  ->orWhere(function ($r) use ($day) {
+                      $r->where('recurring', '!=', 'none')
+                        ->whereNotNull('recurring')
+                        ->whereDate('date', '<=', $day->toDateString())
+                        ->whereDate('date', '>=', $day->copy()->subDays(RecurrenceService::HORIZON_DAYS)->toDateString());
+                  });
+            })
             ->where('status', '!=', 'cancelled')
             ->where(function ($w) use ($userId) {
                 $w->where('organizer_id', $userId)
@@ -32,7 +49,15 @@ class ScheduleConflictController extends Controller
             $q->where('id', '!=', $excludeMeetingId);
         }
 
-        return $q->exists();
+        // Кандидаты на точную дату конфликтуют напрямую; повторяющиеся серии
+        // проверяем серверным парсером RRULE (occursOn) — как это делает фронт.
+        return $q->get()->contains(function (Meeting $m) use ($day, $startTime, $endTime) {
+            $mStart = substr((string) $m->start_time, 0, 5);
+            $mEnd = substr((string) $m->end_time, 0, 5);
+            if (!($startTime < $mEnd && $endTime > $mStart)) return false;
+            if ($m->date->toDateString() === $day->toDateString()) return true;
+            return RecurrenceService::occursOn($m, $day);
+        });
     }
 
     /**
@@ -61,14 +86,25 @@ class ScheduleConflictController extends Controller
             return response()->json(['conflicts' => []]);
         }
 
-        $candidates = Meeting::query()
-            ->whereDate('date', $validated['date'])
-            ->whereIn('status', ['scheduled', 'in-progress'])
-            ->when(!empty($validated['exclude']), fn($q) => $q->where('id', '!=', $validated['exclude']))
-            ->get(['id', 'title', 'date', 'start_time', 'end_time', 'organizer_id', 'participants']);
-
         $from = $validated['start_time'];
         $to = $validated['end_time'];
+        $day = \Carbon\CarbonImmutable::parse($validated['date']);
+
+        // Кандидаты: встречи на точную дату + повторяющиеся серии, у которых
+        // occurrence может прийтись на этот день (окно развёртки HORIZON_DAYS).
+        $candidates = Meeting::query()
+            ->where(function ($w) use ($day) {
+                $w->whereDate('date', $day->toDateString())
+                  ->orWhere(function ($r) use ($day) {
+                      $r->where('recurring', '!=', 'none')
+                        ->whereNotNull('recurring')
+                        ->whereDate('date', '<=', $day->toDateString())
+                        ->whereDate('date', '>=', $day->copy()->subDays(RecurrenceService::HORIZON_DAYS)->toDateString());
+                  });
+            })
+            ->whereIn('status', ['scheduled', 'in-progress'])
+            ->when(!empty($validated['exclude']), fn($q) => $q->where('id', '!=', $validated['exclude']))
+            ->get(['id', 'title', 'date', 'start_time', 'end_time', 'organizer_id', 'participants', 'recurring', 'repeat_until', 'rrule', 'status']);
 
         $conflicts = [];
         foreach ($candidates as $m) {
@@ -77,6 +113,9 @@ class ScheduleConflictController extends Controller
 
             // Пересечение интервалов: start < otherEnd && end > otherStart
             if (!($from < $mEnd && $to > $mStart)) continue;
+
+            // Для повторяющейся серии убеждаемся, что в этот день реально occurrence
+            if ($m->date->toDateString() !== $day->toDateString() && !RecurrenceService::occursOn($m, $day)) continue;
 
             $mUsers = array_unique(array_merge([$m->organizer_id], $m->participants ?? []));
             $clash = $userIds->filter(fn($uid) => in_array($uid, $mUsers))->values();

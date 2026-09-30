@@ -19,4 +19,18 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Разделяем тяжёлые vendor-библиотеки на отдельные кэшируемые чанки
+        manualChunks: {
+          react: ["react", "react-dom"],
+          charts: ["recharts"],
+          motion: ["framer-motion"],
+          dnd: ["@dnd-kit/core", "@dnd-kit/sortable", "@dnd-kit/utilities"],
+          xlsx: ["exceljs"],
+        },
+      },
+    },
+  },
 });

@@ -33,13 +33,26 @@ class RoomController extends Controller
             'exclude' => 'nullable|integer', // id редактируемой встречи
         ]);
 
+        $day = \Carbon\CarbonImmutable::parse($validated['date']);
+
+        // Занятость комнаты: точные даты + occurrence'ы повторяющихся серий (RRULE на бэкенде)
         $bookings = Meeting::query()
-            ->whereDate('date', $validated['date'])
+            ->where(function ($w) use ($day) {
+                $w->whereDate('date', $day->toDateString())
+                  ->orWhere(function ($r) use ($day) {
+                      $r->where('recurring', '!=', 'none')
+                        ->whereNotNull('recurring')
+                        ->whereDate('date', '<=', $day->toDateString())
+                        ->whereDate('date', '>=', $day->copy()->subDays(\App\Services\RecurrenceService::HORIZON_DAYS)->toDateString());
+                  });
+            })
             ->where('room', $room->name)
             ->whereIn('status', ['scheduled', 'in-progress'])
             ->when(!empty($validated['exclude']), fn ($q) => $q->where('id', '!=', $validated['exclude']))
             ->orderBy('start_time')
-            ->get(['id', 'title', 'start_time', 'end_time']);
+            ->get(['id', 'title', 'date', 'start_time', 'end_time', 'recurring', 'repeat_until', 'rrule', 'status'])
+            ->filter(fn (Meeting $m) => $m->date->toDateString() === $day->toDateString()
+                || \App\Services\RecurrenceService::occursOn($m, $day));
 
         $busy = $bookings->map(fn ($m) => [
             'meeting_id' => $m->id,

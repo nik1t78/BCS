@@ -1,21 +1,25 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, lazy, Suspense } from "react";
 import { User } from "./types";
 import { getCurrentUser, logout, mapUser } from "./store-api";
 import { authAPI } from "./api/client";
 import ForcePasswordChange from "./components/ForcePasswordChange";
 import { getTheme } from "./store";
 import AuthPage from "./components/AuthPage";
-import Dashboard from "./components/Dashboard";
 import Schedule from "./components/Schedule";
-import UserPanel from "./components/UserPanel";
-import AdminPanel from "./components/AdminPanel";
 import Notifications, { useNewNotificationToasts, NotificationToasts } from "./components/Notifications";
 import Profile from "./components/Profile";
-import Stats from "./components/Stats";
-import Templates from "./components/Templates";
-import TagsManager from "./components/TagsManager";
+import GlobalSearch from "./components/GlobalSearch";
 import ThemeToggle from "./components/ThemeToggle";
 import ResetData from "./components/ResetData";
+
+// Code splitting: тяжёлые страницы грузятся лениво (Suspense ниже),
+// это уменьшает стартовый chunk (recharts/framer-motion/exceljs уходят в отдельные бандлы).
+const Dashboard = lazy(() => import("./components/Dashboard"));
+const UserPanel = lazy(() => import("./components/UserPanel"));
+const AdminPanel = lazy(() => import("./components/AdminPanel"));
+const Stats = lazy(() => import("./components/Stats"));
+const Templates = lazy(() => import("./components/Templates"));
+const TagsManager = lazy(() => import("./components/TagsManager"));
 
 type Page =
   "dashboard" | "schedule" | "meetings" | "templates" | "tags" | "stats" | "notifications" | "profile" | "admin";
@@ -175,6 +179,7 @@ function App() {
             </h2>
           </div>
           <div className="flex items-center gap-3">
+            <GlobalSearch user={user} />
             <ThemeToggle />
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center overflow-hidden">
@@ -195,21 +200,29 @@ function App() {
         </header>
 
         <div className="flex-1 overflow-y-auto p-3 sm:p-6">
-          {currentPage === "dashboard" && (
-            <Dashboard user={user} onNavigate={(page: string) => setCurrentPage(page as Page)} />
-          )}
-          {currentPage === "schedule" && (
-            <Schedule user={user} onNavigate={(page: string) => setCurrentPage(page as Page)} />
-          )}
-          {currentPage === "meetings" && (
-            <UserPanel user={user} onNavigate={(page: string) => setCurrentPage(page as Page)} />
-          )}
-          {currentPage === "templates" && <Templates userId={user.id} />}
-          {currentPage === "tags" && <TagsManager userId={user.id} />}
-          {currentPage === "stats" && <Stats user={user} />}
-          {currentPage === "notifications" && <Notifications user={user} />}
-          {currentPage === "profile" && <Profile user={user} onUpdate={() => setUser(getCurrentUser())} />}
-          {currentPage === "admin" && (isAdmin || isModerator) && <AdminPanel user={user} />}
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center py-20 text-gray-400 dark:text-gray-500">
+                <i className="fas fa-circle-notch fa-spin mr-2" aria-hidden="true"></i> Загрузка…
+              </div>
+            }
+          >
+            {currentPage === "dashboard" && (
+              <Dashboard user={user} onNavigate={(page: string) => setCurrentPage(page as Page)} />
+            )}
+            {currentPage === "schedule" && (
+              <Schedule user={user} onNavigate={(page: string) => setCurrentPage(page as Page)} />
+            )}
+            {currentPage === "meetings" && (
+              <UserPanel user={user} onNavigate={(page: string) => setCurrentPage(page as Page)} />
+            )}
+            {currentPage === "templates" && <Templates userId={user.id} />}
+            {currentPage === "tags" && <TagsManager userId={user.id} />}
+            {currentPage === "stats" && <Stats user={user} />}
+            {currentPage === "notifications" && <Notifications user={user} />}
+            {currentPage === "profile" && <Profile user={user} onUpdate={() => setUser(getCurrentUser())} />}
+            {currentPage === "admin" && (isAdmin || isModerator) && <AdminPanel user={user} />}
+          </Suspense>
         </div>
       </main>
 

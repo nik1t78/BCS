@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Meeting;
 use App\Models\Notification;
 use App\Models\User;
+use App\Services\RecurrenceService;
 use Illuminate\Console\Command;
 use Carbon\Carbon;
 
@@ -22,10 +23,24 @@ class SendMeetingReminders extends Command
         // Формат H:i — start_time хранится как TIME и Laravel возвращает строку 'H:i:s',
         // поэтому сравнение выполняется через Carbon (см. Meeting::isStartingAt / needsReminderAt)
         $currentTime = $now->format('H:i');
+        $todayImmutable = \Carbon\CarbonImmutable::parse($today);
 
-        $meetings = Meeting::where('date', $today)
+        // RRULE на бэкенде: кроме встреч на сегодня подбираем повторяющиеся серии,
+        // у которых occurrence приходится на сегодня (иначе напоминания по сериям
+        // приходили бы только в день создания).
+        $meetings = Meeting::where(function ($q) use ($today, $todayImmutable) {
+                $q->where('date', $today)
+                  ->orWhere(function ($r) use ($today, $todayImmutable) {
+                      $r->where('recurring', '!=', 'none')
+                        ->whereNotNull('recurring')
+                        ->whereDate('date', '<=', $today)
+                        ->whereDate('date', '>=', $todayImmutable->subDays(RecurrenceService::HORIZON_DAYS)->toDateString());
+                  });
+            })
             ->whereIn('status', ['scheduled', 'in-progress'])
-            ->get();
+            ->get()
+            ->filter(fn (Meeting $m) => $m->date->toDateString() === $today
+                || RecurrenceService::occursOn($m, $todayImmutable));
 
         $count = 0;
 

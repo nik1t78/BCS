@@ -1,9 +1,5 @@
 # Dependencies
 node_modules/
 
-# Build artifacts
+# Build output
 dist/
-# Локальные дампы БД (не коммитить)
-backend/database/backups/*
-!backend/database/backups/.gitkeep
-storage/app/backups/
