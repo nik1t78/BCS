@@ -102,6 +102,9 @@ class RoomController extends Controller
             'name' => 'required|string|max:255|unique:rooms,name',
             'capacity' => 'nullable|integer|min:1|max:200',
             'location' => 'nullable|string|max:255',
+            // department_id — привязка комнаты к подразделению (RBAC).
+            // null / строка названия отдела — публичная комната или отдел по имени.
+            'department_id' => 'nullable|integer|min:1',
             'equipment' => 'nullable|array',
             'equipment.*' => 'string|max:100',
             'description' => 'nullable|string|max:1000',
@@ -119,6 +122,7 @@ class RoomController extends Controller
             'name' => 'sometimes|required|string|max:255|unique:rooms,name,' . $room->id,
             'capacity' => 'nullable|integer|min:1|max:200',
             'location' => 'nullable|string|max:255',
+            'department_id' => 'nullable|integer|min:1',
             'equipment' => 'nullable|array',
             'equipment.*' => 'string|max:100',
             'description' => 'nullable|string|max:1000',

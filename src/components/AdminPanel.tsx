@@ -1325,7 +1325,9 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       )}
 
       {/* Stats Tab */}
-      {activeTab === "rooms" && <RoomsManager isAdmin={user.role === "admin" || user.role === "moderator"} />}
+      {activeTab === "rooms" && (
+        <RoomsManager isAdmin={user.role === "admin" || user.role === "moderator"} userDepartment={user.department} />
+      )}
 
       {activeTab === "stats" && (
         <div className="space-y-6">

@@ -10,6 +10,7 @@ class Room extends Model
         'name',
         'capacity',
         'location',
+        'department_id',
         'equipment',
         'description',
         'is_active',
@@ -18,5 +19,6 @@ class Room extends Model
     protected $casts = [
         'equipment' => 'array',
         'is_active' => 'boolean',
+        'department_id' => 'integer',
     ];
 }

@@ -195,6 +195,8 @@ export interface Room {
   name: string;
   capacity: number;
   location?: string;
+  /** Привязка к подразделению (RBAC). null/undefined — публичная комната */
+  departmentId?: number | null;
   equipment?: string[];
   description?: string;
   isActive: boolean;

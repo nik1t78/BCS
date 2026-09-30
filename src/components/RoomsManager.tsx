@@ -4,6 +4,8 @@ import type { Room, RoomAvailability } from "../types";
 
 interface RoomsManagerProps {
   isAdmin: boolean;
+  /** Подразделение текущего пользователя — для фильтра «доступные мне» (RBAC) */
+  userDepartment?: string;
 }
 
 const toTime = (t: string) => parseInt(t.slice(0, 2), 10) * 60 + parseInt(t.slice(3, 5), 10);
@@ -43,14 +45,34 @@ function AvailabilityTimeline({ availability }: { availability: RoomAvailability
   );
 }
 
-export default function RoomsManager({ isAdmin }: RoomsManagerProps) {
+export default function RoomsManager({ isAdmin, userDepartment }: RoomsManagerProps) {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [form, setForm] = useState({ name: "", capacity: 6, location: "", equipment: "" });
+  const [form, setForm] = useState({ name: "", capacity: 6, location: "", equipment: "", departmentId: "" });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [avail, setAvail] = useState<Record<string, RoomAvailability>>({});
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  // RBAC-фильтр: только комнаты, доступные текущему пользователю
+  // (публичные + своего подразделения). Показывать все — переключатель.
+  const [onlyMine, setOnlyMine] = useState(false);
+
+  // Список подразделений уникален по всем комнатам с department_id
+  const departments = Array.from(new Set(rooms.map((r) => r.departmentId).filter((d): d is number => d != null))).sort(
+    (a, b) => a - b
+  );
+
+  // RBAC-фильтр: комната публичная (без department_id) либо «своего» отдела.
+  // Сопоставление отдела пользователя — по имени/номеру из справочника rooms.
+  const canAccessRoom = (r: Room) => {
+    if (!r.departmentId) return true;
+    if (isAdmin) return true;
+    if (!userDepartment) return false;
+    const deptNum = parseInt(String(userDepartment).replace(/\D+/g, ""), 10);
+    if (Number.isFinite(deptNum) && deptNum === r.departmentId) return true;
+    return String(r.departmentId) === String(userDepartment);
+  };
+  const visibleRooms = onlyMine && !isAdmin ? rooms.filter(canAccessRoom) : rooms;
 
   const load = async () => {
     setLoading(true);
@@ -61,6 +83,7 @@ export default function RoomsManager({ isAdmin }: RoomsManagerProps) {
         name: r.name,
         capacity: r.capacity ?? 0,
         location: r.location ?? undefined,
+        departmentId: r.department_id ?? null,
         equipment: r.equipment ?? [],
         description: r.description ?? undefined,
         isActive: !!r.is_active,
@@ -117,6 +140,7 @@ export default function RoomsManager({ isAdmin }: RoomsManagerProps) {
       name: form.name.trim(),
       capacity: Number(form.capacity) || 1,
       location: form.location.trim() || null,
+      department_id: form.departmentId ? Number(form.departmentId) : null,
       equipment: form.equipment
         .split(",")
         .map((s) => s.trim())
@@ -125,7 +149,7 @@ export default function RoomsManager({ isAdmin }: RoomsManagerProps) {
     try {
       if (editingId) await roomsAPI.update(editingId, payload as any);
       else await roomsAPI.create(payload as any);
-      setForm({ name: "", capacity: 6, location: "", equipment: "" });
+      setForm({ name: "", capacity: 6, location: "", equipment: "", departmentId: "" });
       setEditingId(null);
       load();
     } catch (e: any) {
@@ -145,6 +169,12 @@ export default function RoomsManager({ isAdmin }: RoomsManagerProps) {
         <h3 className="font-bold text-gray-800 dark:text-gray-100">
           <i className="fas fa-door-open mr-2 text-blue-500"></i>Переговорные комнаты
         </h3>
+        {!isAdmin && (
+          <label className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 cursor-pointer select-none">
+            <input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} />
+            Только доступные мне
+          </label>
+        )}
         <label className="ml-auto text-sm text-gray-500 dark:text-gray-400">
           Дата занятости:
           <input
@@ -186,6 +216,21 @@ export default function RoomsManager({ isAdmin }: RoomsManagerProps) {
             value={form.equipment}
             onChange={(e) => setForm({ ...form, equipment: e.target.value })}
           />
+          <select
+            className="px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 text-sm"
+            title="Подразделение (RBAC): пустое значение — публичная комната, доступна всем"
+            value={form.departmentId}
+            onChange={(e) => setForm({ ...form, departmentId: e.target.value })}
+          >
+            <option value="">Публичная (все)</option>
+            {Array.from(new Set([...departments, ...(form.departmentId ? [Number(form.departmentId)] : [])]))
+              .sort((a, b) => a - b)
+              .map((d) => (
+                <option key={d} value={d}>
+                  Отдел #{d}
+                </option>
+              ))}
+          </select>
           <button
             onClick={submit}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
@@ -201,13 +246,32 @@ export default function RoomsManager({ isAdmin }: RoomsManagerProps) {
         <p className="text-sm text-gray-500">Комнаты не заведены. Добавьте их в админке.</p>
       ) : (
         <div className="space-y-3">
-          {rooms.map((r) => (
-            <div key={r.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+          {visibleRooms.map((r) => (
+            <div
+              key={r.id}
+              className={`border rounded-lg p-3 ${canAccessRoom(r) ? "border-gray-200 dark:border-gray-700" : "border-gray-100 dark:border-gray-800 opacity-60"}`}
+            >
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-semibold text-gray-800 dark:text-gray-100">{r.name}</span>
                 <span className="text-xs text-gray-500 dark:text-gray-400">
                   👤 {r.capacity} мест{r.location ? ` • ${r.location}` : ""}
                 </span>
+                {r.departmentId != null && (
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                      canAccessRoom(r)
+                        ? "bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                        : "bg-red-50 text-red-600 dark:bg-red-900/40 dark:text-red-300"
+                    }`}
+                    title={
+                      canAccessRoom(r)
+                        ? "Комната закреплена за подразделение — вам доступна"
+                        : "Закреплена за другим подразделением"
+                    }
+                  >
+                    🏢 Отдел #{r.departmentId}
+                  </span>
+                )}
                 {(r.equipment || []).map((eq) => (
                   <span
                     key={eq}
@@ -233,6 +297,7 @@ export default function RoomsManager({ isAdmin }: RoomsManagerProps) {
                           capacity: r.capacity,
                           location: r.location || "",
                           equipment: (r.equipment || []).join(", "),
+                          departmentId: r.departmentId != null ? String(r.departmentId) : "",
                         });
                       }}
                     >

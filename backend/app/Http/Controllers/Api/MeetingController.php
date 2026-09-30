@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Meeting;
 use App\Models\Notification;
+use App\Models\Room;
 use Illuminate\Http\Request;
 
 class MeetingController extends Controller
@@ -150,6 +151,8 @@ class MeetingController extends Controller
             'tags.*' => 'integer|exists:tags,id',
         ]);
 
+        $this->validateRoomAccess($request, $validated["room"] ?? null);
+
         $validated['organizer_id'] = $request->user()->id;
         
         $tags = $validated['tags'] ?? null;
@@ -232,6 +235,10 @@ class MeetingController extends Controller
             'tags' => 'nullable|array',
             'tags.*' => 'integer|exists:tags,id',
         ]);
+
+        if (array_key_exists('room', $validated)) {
+            $this->validateRoomAccess($request, $validated['room']);
+        }
 
         $tags = $validated['tags'] ?? null;
         unset($validated['tags']);
@@ -421,5 +428,36 @@ class MeetingController extends Controller
             ])->count(),
             'high_priority' => (clone $query)->where('priority', 'high')->count(),
         ]);
+    }
+
+    /**
+     * RBAC комнат по подразделениям: комнату, привязанную к отделу
+     * (rooms.department_id), могут бронировать только сотрудники этого отдела,
+     * admin/moderator. Комнаты без department_id — публичные (любые).
+     */
+    private function validateRoomAccess(Request $request, ?string $roomName): void
+    {
+        if ($roomName === null || trim($roomName) === '') {
+            return;
+        }
+        $user = $request->user();
+        if ($user->isAdmin() || $user->isModerator()) {
+            return;
+        }
+        $room = Room::where('name', $roomName)->first();
+        // Свободный текст в поле room (не из справочника) разрешаем как раньше
+        if (!$room || !$room->department_id) {
+            return;
+        }
+        // Сопоставление: department_id комнаты может храниться как числовой id
+        // или совпадать с названием отдела пользователя. Таблицы departments в
+        // схеме нет — сверяем напрямую значения (число↔число, строка↔строка).
+        $userDept = trim((string) ($user->department ?? ''));
+        $roomDept = trim((string) $room->department_id);
+        $matches = $userDept !== ''
+            && ($userDept === $roomDept || (is_numeric($userDept) && (int) $userDept === (int) $roomDept));
+        if (!$matches) {
+            abort(403, 'Эта комната закреплена за другим подразделением');
+        }
     }
 }
