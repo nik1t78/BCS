@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { User, MeetingTemplate } from '../types';
-import { getTemplates, createTemplate, updateTemplate, deleteTemplate } from '../store-api';
+import React, { useState, useEffect } from "react";
+import { User, MeetingTemplate } from "../types";
+import { getTemplates, createTemplate, updateTemplate, deleteTemplate } from "../store-api";
 
 interface TemplatesProps {
   userId: string;
@@ -13,16 +13,16 @@ export default function Templates({ userId }: TemplatesProps) {
   const [loading, setLoading] = useState(true);
 
   const emptyTemplate: MeetingTemplate = {
-    id: '',
+    id: "",
     userId,
-    name: '',
-    description: '',
+    name: "",
+    description: "",
     durationMinutes: 60,
-    room: '',
-    link: '',
-    priority: 'medium',
+    room: "",
+    link: "",
+    priority: "medium",
     reminderMinutes: 15,
-    recurring: 'none',
+    recurring: "none",
     isPrivate: false,
     defaultParticipants: [],
     createdAt: new Date().toISOString(),
@@ -40,7 +40,7 @@ export default function Templates({ userId }: TemplatesProps) {
       const data = await getTemplates();
       setTemplates(data);
     } catch (error) {
-      console.error('Error loading templates:', error);
+      console.error("Error loading templates:", error);
     } finally {
       setLoading(false);
     }
@@ -48,7 +48,7 @@ export default function Templates({ userId }: TemplatesProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     try {
       if (editingTemplate) {
         await updateTemplate(editingTemplate.id, formData);
@@ -61,8 +61,8 @@ export default function Templates({ userId }: TemplatesProps) {
       setEditingTemplate(null);
       setFormData(emptyTemplate);
     } catch (error) {
-      console.error('Error saving template:', error);
-      alert('Ошибка при сохранении шаблона');
+      console.error("Error saving template:", error);
+      alert("Ошибка при сохранении шаблона");
     }
   };
 
@@ -73,13 +73,13 @@ export default function Templates({ userId }: TemplatesProps) {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Удалить шаблон?')) {
+    if (confirm("Удалить шаблон?")) {
       try {
         await deleteTemplate(id);
         await loadTemplates();
       } catch (error) {
-        console.error('Error deleting template:', error);
-        alert('Ошибка при удалении шаблона');
+        console.error("Error deleting template:", error);
+        alert("Ошибка при удалении шаблона");
       }
     }
   };
@@ -137,7 +137,7 @@ export default function Templates({ userId }: TemplatesProps) {
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100">
-                  {editingTemplate ? 'Редактировать шаблон' : 'Новый шаблон'}
+                  {editingTemplate ? "Редактировать шаблон" : "Новый шаблон"}
                 </h3>
                 <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600">
                   <i className="fas fa-times text-xl"></i>
@@ -160,9 +160,7 @@ export default function Templates({ userId }: TemplatesProps) {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Описание
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Описание</label>
                   <textarea
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
@@ -185,9 +183,7 @@ export default function Templates({ userId }: TemplatesProps) {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Комната
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Комната</label>
                     <input
                       type="text"
                       value={formData.room}
@@ -212,9 +208,7 @@ export default function Templates({ userId }: TemplatesProps) {
 
                 <div className="grid grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Приоритет
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Приоритет</label>
                     <select
                       value={formData.priority}
                       onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })}
@@ -276,11 +270,8 @@ export default function Templates({ userId }: TemplatesProps) {
                   >
                     Отмена
                   </button>
-                  <button
-                    type="submit"
-                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                  >
-                    {editingTemplate ? 'Сохранить' : 'Создать'}
+                  <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                    {editingTemplate ? "Сохранить" : "Создать"}
                   </button>
                 </div>
               </form>
@@ -290,25 +281,23 @@ export default function Templates({ userId }: TemplatesProps) {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {templates.map(template => (
+        {templates.map((template) => (
           <div
             key={template.id}
             className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 hover:shadow-md transition-shadow"
           >
             <div className="flex items-start justify-between mb-3">
-              <h3 className="font-bold text-gray-800 dark:text-gray-100 text-lg">
-                {template.name}
-              </h3>
+              <h3 className="font-bold text-gray-800 dark:text-gray-100 text-lg">{template.name}</h3>
               <span
                 className={`px-2 py-1 rounded text-xs font-medium ${
-                  template.priority === 'high'
-                    ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-                    : template.priority === 'medium'
-                    ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
-                    : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                  template.priority === "high"
+                    ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
+                    : template.priority === "medium"
+                      ? "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400"
+                      : "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
                 }`}
               >
-                {template.priority === 'high' ? 'Высокий' : template.priority === 'medium' ? 'Средний' : 'Низкий'}
+                {template.priority === "high" ? "Высокий" : template.priority === "medium" ? "Средний" : "Низкий"}
               </span>
             </div>
 
@@ -327,10 +316,14 @@ export default function Templates({ userId }: TemplatesProps) {
                   {template.room}
                 </p>
               )}
-              {template.recurring !== 'none' && (
+              {template.recurring !== "none" && (
                 <p>
                   <i className="fas fa-sync mr-2"></i>
-                  {template.recurring === 'daily' ? 'Ежедневно' : template.recurring === 'weekly' ? 'Еженедельно' : 'Ежемесячно'}
+                  {template.recurring === "daily"
+                    ? "Ежедневно"
+                    : template.recurring === "weekly"
+                      ? "Еженедельно"
+                      : "Ежемесячно"}
                 </p>
               )}
             </div>

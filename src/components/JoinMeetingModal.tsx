@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Meeting } from '../types';
+import React, { useState } from "react";
+import { Meeting } from "../types";
 
 interface JoinMeetingModalProps {
   meeting: Meeting;
@@ -20,7 +20,7 @@ export default function JoinMeetingModal({ meeting, onClose }: JoinMeetingModalP
   const joinMeeting = () => {
     if (meeting.link) {
       // Открываем ссылку, которую предоставил пользователь
-      window.open(meeting.link, '_blank', 'noopener,noreferrer');
+      window.open(meeting.link, "_blank", "noopener,noreferrer");
     }
   };
 
@@ -42,17 +42,17 @@ export default function JoinMeetingModal({ meeting, onClose }: JoinMeetingModalP
           {/* Meeting Info */}
           <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl p-6 text-white mb-6">
             <h3 className="text-xl font-bold mb-2">{meeting.title}</h3>
-            {meeting.description && (
-              <p className="text-blue-100 mb-4">{meeting.description}</p>
-            )}
+            {meeting.description && <p className="text-blue-100 mb-4">{meeting.description}</p>}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div>
                 <i className="far fa-calendar mr-2"></i>
-                <span className="font-medium">{new Date(meeting.date).toLocaleDateString('ru-RU')}</span>
+                <span className="font-medium">{new Date(meeting.date).toLocaleDateString("ru-RU")}</span>
               </div>
               <div>
                 <i className="far fa-clock mr-2"></i>
-                <span className="font-medium">{meeting.startTime} - {meeting.endTime}</span>
+                <span className="font-medium">
+                  {meeting.startTime} - {meeting.endTime}
+                </span>
               </div>
               {meeting.room && (
                 <div>
@@ -90,9 +90,7 @@ export default function JoinMeetingModal({ meeting, onClose }: JoinMeetingModalP
                   <button
                     onClick={copyLink}
                     className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                      copied
-                        ? 'bg-green-600 text-white'
-                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                      copied ? "bg-green-600 text-white" : "bg-blue-600 text-white hover:bg-blue-700"
                     }`}
                   >
                     {copied ? (
@@ -142,9 +140,7 @@ export default function JoinMeetingModal({ meeting, onClose }: JoinMeetingModalP
           ) : (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-6 text-center">
               <i className="fas fa-exclamation-triangle text-red-500 text-4xl mb-3"></i>
-              <h4 className="font-bold text-red-900 dark:text-red-100 mb-2">
-                Ссылка на конференцию не указана
-              </h4>
+              <h4 className="font-bold text-red-900 dark:text-red-100 mb-2">Ссылка на конференцию не указана</h4>
               <p className="text-red-700 dark:text-red-300 text-sm">
                 Обратитесь к организатору для получения ссылки на подключение
               </p>

@@ -1,34 +1,34 @@
-import React, { useState } from 'react';
-import { login, register } from '../store-api';
+import React, { useState } from "react";
+import { login, register } from "../store-api";
 
 interface AuthPageProps {
   onLogin: () => void;
 }
 
 export default function AuthPage({ onLogin }: AuthPageProps) {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [loginValue, setLoginValue] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [department, setDepartment] = useState('');
-  const [error, setError] = useState('');
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [loginValue, setLoginValue] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [department, setDepartment] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setLoading(true);
-    
+
     try {
       const result = await login(loginValue, password);
       if (result.success) {
         onLogin();
       } else {
-        setError(result.error || 'Ошибка входа');
+        setError(result.error || "Ошибка входа");
       }
     } catch (error: any) {
-      setError(error.message || 'Ошибка входа');
+      setError(error.message || "Ошибка входа");
     } finally {
       setLoading(false);
     }
@@ -36,28 +36,28 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    
+    setError("");
+
     if (!name || !loginValue || !password) {
-      setError('Заполните все обязательные поля');
+      setError("Заполните все обязательные поля");
       return;
     }
     if (password.length < 6) {
-      setError('Пароль должен быть не менее 6 символов');
+      setError("Пароль должен быть не менее 6 символов");
       return;
     }
 
     setLoading(true);
-    
+
     try {
       const result = await register(name, loginValue, password, phone, department);
       if (result.success) {
         onLogin();
       } else {
-        setError(result.error || 'Ошибка регистрации');
+        setError(result.error || "Ошибка регистрации");
       }
     } catch (error: any) {
-      setError(error.message || 'Ошибка регистрации');
+      setError(error.message || "Ошибка регистрации");
     } finally {
       setLoading(false);
     }
@@ -77,17 +77,23 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
         <div className="bg-white rounded-2xl shadow-2xl p-8">
           <div className="flex mb-6 bg-gray-100 rounded-lg p-1">
             <button
-              onClick={() => { setMode('login'); setError(''); }}
+              onClick={() => {
+                setMode("login");
+                setError("");
+              }}
               className={`flex-1 py-2.5 text-sm font-medium rounded-md transition-all ${
-                mode === 'login' ? 'bg-white shadow text-blue-600' : 'text-gray-500'
+                mode === "login" ? "bg-white shadow text-blue-600" : "text-gray-500"
               }`}
             >
               Вход
             </button>
             <button
-              onClick={() => { setMode('register'); setError(''); }}
+              onClick={() => {
+                setMode("register");
+                setError("");
+              }}
               className={`flex-1 py-2.5 text-sm font-medium rounded-md transition-all ${
-                mode === 'register' ? 'bg-white shadow text-blue-600' : 'text-gray-500'
+                mode === "register" ? "bg-white shadow text-blue-600" : "text-gray-500"
               }`}
             >
               Регистрация
@@ -101,7 +107,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
             </div>
           )}
 
-          {mode === 'login' ? (
+          {mode === "login" ? (
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Логин</label>
@@ -130,7 +136,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
                 disabled={loading}
                 className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
               >
-                {loading ? 'Вход...' : 'Войти'}
+                {loading ? "Вход..." : "Войти"}
               </button>
             </form>
           ) : (
@@ -193,7 +199,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
                 disabled={loading}
                 className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
               >
-                {loading ? 'Регистрация...' : 'Зарегистрироваться'}
+                {loading ? "Регистрация..." : "Зарегистрироваться"}
               </button>
             </form>
           )}

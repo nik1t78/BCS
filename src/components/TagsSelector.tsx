@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { getTags } from '../store-api';
+import React, { useState, useEffect } from "react";
+import { getTags } from "../store-api";
 
 interface Tag {
   id: string;
@@ -27,16 +27,14 @@ export default function TagsSelector({ selectedTags, onTagsChange }: TagsSelecto
       const data = await getTags();
       setTags(data);
     } catch (error) {
-      console.error('Error loading tags:', error);
+      console.error("Error loading tags:", error);
     } finally {
       setLoading(false);
     }
   };
 
   const toggleTag = (tagId: string) => {
-    const newTags = selectedTags.includes(tagId)
-      ? selectedTags.filter(id => id !== tagId)
-      : [...selectedTags, tagId];
+    const newTags = selectedTags.includes(tagId) ? selectedTags.filter((id) => id !== tagId) : [...selectedTags, tagId];
     onTagsChange(newTags);
   };
 
@@ -65,20 +63,20 @@ export default function TagsSelector({ selectedTags, onTagsChange }: TagsSelecto
   return (
     <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
       <div className="flex flex-wrap gap-2">
-        {tags.map(tag => (
+        {tags.map((tag) => (
           <button
             key={tag.id}
             type="button"
             onClick={() => toggleTag(tag.id)}
             className={`px-3 py-1 rounded-full text-sm border-2 transition-all ${
               selectedTags.includes(tag.id)
-                ? 'border-current opacity-100'
-                : 'border-transparent opacity-60 hover:opacity-80'
+                ? "border-current opacity-100"
+                : "border-transparent opacity-60 hover:opacity-80"
             }`}
-            style={{ 
+            style={{
               backgroundColor: `${tag.color}20`,
               color: tag.color,
-              borderColor: selectedTags.includes(tag.id) ? tag.color : 'transparent'
+              borderColor: selectedTags.includes(tag.id) ? tag.color : "transparent",
             }}
           >
             {selectedTags.includes(tag.id) && <i className="fas fa-check mr-1"></i>}
@@ -87,9 +85,7 @@ export default function TagsSelector({ selectedTags, onTagsChange }: TagsSelecto
         ))}
       </div>
       {selectedTags.length > 0 && (
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-          Выбрано тегов: {selectedTags.length}
-        </p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Выбрано тегов: {selectedTags.length}</p>
       )}
     </div>
   );
