@@ -46,10 +46,10 @@ export async function login(
       JSON.stringify({
         token: response.token,
         refreshToken: response.refresh_token ?? null,
-        user: mapUser(response.user),
+        user: mapUser(response.user ?? response.data ?? response),
       })
     );
-    return { success: true, user: mapUser(response.user) };
+    return { success: true, user: mapUser(response.user ?? response.data ?? response) };
   } catch (error: any) {
     return { success: false, error: error.message || "Ошибка входа" };
   }
@@ -69,10 +69,10 @@ export async function register(
       JSON.stringify({
         token: response.token,
         refreshToken: response.refresh_token ?? null,
-        user: mapUser(response.user),
+        user: mapUser(response.user ?? response.data ?? response),
       })
     );
-    return { success: true, user: mapUser(response.user) };
+    return { success: true, user: mapUser(response.user ?? response.data ?? response) };
   } catch (error: any) {
     return { success: false, error: error.message || "Ошибка регистрации" };
   }

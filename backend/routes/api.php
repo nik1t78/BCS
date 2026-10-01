@@ -17,9 +17,6 @@ Route::middleware('throttle:api')->group(function () {
     Route::post('/auth/register', [AuthController::class, 'register']);
     Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:login');
     Route::post('/auth/refresh', [AuthController::class, 'refresh'])->middleware('throttle:login');
-
-    // Webhook Telegram-бота (секрет проверяется внутри контроллера)
-    Route::post('/telegram/webhook', [NotificationController::class, 'telegramWebhook']);
 });
 
 // Health check
@@ -42,11 +39,6 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // Profile
     Route::put('/profile', [UserController::class, 'updateProfile']);
     Route::post('/profile/change-password', [UserController::class, 'changePassword']);
-
-    // Привязка Telegram для push-уведомлений о встречах
-    Route::get('/telegram/status', [UserController::class, 'telegramStatus']);
-    Route::post('/telegram/link', [UserController::class, 'telegramLink']);
-    Route::delete('/telegram/link', [UserController::class, 'telegramUnlink']);
 
     // Публичный справочник пользователей (ФИО для календаря/карточек) —
     // доступен любому авторизованному, права админа не требуются

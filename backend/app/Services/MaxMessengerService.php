@@ -22,44 +22,24 @@ class MaxMessengerService
             return false;
         }
 
-        return self::transportConfigured();
-    }
-
-    /** Есть ли настроенный транспорт Bot API для текущего драйвера. */
-    public static function transportConfigured(): bool
-    {
-        if (MessengerNotifier::driver() === 'telegram') {
-            return filter_var(env('TELEGRAM_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
-                && !empty(env('TELEGRAM_BOT_TOKEN'));
-        }
-
         return filter_var(env('MAX_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
             && !empty(env('MAX_BOT_TOKEN'));
     }
 
     /**
-     * Отправить сообщение в чат мессенджера (Telegram или MAX — оба по Bot API).
+     * Отправить сообщение в чат мессенджера MAX (Bot API).
      * Возвращает true при успехе.
      * Ошибки логируются и не ломают основной поток (in-app уведомление остаётся).
      */
     public static function sendMessage(string $chatId, string $text): bool
     {
-        if (!self::transportConfigured()) {
+        if (!self::isEnabled()) {
             return false;
         }
 
-        [$url, $payload, $headers] = self::driver() === 'telegram'
-            ? [
-                rtrim((string) env('TELEGRAM_API_URL', 'https://api.telegram.org'), '/')
-                    . '/bot' . env('TELEGRAM_BOT_TOKEN') . '/sendMessage',
-                ['chat_id' => $chatId, 'text' => $text],
-                [],
-            ]
-            : [
-                rtrim((string) env('MAX_API_URL', 'https://maxapi.ru/v1'), '/') . '/sendmessage',
-                ['chat_id' => $chatId, 'text' => $text],
-                ['Authorization' => 'Bearer ' . env('MAX_BOT_TOKEN')],
-            ];
+        $url = rtrim((string) env('MAX_API_URL', 'https://maxapi.ru/v1'), '/') . '/sendmessage';
+        $payload = ['chat_id' => $chatId, 'text' => $text];
+        $headers = ['Authorization' => 'Bearer ' . env('MAX_BOT_TOKEN')];
 
         try {
             $response = Http::timeout(5)->withHeaders($headers)->post($url, $payload);

@@ -131,11 +131,9 @@ php artisan migrate                    # применить миграции (в
 
 - `DB_*`, `REDIS_*`, `QUEUE_CONNECTION=redis`, `CACHE_STORE=redis`;
 - **Мессенджер-уведомления** (`App\Services\MessengerNotifier`):
-  - `MESSENGER=telegram | max | none` — активный канал (по умолчанию telegram);
-  - Telegram: `TELEGRAM_ENABLED=true`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_API_URL=https://api.telegram.org`, `TELEGRAM_BOT_LINK=https://t.me/<bot>`, `TELEGRAM_WEBHOOK_SECRET`;
-  - MAX: `MAX_ENABLED=true`, `MAX_BOT_TOKEN`, `MAX_API_URL=https://maxapi.ru/v1`;
-  - Настройка webhook бота: `curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<ваш-домен>/api/telegram/webhook?secret=<SECRET>"`;
-  - Пользователь привязывает аккаунт в Профиле: «Привязать Telegram» → код → `/start <код>` в чате бота.
+  - `MESSENGER=max | none` — активный канал (по умолчанию max);
+  - MAX: `MAX_ENABLED=true`, `MAX_BOT_TOKEN`, `MAX_API_URL=https://maxapi.ru/v1`, `MAX_BOT_LINK=https://max.ru/<bot>`;
+  - Пользователь привязывает аккаунт в Профиле: блок «Мессенджер MAX» → «Написать боту в MAX» → ввести chat_id → «Привязать».
     Без настроек дублирование уведомлений просто пропускается (in-app работает всегда).
 - `SANCTUM_TOKEN_EXPIRATION` / срок refresh-токенов — настройка жизни сессий.
 
@@ -147,6 +145,6 @@ backend — `composer install → php artisan test`.
 
 ## Документация
 
-- [START_HERE.md](START_HERE.md) — быстрая инструкция: как запустить проект (Docker/dev) и пошаговая настройка уведомлений в Telegram (@BotFather → .env → webhook → привязка аккаунта);
+- [START_HERE.md](START_HERE.md) — быстрая инструкция: как запустить проект (Docker/dev) и пошаговая настройка уведомлений в мессенджер MAX (бот → .env → привязка аккаунта);
 - [DEPLOYMENT.md](DEPLOYMENT.md) — пошаговая установка на сервер;
 - [RESTART.md](RESTART.md) — перезапуск сервисов и типовые проблемы.

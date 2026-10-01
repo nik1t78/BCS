@@ -18,8 +18,6 @@ class User extends Authenticatable
         'role',
         'phone',
         'max_chat_id',
-        'telegram_chat_id',
-        'telegram_link_code',
         'department',
         'position',
         'avatar',

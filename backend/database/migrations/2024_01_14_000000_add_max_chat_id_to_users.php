@@ -16,6 +16,12 @@ return new class extends Migration
             if (!Schema::hasColumn('users', 'max_chat_id')) {
                 $table->string('max_chat_id', 100)->nullable()->after('phone');
             }
+            // Полное удаление Telegram из проекта: колонки telegram_* больше не используются.
+            foreach (['telegram_chat_id', 'telegram_link_code'] as $tgCol) {
+                if (Schema::hasColumn('users', $tgCol)) {
+                    $table->dropColumn($tgCol);
+                }
+            }
         });
     }
 

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { User } from "../types";
 import { updateProfile, changePassword, getSettings, updateSettings } from "../store-api";
-import { maxAPI, telegramAPI } from "../api/client";
+import { maxAPI } from "../api/client";
 import type { MaxStatus } from "../types";
 
 interface ProfileProps {
@@ -52,44 +52,6 @@ export default function Profile({ user, onUpdate }: ProfileProps) {
       cancelled = true;
     };
   }, []);
-
-  // Telegram-привязка (основной канал push-уведомлений)
-  interface TgStatus {
-    enabled: boolean;
-    driver: string;
-    linked: boolean;
-    botLink: string;
-  }
-  const [tgStatus, setTgStatus] = useState<TgStatus | null>(null);
-  const [tgCode, setTgCode] = useState<{ linkCode: string; instruction: string } | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    telegramAPI
-      .status()
-      .then((res) => {
-        if (!cancelled && res) setTgStatus(res);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const startTelegramLink = async () => {
-    try {
-      const res = await telegramAPI.link();
-      setTgCode(res);
-    } catch {
-      /* ignore */
-    }
-  };
-
-  const unlinkTelegram = async () => {
-    await telegramAPI.unlink().catch(() => {});
-    setTgStatus((prev) => (prev ? { ...prev, linked: false } : prev));
-    setTgCode(null);
-  };
 
   const linkMax = async () => {
     if (!maxChatId.trim()) return;
@@ -348,67 +310,6 @@ export default function Profile({ user, onUpdate }: ProfileProps) {
             <i className="fas fa-save mr-2"></i>Сохранить
           </button>
         </div>
-      </div>
-
-      {/* Telegram messenger integration */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
-        <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-1">
-          <i className="fab fa-telegram mr-2 text-sky-500"></i>Уведомления в Telegram
-        </h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-          Напоминания и изменения конференций приходят прямо в Telegram-чат бота.
-        </p>
-        {!tgStatus ? (
-          <p className="text-sm text-gray-400">
-            <i className="fas fa-spinner fa-spin mr-2"></i>Загрузка…
-          </p>
-        ) : !tgStatus.enabled ? (
-          <p className="text-sm text-amber-600 dark:text-amber-400">
-            <i className="fas fa-info-circle mr-2"></i>Telegram-бот не настроен на сервере (TELEGRAM_ENABLED /
-            TELEGRAM_BOT_TOKEN).
-          </p>
-        ) : tgStatus.linked ? (
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-sm font-medium">
-              <i className="fas fa-check-circle"></i>Аккаунт привязан
-            </span>
-            <a
-              href={tgStatus.botLink}
-              target="_blank"
-              rel="noreferrer"
-              className="text-sm text-blue-600 hover:underline"
-            >
-              Открыть бота
-            </a>
-            <button onClick={unlinkTelegram} className="text-sm text-red-600 hover:underline">
-              Отвязать
-            </button>
-          </div>
-        ) : tgCode ? (
-          <div className="space-y-3 max-w-xl">
-            <p className="text-sm text-gray-600 dark:text-gray-300">{tgCode.instruction}</p>
-            <div className="flex items-center gap-2">
-              <code className="px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 font-mono text-sm select-all">
-                {tgCode.linkCode}
-              </code>
-            </div>
-            <a
-              href={`https://t.me/${(tgStatus.botLink || "").split("/").pop()}?start=${tgCode.linkCode}`}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-block px-4 py-2 rounded-lg bg-sky-600 text-white text-sm font-medium hover:bg-sky-700"
-            >
-              <i className="fab fa-telegram mr-2"></i>Открыть чат с ботом и привязать
-            </a>
-          </div>
-        ) : (
-          <button
-            onClick={startTelegramLink}
-            className="px-4 py-2 rounded-lg bg-sky-600 text-white text-sm font-medium hover:bg-sky-700"
-          >
-            <i className="fab fa-telegram mr-2"></i>Привязать Telegram
-          </button>
-        )}
       </div>
 
       {/* MAX messenger integration */}

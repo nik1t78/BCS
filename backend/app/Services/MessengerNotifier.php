@@ -8,42 +8,36 @@ use App\Models\User;
 /**
  * Абстракция мессенджер-уведомлений.
  *
- * По умолчанию доставляет уведомления в Telegram (через MaxMessengerService,
- * который работает по протоколу Bot API — совместим и с MAX, и с Telegram).
+ * Единственный поддерживаемый канал — мессенджер MAX (max.ru),
+ * доставка через MaxMessengerService (Bot API).
  *
  * .env:
- *   MESSENGER=telegram            # telegram | max | none
- *   TELEGRAM_ENABLED=true
- *   TELEGRAM_BOT_TOKEN=123456:ABC...
- *   TELEGRAM_API_URL=https://api.telegram.org/bot{TOKEN}
- *   TELEGRAM_BOT_LINK=https://t.me/your_bot
- *   users.telegram_chat_id        # привязывается в профиле
+ *   MESSENGER=max                 # max | none
+ *   MAX_ENABLED=true
+ *   MAX_BOT_TOKEN=...
+ *   MAX_API_URL=https://maxapi.ru/v1
+ *   users.max_chat_id             # привязывается в профиле
  */
 class MessengerNotifier
 {
     public static function driver(): string
     {
-        return strtolower((string) env('MESSENGER', 'telegram'));
+        return strtolower((string) env('MESSENGER', 'max'));
     }
 
     public static function isEnabled(): bool
     {
-        $driver = self::driver();
-
-        if ($driver === 'none') {
+        if (self::driver() === 'none') {
             return false;
         }
 
-        // Telegram использует тот же Bot-API транспорт, что и MAX
         return MaxMessengerService::isEnabled();
     }
 
-    /** Chat id пользователя для текущего драйвера. */
+    /** Chat id пользователя в MAX. */
     public static function chatId(User $user): ?string
     {
-        $column = self::driver() === 'max' ? 'max_chat_id' : 'telegram_chat_id';
-
-        return $user->{$column} ?: null;
+        return $user->max_chat_id ?: null;
     }
 
     public static function sendMessage(string $chatId, string $text): bool

@@ -68,7 +68,7 @@ function App() {
   // Требование сменить пароль при первом входе (после создания/сброса админом)
   const handlePasswordChanged = async () => {
     try {
-      const fresh = mapUser(await authAPI.getUser());
+      const fresh = mapUser((r => r.user ?? r.data ?? r)(await authAPI.getUser()));
       localStorage.setItem(
         "vks_auth",
         JSON.stringify({ ...JSON.parse(localStorage.getItem("vks_auth") || "{}"), user: fresh })
