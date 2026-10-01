@@ -489,12 +489,3 @@ export const maxAPI = {
   link: (chatId: string) => apiRequest("/max/link", { method: "PUT", body: JSON.stringify({ chat_id: chatId }) }),
   unlink: () => apiRequest("/max/link", { method: "DELETE" }),
 };
-
-// TELEGRAM API — привязка Telegram-бота для push-уведомлений о встречах
-export const telegramAPI = {
-  status: (): Promise<{ enabled: boolean; driver: string; linked: boolean; botLink: string }> =>
-    apiRequest("/telegram/status"),
-  link: (): Promise<{ botLink: string; linkCode: string; instruction: string }> =>
-    apiRequest("/telegram/link", { method: "POST" }),
-  unlink: () => apiRequest("/telegram/link", { method: "DELETE" }),
-};

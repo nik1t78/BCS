@@ -24,7 +24,7 @@ class Notification extends Model
 
     /**
      * После создания in-app уведомления — продублировать его в мессенджер
-     * (Telegram/MAX) получателя, если он привязан и интеграция включена.
+     * (MAX) получателя, если он привязан и интеграция включена.
      */
     protected static function booted(): void
     {

@@ -1,6 +1,6 @@
-# 🚀 ИНСТРУКЦИЯ: запуск проекта «ВКС Расписание» и настройка уведомлений в Telegram
+# 🚀 ИНСТРУКЦИЯ: запуск проекта «ВКС Расписание» и настройка уведомлений в мессенджер MAX
 
-Один документ, который отвечает на два вопроса: **как запустить проект** и **как добавить уведомления в Telegram**.
+Один документ, который отвечает на два вопроса: **как запустить проект** и **как добавить уведомления в мессенджер MAX**.
 
 ---
 
@@ -78,16 +78,13 @@ docker exec vks-backend php artisan migrate --force   # новые миграц�
 
 ---
 
-## Часть 2. УВЕДОМЛЕНИЯ В TELEGRAM — ПОШАГОВО
+## Часть 2. УВЕДОМЛЕНИЯ В МЕССЕНДЖЕР MAX — ПОШАГОВО
 
-Как это устроено: любое событие (создание/перенос/отмена встречи, RSVP, задача, комментарий) создаёт запись `Notification` → она **мгновенно видна в приложении** (toast + колокольчик). Дополнительно, если настроен бот, то же сообщение дублируется пользователю в Telegram (`MessengerNotifier` → Bot API `sendMessage`). Дублирование неблокирующее: без бота всё работает, ошибки бота логируются и не ломают приложение.
+Как это устроено: любое событие (создание/перенос/отмена встречи, RSVP, задача, комментарий) создаёт запись `Notification` → она **мгновенно видна в приложении** (toast + колокольчик). Дополнительно, если настроен бот MAX, то же сообщение дублируется пользователю в чат бота (`MessengerNotifier` → `MaxMessengerService` → Bot API `sendmessage`). Дублирование неблокирующее: без бота всё работает, ошибки логируются и не ломают приложение.
 
-### Шаг 1. Создать бота у @BotFather
+### Шаг 1. Создать бота в MAX
 
-1. В Telegram откройте чат **@BotFather** → `/newbot`.
-2. Имя: `ВКС Расписание`; username: `Kolekt_bot` (уже создан — тогда этот шаг пропускаем).
-3. BotFather выдаст **токен** вида `8041712972:AAH...` — сохраните его.
-4. Там же в @BotFather задайте (или используйте готовое): описание `/setdescription`, аватар `/setprofilephoto`, команды `/setcommands` → `/start - Привязать аккаунт / продолжить`, `/help - Помощь`.
+Зарегистрируйте бота через @masterbot в мессенджере MAX (max.ru) и получите **токен** вида `Bearer ...`. Сохраните ссылку на чат бота (вида `https://max.ru/id0000000000_bot`).
 
 ### Шаг 2. Прописать бота в .env сервера
 
@@ -97,12 +94,11 @@ vi .env
 ```
 
 ```ini
-MESSENGER=telegram
-TELEGRAM_ENABLED=true
-TELEGRAM_BOT_TOKEN=<токен от @BotFather>
-TELEGRAM_API_URL=https://api.telegram.org
-TELEGRAM_BOT_LINK=https://t.me/Kolekt_bot
-TELEGRAM_WEBHOOK_SECRET=<любая длинная случайная строка, напр. openssl rand -hex 24>
+MESSENGER=max
+MAX_ENABLED=true
+MAX_BOT_TOKEN=<токен бота MAX>
+MAX_API_URL=https://maxapi.ru/v1
+MAX_BOT_LINK=https://max.ru/id0000000000_bot
 ```
 
 Перезагрузите конфиг и очередь:
@@ -112,32 +108,17 @@ docker exec vks-backend php artisan config:clear
 docker restart vks-queue-worker vks-scheduler
 ```
 
-### Шаг 3. Установить webhook (Telegram сам пришлёт сообщения вашему серверу)
+### Шаг 3. Привязать свой аккаунт (делает каждый пользователь)
 
-⚠️ Нужен **публичный HTTPS-адрес** приложения (Telegram не принимает http/IP без сертификата). Если домена ещё нет — получите сертификат через nginx + certbot (см. DEPLOYMENT.md) или временно используйте long-polling-обходимость ниже.
-
-```bash
-curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://ВАШ_ДОМЕН/api/telegram/webhook?secret=<WEBHOOK_SECRET>"
-# ожидаемый ответ: {"ok":true,"result":true,"description":"Webhook was set"}
-
-# проверка:
-curl "https://api.telegram.org/bot<TOKEN>/getWebhookInfo"
-# url должен = https://ВАШ_ДОМЕН/api/telegram/webhook?secret=..., pending_update_count = 0
-```
-
-Секрет в URL обязан совпадать со значением `TELEGRAM_WEBHOOK_SECRET` в `.env` — контроллер проверяет его и отклоняет чужие запросы.
-
-### Шаг 4. Привязать свой аккаунт (делает каждый пользователь)
-
-1. В приложении: **Профиль → «Привязать Telegram»** → скопируйте одноразовый код и ссылку на бота.
-2. В Telegram откройте `https://t.me/Kolekt_bot` → **START** → отправьте `/start <КОД>` (код из шага 1).
-3. Бот ответит «Аккаунт привязан ✅» — ваш `chat_id` сохранён в `users.telegram_chat_id`. Статус можно проверить в профиле («Telegram привязан»).
+1. В приложении: **Профиль → блок «Мессенджер MAX»** → нажмите «Написать боту в MAX» и узнайте у бота свой chat_id.
+2. Введите этот chat_id в поле «ID чата из бота» и нажмите «Привязать».
+3. Статус изменится на «Привязан чат: …» — уведомления будут приходить в этот чат.
 
 Отвязать: там же кнопка «Отвязать».
 
-### Шаг 5. Проверка (сквозной тест)
+### Шаг 4. Проверка (сквозной тест)
 
-1. Создайте встречу с другим участником (который привязал Telegram) → тот должен получить push «📅 Новая встреча …» в течение нескольких секунд.
+1. Создайте встречу с другим участником (который привязал MAX) → тот должен получить push «📅 Новая встреча …» в течение нескольких секунд.
 2. Перенесите/отмените встречу → участники получат уведомление об изменении.
 3. Ответьте RSVP «приду» → организатор получит «RSVP: … ✅ придёт».
 4. Поставьте задачу → ответственный получит «📌 Вам поставлена задача …».
@@ -151,11 +132,9 @@ docker exec vks-backend php artisan queue:work --once          # если дос
 
 ### Напоминания по расписанию
 
-Контейнер `vks-scheduler` каждые минуты вызывает `schedule:run`: команда `reminders:send` шлёт напоминания о ближайших встречах (по `reminder_minutes`) — in-app + в Telegram тем, кто привязан. Резервная копия БД (`db:backup --keep=14`) выполняется ежедневно автоматически, файлы в `storage/app/backups/`.
+Контейнер `vks-scheduler` каждые минуты вызывает `schedule:run`: команда `reminders:send` шлёт напоминания о ближайших встречах (по `reminder_minutes`) — in-app + в MAX тем, кто привязан. Резервная копия БД (`db:backup --keep=14`) выполняется ежедневно автоматически, файлы в `storage/app/backups/`.
 
-### Альтернативный канал — мессенджер MAX
-
-Тот же Bot API-протокол: в `.env` поставьте `MESSENGER=max`, `MAX_ENABLED=true`, `MAX_BOT_TOKEN=...`, `MAX_API_URL=https://maxapi.ru/v1`; пользователи привязывают `max_chat_id` в профиле. `MESSENGER=none` полностью выключает внешний канал (in-app остаётся).
+`MESSENGER=none` полностью выключает внешний канал (in-app остаётся).
 
 ---
 
@@ -167,7 +146,7 @@ docker exec vks-backend php artisan queue:work --once          # если дос
 | Контейнеры           | docker-compose.yml, Dockerfile, docker/                                                                                                     |
 | Фронтенд             | src/ (компоненты, api/client.ts, store-api.ts, utils)                                                                                       |
 | Бэкенд               | backend/ (routes/api.php, app/, database/migrations)                                                                                        |
-| Telegram/MAX сервисы | backend/app/Services/MessengerNotifier.php, MaxMessengerService.php                                                                         |
+| Сервис MAX            | backend/app/Services/MessengerNotifier.php, MaxMessengerService.php                                                                        |
 | RRULE на сервере     | backend/app/Services/RecurrenceService.php                                                                                                  |
-| Telegram-эндпоинты   | webhook: NotificationController::telegramWebhook; привязка: UserController (telegramStatus/Link/Unlink) — маршруты в backend/routes/api.php |
+| MAX-эндпоинты        | привязка: /api/max/status, /api/max/link (PUT/DELETE) — маршруты в backend/routes/api.php                                                  |
 | CI                   | .github/workflows/ci.yml                                                                                                                    |

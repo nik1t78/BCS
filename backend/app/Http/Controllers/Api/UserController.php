@@ -309,52 +309,6 @@ class UserController extends Controller
     }
 
     /**
-     * Привязка Telegram: сгенерировать одноразовый код, который пользователь
-     * отправит боту командой /start <код>. Webhook свяжет код с chat_id.
-     */
-    public function telegramLink(Request $request)
-    {
-        $user = $request->user();
-
-        if (!\App\Services\MessengerNotifier::transportConfigured()) {
-            return response()->json([
-                'message' => 'Telegram-бот не настроен на сервере (TELEGRAM_ENABLED/TELEGRAM_BOT_TOKEN)',
-            ], 503);
-        }
-
-        $code = bin2hex(random_bytes(8));
-        $user->update(['telegram_link_code' => $code]);
-
-        return response()->json([
-            'botLink' => env('TELEGRAM_BOT_LINK', ''),
-            'linkCode' => $code,
-            'instruction' => "Откройте бота и отправьте команду: /start {$code}",
-        ]);
-    }
-
-    /**
-     * Статус привязки Telegram для текущего пользователя.
-     */
-    public function telegramStatus(Request $request)
-    {
-        $user = $request->user();
-
-        return response()->json([
-            'enabled' => \App\Services\MessengerNotifier::isEnabled(),
-            'driver' => \App\Services\MessengerNotifier::driver(),
-            'linked' => !empty($user->telegram_chat_id),
-            'botLink' => env('TELEGRAM_BOT_LINK', ''),
-        ]);
-    }
-
-    public function telegramUnlink(Request $request)
-    {
-        $request->user()->update(['telegram_chat_id' => null, 'telegram_link_code' => null]);
-
-        return response()->json(['message' => 'Привязка Telegram удалена']);
-    }
-
-    /**
      * Статистика (admin)
      */
     public function getStats(Request $request)
