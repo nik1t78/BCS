@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { User, Meeting } from "../types";
-import { authAPI } from "../api/client";
+import { authAPI, downloadBlob, adminLoadAPI } from "../api/client";
 import { unwrapList, mapMeeting } from "../store-api";
 import { exportToExcel } from "../utils/export";
 import { SortMode, SORT_OPTIONS, sortMeetings } from "../utils/meetingSort";
@@ -212,6 +212,126 @@ function LoadHeatmap() {
   );
 }
 
+// Дашборд нагрузки системы: GET /api/admin/load (AnalyticsController::load).
+// Встречи по дням, почасовая загрузка, топ комнат, активные пользователи.
+function LoadDashboard() {
+  const [weeks, setWeeks] = useState(4);
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    adminLoadAPI
+      .get(weeks)
+      .then((res: any) => !cancelled && setData(res))
+      .catch(() => !cancelled && setData(null))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [weeks]);
+
+  const byDay: Record<string, number> = data?.meetings_by_day ?? {};
+  const byHour: Record<string, number> = data?.meetings_by_hour ?? {};
+  const topRooms: Record<string, number> = data?.top_rooms ?? {};
+  const maxHour = Math.max(1, ...Object.values(byHour));
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h3 className="font-semibold text-gray-800 dark:text-gray-100">
+          <i className="fas fa-tachometer-alt mr-2 text-blue-500"></i>Дашборд нагрузки
+        </h3>
+        <select
+          value={weeks}
+          onChange={(e) => setWeeks(Number(e.target.value))}
+          className="text-sm border rounded-lg px-2 py-1 bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
+        >
+          {[1, 2, 4, 8, 12, 26].map((w) => (
+            <option key={w} value={w}>
+              {w} нед.
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-gray-400 py-6 text-center">
+          <i className="fas fa-spinner fa-spin mr-1"></i>Загрузка...
+        </p>
+      ) : !data ? (
+        <p className="text-sm text-gray-400 py-6 text-center">Нет данных или ошибка загрузки</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 text-center">
+            <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-3">
+              <p className="text-xl font-bold text-blue-700 dark:text-blue-300">{data.active_users_7d}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Активных за 7 дней</p>
+            </div>
+            <div className="rounded-lg bg-green-50 dark:bg-green-900/20 p-3">
+              <p className="text-xl font-bold text-green-700 dark:text-green-300">{data.totals?.upcoming ?? 0}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Предстоящих встреч</p>
+            </div>
+            <div className="rounded-lg bg-yellow-50 dark:bg-yellow-900/20 p-3">
+              <p className="text-xl font-bold text-yellow-700 dark:text-yellow-300">{data.totals?.past_period ?? 0}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Прошло за период</p>
+            </div>
+            <div className="rounded-lg bg-purple-50 dark:bg-purple-900/20 p-3">
+              <p className="text-xl font-bold text-purple-700 dark:text-purple-300">{data.totals?.users_total ?? 0}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Всего пользователей</p>
+            </div>
+          </div>
+
+          <h4 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">Загрузка по часам</h4>
+          <div className="flex items-end gap-1 h-24 mb-4">
+            {Array.from({ length: 24 }, (_, h) => {
+              const v = byHour[String(h)] ?? 0;
+              const pct = Math.round((v / maxHour) * 100);
+              return (
+                <div
+                  key={h}
+                  className="flex-1 bg-blue-500/80 dark:bg-blue-400/70 rounded-t"
+                  style={{ height: `${Math.max(pct, v ? 8 : 2)}%` }}
+                  title={`${h}:00 — встреч: ${v}`}
+                ></div>
+              );
+            })}
+          </div>
+
+          <h4 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">Топ комнат</h4>
+          <ul className="space-y-1 mb-4">
+            {Object.entries(topRooms).map(([room, cnt]) => (
+              <li key={room} className="flex justify-between text-sm text-gray-700 dark:text-gray-200">
+                <span className="truncate mr-2">{room}</span>
+                <span className="font-semibold shrink-0">{cnt}</span>
+              </li>
+            ))}
+            {Object.keys(topRooms).length === 0 && (
+              <li className="text-sm text-gray-400">Нет встреч с указанием комнаты</li>
+            )}
+          </ul>
+
+          <h4 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">Встречи по дням</h4>
+          <div className="flex flex-wrap gap-1">
+            {Object.entries(byDay)
+              .slice(-14)
+              .map(([day, cnt]) => (
+                <span
+                  key={day}
+                  className="text-[11px] px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+                  title={day}
+                >
+                  {day.slice(5)}: <b>{cnt}</b>
+                </span>
+              ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPanel({ user }: AdminPanelProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -309,7 +429,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     try {
       const params = new URLSearchParams();
       if (auditAction) params.set("action", auditAction);
-      const blob = await authAPI.downloadBlob(`/admin/audit-logs/export?${params.toString()}`);
+      const blob = await downloadBlob(`/admin/audit-logs/export?${params.toString()}`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

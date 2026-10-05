@@ -96,6 +96,16 @@ const apiRequest = async (endpoint: string, options: RequestInit = {}, _retried 
   }
 };
 
+// Скачивание файла (CSV/Excel/PDF) с авторизацией — возвращает Blob.
+export const downloadBlob = async (endpoint: string): Promise<Blob> => {
+  const token = getToken();
+  const headers: Record<string, string> = { Accept: "text/csv,application/pdf,application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, { headers });
+  if (!response.ok) throw new Error(`Ошибка скачивания: HTTP ${response.status}`);
+  return await response.blob();
+};
+
 // AUTH API
 export const authAPI = {
   login: (login: string, password: string) =>
@@ -127,15 +137,7 @@ export const authAPI = {
   // постраничной загрузки полных списков).
   rawGet: (endpoint: string) => apiRequest(endpoint),
 
-  // Скачивание файла (CSV/Excel) с авторизацией — возвращает Blob.
-  downloadBlob: async (endpoint: string): Promise<Blob> => {
-    const token = getToken();
-    const headers: Record<string, string> = { Accept: "text/csv,application/json" };
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, { headers });
-    if (!response.ok) throw new Error(`Ошибка скачивания: HTTP ${response.status}`);
-    return await response.blob();
-  },
+  // Скачивание файла (CSV/Excel/PDF) — см. экспортируемую функцию downloadBlob
 };
 
 // USERS API
@@ -277,6 +279,19 @@ export const minutesAPI = {
     apiRequest(`/meetings/${meetingId}/minutes/${minuteId}`, {
       method: "DELETE",
     }),
+
+  // Экспорт протокола: скачивание PDF (или печатопригодного HTML, если
+  // dompdf не установлен на сервере). Возвращает Blob.
+  exportPdf: (meetingId: string) => downloadBlob(`/meetings/${meetingId}/minutes/export-pdf`),
+
+  // Отправка протокола PDF-файлом в MAX участникам с привязанным chat_id
+  sendToMax: (meetingId: string) =>
+    apiRequest(`/meetings/${meetingId}/minutes/send-max`, { method: "POST" }),
+};
+
+// Дашборд нагрузки системы (админ/модератор): GET /api/admin/load
+export const adminLoadAPI = {
+  get: (weeks = 4) => apiRequest(`/admin/load?weeks=${weeks}`),
 };
 
 export const meetingTasksAPI = {
