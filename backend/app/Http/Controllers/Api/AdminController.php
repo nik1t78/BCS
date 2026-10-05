@@ -29,17 +29,21 @@ class AdminController extends Controller
 
         $user = User::findOrFail($id);
 
+        // 'confirmed' требует поле password_confirmation, которого клиент не отправляет.
+        // Пароль задаёт админ, поэтому достаточно min:6.
         $request->validate([
             'password' => [
                 'required',
                 'string',
                 'min:6',
-                'confirmed',
             ],
         ]);
 
+        // Каст 'password' => 'hashed' в модели сам выполнит хеширование.
+        // Пароль задал админ — пользователь обязан сменить его при следующем входе.
         $user->update([
-            'password' => Hash::make($request->password),
+            'password' => $request->password,
+            'must_change_password' => true,
         ]);
 
         // Логируем действие
@@ -85,8 +89,13 @@ class AdminController extends Controller
             ], 422);
         }
 
+        // Массовое обновление через query builder не проходит через касты модели,
+        // поэтому хешируем явно. Пароли задаёт админ — всем требуем смену при входе.
         $hashedPassword = Hash::make($request->password);
-        $updatedCount = User::whereIn('id', $userIds)->update(['password' => $hashedPassword]);
+        $updatedCount = User::whereIn('id', $userIds)->update([
+            'password' => $hashedPassword,
+            'must_change_password' => true,
+        ]);
 
         // Логируем действие
         \Log::info('Admin bulk password reset', [
@@ -117,8 +126,11 @@ class AdminController extends Controller
         // Генерируем случайный пароль
         $tempPassword = bin2hex(random_bytes(6)); // 12 символов
 
+        // Каст 'password' => 'hashed' в модели сам выполнит хеширование.
+        // Временный пароль — пользователь обязан сменить его при следующем входе.
         $user->update([
-            'password' => Hash::make($tempPassword),
+            'password' => $tempPassword,
+            'must_change_password' => true,
         ]);
 
         // Логируем действие

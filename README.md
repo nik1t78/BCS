@@ -1,402 +1,154 @@
-# 🎥 ВКС Расписание
+# ВКС Расписание — система управления видеоконференциями
 
-> Полнофункциональная система управления видеоконференциями с ролевой моделью доступа, уведомлениями и админ-панелью
+Веб-приложение для планирования и управления видеоконференциями (ВКС) в организации:
+расписание, протоколы встреч, задачи (action items), RSVP, переговорные комнаты,
+уведомления (in-app + мессенджер MAX), админ-панель с аудит-логом и аналитикой.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Laravel](https://img.shields.io/badge/Laravel-10.x-red.svg)](https://laravel.com)
-[![React](https://img.shields.io/badge/React-18.x-blue.svg)](https://reactjs.org)
-[![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://docker.com)
+## Стек
 
----
+| Слой           | Технологии                                                                         |
+| -------------- | ---------------------------------------------------------------------------------- |
+| Frontend       | React 18 + TypeScript, Vite 6, Tailwind CSS 4, dnd-kit, Recharts, Framer Motion    |
+| Backend        | PHP 8.2 / Laravel, Sanctum (Bearer-токены + refresh), MySQL 8, Redis (queue/cache) |
+| Инфраструктура | Docker Compose: nginx, php-fpm, mysql, redis, queue-worker, scheduler              |
+| Качество       | ESLint + Prettier, `tsc --noEmit`, GitHub Actions CI                               |
 
-## 📖 О проекте
+## Архитектура
 
-**ВКС Расписание** — это современная веб-система для планирования и управления видеоконференциями. Идеально подходит для организаций любого размера.
+```
+┌───────────────┐        ┌────────────────────────────────────────┐
+│  SPA (React)  │ /api → │ Laravel API                            │
+│  src/         │        │  AuthController (login/refresh/logout) │
+│  api/client.ts│        │  MeetingController (+cancel/reschedule)│
+│  store-api.ts │        │  MeetingMinuteController (протокол/задачи)│
+│  components/  │        │  MeetingRsvpController (приду/не приду)│
+└───────────────┘        │  RoomController (переговорные)          │
+                         │  AnalyticsController (heatmap/стат.)    │
+                         │  AdminController (users/audit/reset pw) │
+                         │  TrashController (soft deletes)         │
+                         │  Services: MaxMessengerService          │
+                         └───────┬───────────────┬────────────────┘
+                                 │               │
+                          ┌──────▼─────┐  ┌──────▼──────┐
+                          │   MySQL    │  │ Redis + Queue│
+                          └────────────┘  └──────────────┘
+```
 
-### ✨ Ключевые возможности
+### Структура репозитория
 
-- 🔐 **Регистрация и авторизация** с ролевой моделью (Admin/Moderator/User)
-- 📅 **Удобное расписание** с просмотром по дням/неделям/месяцам
-- 🔔 **Умные уведомления** (звуковые + браузерные)
-- 👥 **Управление пользователями** с гибкими правами доступа
-- 📊 **Статистика и аналитика** конференций
-- 🎨 **Современный интерфейс** с подсказками и анимациями
-- 🌙 **Тёмная тема** для комфортной работы
-- 📋 **Шаблоны конференций** для быстрого создания
-- 🏷️ **Теги и категории** для организации
-- ⭐ **Избранные конференции** для быстрого доступа
-- 📎 **Вложения файлов** к конференциям
-- 📜 **История изменений** для аудита
-- 📱 **Адаптивный дизайн** для всех устройств
-- 💾 **Экспорт данных** в ICS, JSON, CSV
-- 🌐 **Доступ из сети** (LAN + интернет)
+- `src/` — фронтенд (Vite + React):
+  - `api/client.ts` — HTTP-клиент (Sanctum Bearer, автоматический refresh токена);
+  - `store-api.ts` — функции работы с API + маппинг snake_case ↔ camelCase;
+  - `components/` — страницы и виджеты (Schedule, UserPanel, AdminPanel,
+    MeetingMinutes, MeetingRsvp, RoomsManager, Dashboard, Notifications и т.д.);
+  - `utils/` — recurrence (RRULE), favorites, meetingSort, export;
+  - `types.ts` — общие типы предметной области.
+- `backend/` — Laravel-приложение:
+  - `app/Http/Controllers/Api/` — REST-контроллеры;
+  - `app/Models/` — Eloquent-модели (Meeting, MeetingMinute, MeetingTask,
+    TaskComment, MeetingRsvp, Room, Notification, User…);
+  - `app/Services/MaxMessengerService.php` — отправка уведомлений в MAX Bot API;
+  - `app/Console/Commands/` — `backup:database`, `notifications:send`,
+    `reminders:send`, `notifications:cleanup`;
+  - `routes/api.php` — все маршруты (`throttle:api`, роли, can:admin).
+- `docker/`, `Dockerfile`, `docker-compose.yml` — контейнеризация;
+- `.github/workflows/ci.yml` — CI: lint → format check → typecheck → build (+ backend tests).
 
----
+## Основные возможности
 
-## 🚀 Быстрый старт
+- **Встречи**: создание/редактирование, приоритеты, теги, приватность, шаблоны,
+  повторы (простые + RRULE «последняя пятница месяца»), вложения, история изменений.
+- **Протокол и задачи**: discussion/decisions/responsible; action items с дедлайном,
+  множественными ответственными и комментариями; статусы К выполнению → В работе → Выполнено.
+- **RSVP**: «приду / не приду / под вопросом», сводка организатору.
+- **Расписание**: день/неделя/месяц, drag-and-drop перенос с проверкой конфликтов,
+  отмена встречи с уведомлением участников, компактный режим.
+- **Комнаты**: каталог переговорных, проверка занятости (availability), бронирование вместе со встречей.
+- **Корзина**: soft deletes встреч, восстановление/удаление навсегда (админ).
+- **Уведомления**: in-app toast на любом экране (polling unread-count) + дубль в MAX;
+  напоминания по расписанию (Laravel Scheduler).
+- **Админ-панель**: пользователи (временные пароли + политика смены при первом входе),
+  все конференции, аудит-лог с экспортом CSV, статистика и тепловая карта загрузки,
+  активные сессии (User-Agent/IP) с завершением.
+- **Безопасность**: роли admin/moderator/user, rate limiting, refresh-токены Sanctum,
+  logout со всех устройств.
+- **UX**: тёмная тема (prefers-color-scheme + сохранение), глобальный поиск Ctrl+K,
+  мобильная адаптивность (off-canvas сайдбар).
 
-### Запуск за 3 команды
+## Запуск
+
+Полная пошаговая инструкция — в [LAUNCH.md](LAUNCH.md).
+
+### Продакшен (Docker) — подробности в [DEPLOYMENT.md](DEPLOYMENT.md)
 
 ```bash
-# 1. Клонирование
-git clone <your-repo-url> vks-schedule && cd vks-schedule
-
-# 2. Создание Laravel backend
-cd backend && composer create-project laravel/laravel . && cd ..
-
-# 3. Запуск
+cp .env.example .env      # задать DB_PASSWORD, DB_ROOT_PASSWORD, REDIS_PASSWORD, APP_KEY
 docker compose up -d --build
+docker compose exec backend php artisan migrate --force
+docker compose exec backend php artisan storage:link   # картинки/вложения
+docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder --force
+docker compose exec backend php artisan optimize       # config/route/view cache
 ```
 
-### Инициализация
+Приложение доступно на `http://localhost:8080` (порт проброшен только на 127.0.0.1;
+наружу публикуется через ваш reverse-proxy с HTTPS).
+
+### Режим разработки
 
 ```bash
-docker compose exec backend php artisan key:generate
-docker compose exec backend php artisan migrate
+# Терминал 1 — бэкенд (:8000)
+cd backend
+composer install
+cp .env.example .env && php artisan key:generate
+php artisan migrate
+php artisan serve
+
+# Терминал 2 — фронтенд (:5173, proxy /api настроен в vite.config.js)
+npm install
+npm run dev
 ```
 
-### Доступ
+### Демо-доступы (после сидинга)
 
-- **Приложение**: http://localhost
+| Роль          | Логин       | Пароль         |
+| ------------- | ----------- | -------------- |
+| Администратор | `admin`     | `admin123`     |
+| Модератор     | `moderator` | `moderator123` |
+| Пользователь  | `user`      | `user123`      |
 
-### 📥 Что нужно скачать
+## Полезные команды
 
-Перед запуском установите:
-- **Docker Desktop** - [docker.com](https://www.docker.com/products/docker-desktop/)
-- **Git** - [git-scm.com](https://git-scm.com/downloads)
-- **Composer** - [getcomposer.org](https://getcomposer.org/download/)
-- **Node.js** - [nodejs.org](https://nodejs.org/)
-
-📖 **Полная инструкция по установке**: [INSTALLATION.md](./INSTALLATION.md)
-
-### 🔒 Безопасность
-
-**Демо-аккаунты удалены!** Для начала работы:
-
-1. Зарегистрируйте первого пользователя через форму регистрации
-2. Назначьте роль администратора через базу данных или Tinker
-3. Создайте дополнительных пользователей через админ-панель
-
-📖 **Подробная инструкция**: [SECURITY_CLEANUP.md](./SECURITY_CLEANUP.md)
-
-### 🐧 Развёртывание на Linux
-
-📖 **Полная инструкция**: [LINUX_DEPLOYMENT.md](./LINUX_DEPLOYMENT.md)
-
-Быстрый старт:
 ```bash
-# 1. Установка Docker
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
+npm run dev            # dev-сервер Vite
+npm run build          # production-сборка в dist/
+npm run typecheck      # tsc --noEmit
+npm run lint           # ESLint по src/
+npm run format         # Prettier --write по src/
 
-# 2. Клонирование проекта
-git clone <repo-url> vks-schedule && cd vks-schedule
-
-# 3. Создание Laravel
-cd backend && composer create-project laravel/laravel . && cd ..
-
-# 4. Запуск
-docker compose up -d --build
-
-# 5. Инициализация
-docker compose exec backend php artisan key:generate
-docker compose exec backend php artisan migrate
+# Бэкенд
+php artisan backup:database            # резервная копия БД (в storage/app/backups)
+php artisan schedule:run               # ручной запуск планировщика (напоминания, бэкап)
+php artisan migrate                    # применить миграции (включая новые таблицы)
 ```
 
----
-
-## 📚 Документация
-
-**📖 [ALL_DOCUMENTATION.md](./ALL_DOCUMENTATION.md)** — полная документация проекта
-
-В одном файле содержится:
-- ✅ Описание всех 59 функций
-- ✅ Структура проекта и базы данных
-- ✅ API Endpoints
-- ✅ Инструкция по установке и развёртыванию
-- ✅ Безопасность и настройка
-- ✅ Подключение к БД
-- ✅ Доступ из сети
-- ✅ Устранение неполадок
-- ✅ Полезные команды
-
----
-
-## 👥 Роли и права
-
-### 👑 Администратор (admin)
-- ✅ Полный доступ ко всем функциям
-- ✅ Управление пользователями (CRUD)
-- ✅ Назначение ролей
-- ✅ Смена паролей всех пользователей
-- ✅ Доступ к приватным конференциям
-
-### 🔧 Модератор (moderator)
-- ✅ Все конференции (включая приватные)
-- ✅ Блокировка пользователей
-- ✅ Редактирование любых конференций
-- ❌ Создание/удаление пользователей
-- ❌ Изменение ролей
-
-### 👤 Пользователь (user)
-- ✅ Свои конференции
-- ✅ Публичные конференции
-- ✅ Профиль и настройки
-- ❌ Админ-панель
-- ❌ Приватные конференции (если не участник)
-
----
-
-## 🏗️ Технологии
-
-### Frontend
-- **React 18** — UI библиотека
-- **TypeScript** — типизация
-- **Tailwind CSS** — стилизация
-- **Vite** — сборщик
-
-### Backend
-- **Laravel 10** — PHP фреймворк
-- **MySQL 8.0** — база данных
-- **Redis** — кэш и очереди
-- **Sanctum** — API аутентификация
-
-### Infrastructure
-- **Docker** — контейнеризация
-- **Nginx** — web сервер
-
----
-
-## 📊 Статистика проекта
-
-- **Функций реализовано**: 59
-- **Компонентов React**: 16
-- **Контроллеров Laravel**: 5
-- **Моделей**: 4
-- **Файлов документации**: 1
-- **Строк кода**: ~10,000+
-
----
-
-## 📁 Структура проекта
-
-```
-vks-schedule/
-├── 📄 ALL_DOCUMENTATION.md    # Полная документация
-├── 📄 docker-compose.yml      # Docker конфигурация
-│
-├── 📂 backend/                # Laravel backend
-│   ├── app/
-│   │   ├── Console/Commands/  # Artisan команды
-│   │   ├── Http/Controllers/  # Контроллеры
-│   │   ├── Http/Middleware/   # Middleware
-│   │   └── Models/            # Eloquent модели
-│   ├── database/
-│   │   ├── migrations/        # Миграции БД
-│   │   └── seeders/           # Seeders
-│   └── routes/                # Маршруты
-│
-├── 📂 frontend/               # React frontend
-│   ├── Dockerfile
-│   └── nginx.conf
-│
-├── 📂 src/                    # Исходный код React
-│   ├── components/            # React компоненты
-│   ├── utils/                 # Утилиты
-│   ├── App.tsx                # Главный компонент
-│   ├── store.ts               # LocalStorage API
-│   └── types.ts               # TypeScript типы
-│
-└── 📂 docker/                 # Docker конфигурации
-    ├── nginx/
-    └── mysql/
-```
-
----
-
-## 📡 API Endpoints
-
-### Авторизация
-```
-POST   /api/auth/register     # Регистрация
-POST   /api/auth/login        # Вход
-POST   /api/auth/logout       # Выход
-GET    /api/auth/user         # Текущий пользователь
-```
-
-### Конференции
-```
-GET    /api/meetings          # Список
-POST   /api/meetings          # Создать
-GET    /api/meetings/{id}     # Получить
-PUT    /api/meetings/{id}     # Обновить
-DELETE /api/meetings/{id}     # Удалить
-```
-
-### Уведомления
-```
-GET    /api/notifications              # Список
-PUT    /api/notifications/{id}/read    # Прочитать
-PUT    /api/notifications/read-all     # Прочитать все
-DELETE /api/notifications/clear        # Очистить
-```
-
-### Админ-панель
-```
-GET    /api/admin/users                # Список пользователей
-POST   /api/admin/users                # Создать
-PUT    /api/admin/users/{id}/role      # Изменить роль
-PUT    /api/admin/users/{id}/reset-password # Сменить пароль
-```
-
-📖 **Полный список API**: [ALL_DOCUMENTATION.md](./ALL_DOCUMENTATION.md)
-
----
-
-## 🔐 Безопасность
-
-### Реализовано
-- ✅ Хеширование паролей (bcrypt)
-- ✅ Laravel Sanctum токены
-- ✅ CORS настройки
-- ✅ Валидация входных данных
-- ✅ Защита от CSRF
-- ✅ Защита от XSS
-- ✅ Rate limiting
-- ✅ Ролевая модель доступа
-
-### Рекомендации для production
-- ⚠️ SSL сертификат (Let's Encrypt)
-- ⚠️ Firewall (UFW/firewalld)
-- ⚠️ Fail2Ban
-- ⚠️ Регулярные backups
-- ⚠️ Мониторинг
-- ⚠️ 2FA для админов
-
-📖 **Полная инструкция**: [ALL_DOCUMENTATION.md](./ALL_DOCUMENTATION.md#🔐-безопасность)
-
----
-
-## 🗄️ База данных
-
-### Таблицы
-- `users` — Пользователи системы
-- `meetings` — Конференции
-- `notifications` — Уведомления
-- `user_settings` — Настройки пользователей
-- `personal_access_tokens` — API токены
-
-### Подключение
-```bash
-# Через Docker
-docker compose exec mysql mysql -u vks_user -p vks_schedule
-
-# Прямое подключение
-mysql -h localhost -P 3306 -u vks_user -p vks_schedule
-```
-
-📖 **Подробная документация**: [ALL_DOCUMENTATION.md](./ALL_DOCUMENTATION.md#🗄️-структура-базы-данных)
-
----
-
-## 🌐 Доступ из сети
-
-### Локальная сеть (LAN)
-```bash
-# Узнать IP сервера
-ip addr show
-
-# Открыть порт
-sudo ufw allow 80/tcp
-
-# Пользователи открывают:
-http://192.168.1.100
-```
-
-### Интернет
-- **Вариант 1**: VPS + домен + SSL (рекомендуется)
-- **Вариант 2**: Cloudflare Tunnel (бесплатно)
-- **Вариант 3**: Ngrok (тестирование)
-
-📖 **Подробная инструкция**: [ALL_DOCUMENTATION.md](./ALL_DOCUMENTATION.md#🌐-доступ-из-сети)
-
----
-
-## 🔧 Полезные команды
-
-### Docker
-```bash
-docker compose up -d              # Запуск
-docker compose down               # Остановка
-docker compose logs -f            # Логи
-docker compose exec backend bash  # Вход в контейнер
-```
-
-### Laravel
-```bash
-docker compose exec backend php artisan migrate          # Миграции
-docker compose exec backend php artisan cache:clear      # Кэш
-docker compose exec backend php artisan tinker           # Tinker
-docker compose exec backend php artisan meetings:send-reminders # Напоминания
-```
-
-### База данных
-```bash
-docker compose exec mysql mysql -u vks_user -p vks_schedule  # Подключение к БД
-```
-
----
-
-## 🐛 Устранение неполадок
-
-### Порт 80 занят
-```bash
-sudo lsof -i :80
-sudo kill -9 <PID>
-```
-
-### Ошибки прав доступа
-```bash
-docker compose exec backend chown -R www-www-data storage bootstrap/cache
-docker compose exec backend chmod -R 775 storage bootstrap/cache
-```
-
-### Не вижу изменений
-Используйте кнопку **"Сброс данных"** в правом нижнем углу экрана
-
-📖 **Полный список проблем**: [ALL_DOCUMENTATION.md](./ALL_DOCUMENTATION.md#🐛-устранение-неполадок)
-
----
-
-## 📝 Лицензия
-
-MIT License - свободное использование с указанием авторства
-
----
-
-## 📞 Поддержка
-
-- 📖 **Полная документация**: [ALL_DOCUMENTATION.md](./ALL_DOCUMENTATION.md)
-- 🐛 **Баги и предложения**: Создайте issue в репозитории
-- 💬 **Вопросы**: Обсуждение в issues
-
----
-
-## 🎉 Благодарности
-
-- [Laravel](https://laravel.com) — PHP фреймворк
-- [React](https://reactjs.org) — UI библиотека
-- [Tailwind CSS](https://tailwindcss.com) — CSS фреймворк
-- [Docker](https://docker.com) — Контейнеризация
-
----
-
-<div align="center">
-
-**Сделано с ❤️ для удобного управления видеоконференциями**
-
-[📖 Полная документация](./ALL_DOCUMENTATION.md) • [🚀 Быстрый старт](#🚀-быстрый-старт)
-
-**Версия**: 1.0 | **Статус**: ✅ Production Ready
-
-</div>
+## Переменные окружения (backend/.env)
+
+- `DB_*`, `REDIS_*`, `QUEUE_CONNECTION=redis`, `CACHE_STORE=redis`;
+- **Мессенджер-уведомления** (`App\Services\MessengerNotifier`):
+  - `MESSENGER=max | none` — активный канал (по умолчанию max);
+  - MAX: `MAX_ENABLED=true`, `MAX_BOT_TOKEN`, `MAX_API_URL=https://maxapi.ru/v1`, `MAX_BOT_LINK=https://max.ru/<bot>`;
+  - Пользователь привязывает аккаунт в Профиле: блок «Мессенджер MAX» → «Написать боту в MAX» → ввести chat_id → «Привязать».
+    Без настроек дублирование уведомлений просто пропускается (in-app работает всегда).
+- `SANCTUM_TOKEN_EXPIRATION` / срок refresh-токенов — настройка жизни сессий.
+
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`):
+frontend — `npm ci → eslint → prettier --check → tsc --noEmit → vite build (+ artifact dist)`;
+backend — `composer install → php artisan test`.
+
+## Документация
+
+- [START_HERE.md](START_HERE.md) — быстрая инструкция: как запустить проект (Docker/dev) и пошаговая настройка уведомлений в мессенджер MAX (бот → .env → привязка аккаунта);
+- [DEPLOYMENT.md](DEPLOYMENT.md) — пошаговая установка на сервер;
+- [RESTART.md](RESTART.md) — перезапуск сервисов и типовые проблемы.

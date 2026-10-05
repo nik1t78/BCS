@@ -1,11 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
+import { forceReset } from "../store";
 
 export default function ResetData() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [reset, setReset] = useState(false);
 
   const handleReset = () => {
+    // Очищаем localStorage
     localStorage.clear();
+
+    // Вызываем forceReset для создания новых тестовых данных
+    forceReset();
+
     setReset(true);
     setTimeout(() => {
       window.location.reload();
@@ -43,9 +49,7 @@ export default function ResetData() {
         <div className="text-center mb-6">
           <i className="fas fa-exclamation-triangle text-yellow-500 text-5xl mb-4"></i>
           <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">Сбросить все данные?</h2>
-          <p className="text-gray-600 dark:text-gray-400 text-sm">
-            Это действие удалит все данные из localStorage
-          </p>
+          <p className="text-gray-600 dark:text-gray-400 text-sm">Это действие удалит все данные из localStorage</p>
         </div>
         <div className="flex gap-3">
           <button

@@ -4,11 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Carbon\Carbon;
 
 class Meeting extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'title',
@@ -24,12 +25,15 @@ class Meeting extends Model
         'status',
         'reminder_minutes',
         'recurring',
+        'repeat_until',
+        'rrule',
         'priority',
         'is_private',
     ];
 
     protected $casts = [
         'date' => 'date',
+        'repeat_until' => 'date',
         'participants' => 'array',
         'participant_emails' => 'array',
         'is_private' => 'boolean',
@@ -50,6 +54,63 @@ class Meeting extends Model
     public function notifications()
     {
         return $this->hasMany(Notification::class);
+    }
+
+    /**
+     * Теги конференции
+     */
+    public function tags()
+    {
+        return $this->belongsToMany(Tag::class, 'meeting_tag');
+    }
+
+    /**
+     * Вложения конференции
+     */
+    public function attachments()
+    {
+        return $this->hasMany(Attachment::class);
+    }
+
+    /**
+     * История изменений конференции
+     */
+    public function history()
+    {
+        return $this->hasMany(MeetingHistory::class);
+    }
+
+    /**
+     * Протокол встречи (записи обсуждения/решений)
+     */
+    public function minutes()
+    {
+        return $this->hasMany(MeetingMinute::class);
+    }
+
+    /**
+     * Задачи / action items встречи
+     */
+    public function tasks()
+    {
+        return $this->hasMany(MeetingTask::class);
+    }
+
+    /**
+     * Подтверждения присутствия (RSVP)
+     */
+    public function rsvps()
+    {
+        return $this->hasMany(MeetingRsvp::class);
+    }
+
+    /**
+     * Scope: корзина (только мягко удалённые), виден админу/модератору целиком,
+     * обычному пользователю — только его встречи
+     */
+    public function scopeOnlyTrashed($query)
+    {
+        return $query->onlyTrashed();
     }
 
     /**
@@ -77,7 +138,9 @@ class Meeting extends Model
      */
     public function isStartingAt($time): bool
     {
-        return $this->date->isToday() && $this->start_time === $time;
+        // Сравнение через Carbon: MySQL отдаёт TIME-колонку в формате 'H:i:s'
+        return $this->date->isToday()
+            && Carbon::parse($this->start_time)->format('H:i') === $time;
     }
 
     /**
@@ -88,7 +151,7 @@ class Meeting extends Model
         if (!$this->date->isToday()) return false;
         
         $reminderTime = Carbon::parse($this->date->toDateString() . ' ' . $this->start_time)
-            ->subMinutes($this->reminder_minutes);
+            ->subMinutes($this->reminder_minutes ?? 15);
         
         return $reminderTime->format('H:i') === $time;
     }

@@ -1,59 +1,66 @@
-import React, { useState } from 'react';
-import { login, register } from '../store';
+import React, { useState } from "react";
+import { login, register } from "../store-api";
 
 interface AuthPageProps {
   onLogin: () => void;
 }
 
 export default function AuthPage({ onLogin }: AuthPageProps) {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [loginValue, setLoginValue] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [department, setDepartment] = useState('');
-  const [error, setError] = useState('');
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [loginValue, setLoginValue] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [department, setDepartment] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setLoading(true);
-    
-    setTimeout(() => {
-      const result = login(loginValue, password);
+
+    try {
+      const result = await login(loginValue, password);
       if (result.success) {
         onLogin();
       } else {
-        setError(result.error || 'Ошибка входа');
+        setError(result.error || "Ошибка входа");
       }
+    } catch (error: any) {
+      setError(error.message || "Ошибка входа");
+    } finally {
       setLoading(false);
-    }, 500);
+    }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    
+    setError("");
+
     if (!name || !loginValue || !password) {
-      setError('Заполните все обязательные поля');
+      setError("Заполните все обязательные поля");
       return;
     }
     if (password.length < 6) {
-      setError('Пароль должен быть не менее 6 символов');
+      setError("Пароль должен быть не менее 6 символов");
       return;
     }
 
     setLoading(true);
-    setTimeout(() => {
-      const result = register(name, loginValue, password, phone, department);
+
+    try {
+      const result = await register(name, loginValue, password, phone, department);
       if (result.success) {
         onLogin();
       } else {
-        setError(result.error || 'Ошибка регистрации');
+        setError(result.error || "Ошибка регистрации");
       }
+    } catch (error: any) {
+      setError(error.message || "Ошибка регистрации");
+    } finally {
       setLoading(false);
-    }, 500);
+    }
   };
 
   return (
@@ -69,16 +76,26 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
 
         <div className="bg-white rounded-2xl shadow-2xl p-8">
           <div className="flex mb-6 bg-gray-100 rounded-lg p-1">
-            <button onClick={() => { setMode('login'); setError(''); }}
+            <button
+              onClick={() => {
+                setMode("login");
+                setError("");
+              }}
               className={`flex-1 py-2.5 text-sm font-medium rounded-md transition-all ${
-                mode === 'login' ? 'bg-white shadow text-blue-600' : 'text-gray-500'
-              }`}>
+                mode === "login" ? "bg-white shadow text-blue-600" : "text-gray-500"
+              }`}
+            >
               Вход
             </button>
-            <button onClick={() => { setMode('register'); setError(''); }}
+            <button
+              onClick={() => {
+                setMode("register");
+                setError("");
+              }}
               className={`flex-1 py-2.5 text-sm font-medium rounded-md transition-all ${
-                mode === 'register' ? 'bg-white shadow text-blue-600' : 'text-gray-500'
-              }`}>
+                mode === "register" ? "bg-white shadow text-blue-600" : "text-gray-500"
+              }`}
+            >
               Регистрация
             </button>
           </div>
@@ -90,60 +107,99 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
             </div>
           )}
 
-          {mode === 'login' ? (
+          {mode === "login" ? (
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Логин</label>
-                <input type="text" required value={loginValue} onChange={(e) => setLoginValue(e.target.value)}
+                <input
+                  type="text"
+                  required
+                  value={loginValue}
+                  onChange={(e) => setLoginValue(e.target.value)}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  placeholder="Введите логин" />
+                  placeholder="Введите логин"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Пароль</label>
-                <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  placeholder="••••••••" />
+                  placeholder="••••••••"
+                />
               </div>
-              <button type="submit" disabled={loading}
-                className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50">
-                {loading ? 'Вход...' : 'Войти'}
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
+              >
+                {loading ? "Вход..." : "Войти"}
               </button>
             </form>
           ) : (
             <form onSubmit={handleRegister} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">ФИО *</label>
-                <input type="text" required value={name} onChange={(e) => setName(e.target.value)}
+                <input
+                  type="text"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  placeholder="Иванов Иван Иванович" />
+                  placeholder="Иванов Иван Иванович"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Логин *</label>
-                <input type="text" required value={loginValue} onChange={(e) => setLoginValue(e.target.value)}
+                <input
+                  type="text"
+                  required
+                  value={loginValue}
+                  onChange={(e) => setLoginValue(e.target.value)}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  placeholder="ivanov" />
+                  placeholder="ivanov"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Пароль *</label>
-                <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  placeholder="Минимум 6 символов" />
+                  placeholder="Минимум 6 символов"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Телефон</label>
-                <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  placeholder="+7 (999) 123-45-67" />
+                  placeholder="+7 (999) 123-45-67"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Отдел</label>
-                <input type="text" value={department} onChange={(e) => setDepartment(e.target.value)}
+                <input
+                  type="text"
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  placeholder="Разработка" />
+                  placeholder="Разработка"
+                />
               </div>
-              <button type="submit" disabled={loading}
-                className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50">
-                {loading ? 'Регистрация...' : 'Зарегистрироваться'}
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
+              >
+                {loading ? "Регистрация..." : "Зарегистрироваться"}
               </button>
             </form>
           )}
