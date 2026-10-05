@@ -1,34 +1,20 @@
-FROM node:20-alpine as builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Настройка npm для стабильной работы с сетью
-RUN npm config set registry https://registry.npmjs.org/ && \
-    npm config set fetch-retries 10 && \
-    npm config set fetch-retry-mintimeout 60000 && \
-    npm config set fetch-retry-maxtimeout 300000 && \
-    npm config set fetch-timeout 300000
-
-# Копирование package.json
+# Кеш-слой: зависимости ставятся заново только при изменении package.json/lock
 COPY package*.json ./
+RUN npm ci --maxsockets=5 || npm install --legacy-peer-deps --maxsockets=1
 
-# Установка зависимостей
-RUN npm install --legacy-peer-deps --maxsockets=1
-
-# Копирование исходного кода
 COPY src ./src
-COPY index.html ./
-COPY vite.config.js ./
-COPY tsconfig.json ./
+COPY public ./public
+COPY index.html vite.config.js tsconfig.json ./
 
-# Сборка приложения (результат — в /app/dist)
+# NODE_OPTIONS — лимит heap, чтобы сборка не съедала всю оперативку
+ENV NODE_OPTIONS=--max-old-space-size=768
 RUN npm run build
 
-# Финальный этап-экспортёр. Собранные файлы лежат в /export внутри образа.
-# При старте контейнера они копируются в /mnt/dist — точку монтирования
-# volume frontend_build (см. docker-compose.yml), тем самым наполняя его.
+# Финальный крошечный образ-экспортёр (alpine, без node)
 FROM alpine:3.20
-
 COPY --from=builder /app/dist/ /export/
-
 CMD ["sh", "-c", "cp -a /export/. /mnt/dist/ && echo frontend_build populated"]

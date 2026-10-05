@@ -77,17 +77,21 @@
 
 ## Запуск
 
+Полная пошаговая инструкция — в [LAUNCH.md](LAUNCH.md).
+
 ### Продакшен (Docker) — подробности в [DEPLOYMENT.md](DEPLOYMENT.md)
 
 ```bash
-docker-compose up -d --build
-docker exec vks-backend cp .env.example .env
-docker exec vks-backend php artisan key:generate
-docker exec vks-backend php artisan migrate --force
-docker exec vks-backend php artisan db:seed --class=VksDatabaseSeeder --force
+cp .env.example .env      # задать DB_PASSWORD, DB_ROOT_PASSWORD, REDIS_PASSWORD, APP_KEY
+docker compose up -d --build
+docker compose exec backend php artisan migrate --force
+docker compose exec backend php artisan storage:link   # картинки/вложения
+docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder --force
+docker compose exec backend php artisan optimize       # config/route/view cache
 ```
 
-Приложение доступно на `http://<IP>/`.
+Приложение доступно на `http://localhost:8080` (порт проброшен только на 127.0.0.1;
+наружу публикуется через ваш reverse-proxy с HTTPS).
 
 ### Режим разработки
 

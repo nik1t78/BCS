@@ -24,6 +24,22 @@ class AppServiceProvider extends ServiceProvider
             URL::forceScheme(request()->isSecure() ? 'https' : 'http');
         }
 
+        // Безопасность сессий/cookies: httpOnly + SameSite=Lax защищают
+        // sanctum-cookie и сессию от XSS-кражи и CSRF из чужих сайтов;
+        // secure=true включается автоматически при HTTPS (X-Forwarded-Proto).
+        $this->app['config']->set('session.http_only', true);
+        $this->app['config']->set('session.same_site', 'lax');
+        $this->app['config']->set('session.secure', $this->app->environment('production'));
+        // Access-токены Sanctum живут 24 часа (без этого — бессрочные токены)
+        $this->app['config']->set('sanctum.expiration', 1440);
+
+        // Defense-in-depth: security-заголовки на уровне Laravel, даже если
+        // запрос пришёл мимо nginx (artisan serve, прямой доступ к php-fpm).
+        $kernel = $this->app->make(\Illuminate\Contracts\Http\Kernel::class);
+        if (method_exists($kernel, 'pushMiddleware')) {
+            $kernel->pushMiddleware(\App\Http\Middleware\SecurityHeaders::class);
+        }
+
         // Rate limiting для API (подключается middleware throttle:api в routes/api.php)
         RateLimiter::for('api', function (Request $request) {
             return $request->user()
