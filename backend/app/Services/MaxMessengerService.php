@@ -60,6 +60,43 @@ class MaxMessengerService
     }
 
     /**
+     * Отправить файл (например, PDF-протокол встречи) в чат MAX через upload_file.
+     * $filePath — локальный путь к файлу на диске.
+     */
+    public static function sendFile(string $chatId, string $filePath, string $fileName, string $caption = ''): bool
+    {
+        if (!self::isEnabled() || !is_readable($filePath)) {
+            return false;
+        }
+
+        $url = rtrim((string) env('MAX_API_URL', 'https://maxapi.ru/v1'), '/') . '/upload_file';
+        $headers = ['Authorization' => 'Bearer ' . env('MAX_BOT_TOKEN')];
+
+        try {
+            $response = Http::timeout(20)
+                ->attach('file', file_get_contents($filePath), $fileName)
+                ->withHeaders($headers)
+                ->post($url, array_filter([
+                    'chat_id' => $chatId,
+                    'caption' => $caption ?: null,
+                ]));
+
+            if ($response->successful()) {
+                return true;
+            }
+
+            Log::warning('MAX: ошибка отправки файла', [
+                'status' => $response->status(),
+                'body' => substr($response->body(), 0, 300),
+            ]);
+            return false;
+        } catch (\Throwable $e) {
+            Log::warning('MAX: исключение при отправке файла: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Уведомить пользователя о встрече в MAX (если привязан chat_id и интеграция включена).
      * Возвращает true при успехе; ошибки не ломают основной поток (in-app уведомление остаётся).
      */

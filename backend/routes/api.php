@@ -102,6 +102,11 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::put('/meetings/{meeting}/tasks/{task}', [MeetingMinuteController::class, 'tasksUpdate']);
     Route::delete('/meetings/{meeting}/tasks/{task}', [MeetingMinuteController::class, 'tasksDestroy']);
 
+    // Экспорт протокола встречи: PDF-файл (скачивание) и отправка файлом в MAX.
+    // Доступ — как к протоколу (hasAccess), для MAX — только организатор/админ.
+    Route::get('/meetings/{meeting}/minutes/export-pdf', [MeetingMinuteController::class, 'exportPdf']);
+    Route::post('/meetings/{meeting}/minutes/send-max', [MeetingMinuteController::class, 'sendMax']);
+
     // Комментарии к задачам (action items)
     Route::post('/meetings/{meeting}/tasks/{task}/comments', [MeetingMinuteController::class, 'taskCommentStore']);
     Route::delete('/meetings/{meeting}/tasks/{task}/comments/{comment}', [MeetingMinuteController::class, 'taskCommentDestroy']);
@@ -155,6 +160,8 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::put('/admin/users/{id}/role', [UserController::class, 'changeRole']);
         Route::get('/admin/stats', [UserController::class, 'getStats']);
         Route::get('/admin/heatmap', [\App\Http\Controllers\Api\AnalyticsController::class, 'heatmap']);
+        // Дашборд нагрузки системы (встречи по дням/часам, топ комнат, активность)
+        Route::get('/admin/load', [\App\Http\Controllers\Api\AnalyticsController::class, 'load']);
 
         // Аудит-лог действий пользователей (только администратор)
         Route::get('/admin/audit-logs', [\App\Http\Controllers\Api\AuditLogController::class, 'index']);
