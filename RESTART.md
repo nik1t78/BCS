@@ -84,4 +84,4 @@ docker-compose down -v    # ОСТОРОЖНО: удалит и базу дан�
 | Логи одного сервиса | `docker-compose logs -f backend` (или nginx, mysql, queue) |
 | Перезапустить сервис | `docker-compose restart backend` |
 | Зайти в бэкенд | `docker exec -it vks-backend sh` |
-| Консоль MySQL | `docker exec -it vks-mysql mysql -uvks_user -pvks_password_2024 vks_schedule` |
+| Консоль MySQL | `docker compose exec mysql mysql -u"${DB_USERNAME}" -p"${DB_PASSWORD}" "${DB_DATABASE}" (пароли — из вашего .env)` |
