@@ -11,6 +11,7 @@ export interface User {
   createdAt: string;
   lastLogin?: string;
   isActive: boolean;
+  mustChangePassword?: boolean;
 }
 
 export interface Meeting {

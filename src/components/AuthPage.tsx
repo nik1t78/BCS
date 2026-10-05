@@ -69,16 +69,20 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
 
         <div className="bg-white rounded-2xl shadow-2xl p-8">
           <div className="flex mb-6 bg-gray-100 rounded-lg p-1">
-            <button onClick={() => { setMode('login'); setError(''); }}
+            <button
+              onClick={() => { setMode('login'); setError(''); }}
               className={`flex-1 py-2.5 text-sm font-medium rounded-md transition-all ${
                 mode === 'login' ? 'bg-white shadow text-blue-600' : 'text-gray-500'
-              }`}>
+              }`}
+            >
               Вход
             </button>
-            <button onClick={() => { setMode('register'); setError(''); }}
+            <button
+              onClick={() => { setMode('register'); setError(''); }}
               className={`flex-1 py-2.5 text-sm font-medium rounded-md transition-all ${
                 mode === 'register' ? 'bg-white shadow text-blue-600' : 'text-gray-500'
-              }`}>
+              }`}
+            >
               Регистрация
             </button>
           </div>
@@ -94,18 +98,31 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Логин</label>
-                <input type="text" required value={loginValue} onChange={(e) => setLoginValue(e.target.value)}
+                <input
+                  type="text"
+                  required
+                  value={loginValue}
+                  onChange={(e) => setLoginValue(e.target.value)}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  placeholder="Введите логин" />
+                  placeholder="Введите логин"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Пароль</label>
-                <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  placeholder="••••••••" />
+                  placeholder="••••••••"
+                />
               </div>
-              <button type="submit" disabled={loading}
-                className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50">
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
+              >
                 {loading ? 'Вход...' : 'Войти'}
               </button>
             </form>
@@ -113,39 +130,88 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
             <form onSubmit={handleRegister} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">ФИО *</label>
-                <input type="text" required value={name} onChange={(e) => setName(e.target.value)}
+                <input
+                  type="text"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  placeholder="Иванов Иван Иванович" />
+                  placeholder="Иванов Иван Иванович"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Логин *</label>
-                <input type="text" required value={loginValue} onChange={(e) => setLoginValue(e.target.value)}
+                <input
+                  type="text"
+                  required
+                  value={loginValue}
+                  onChange={(e) => setLoginValue(e.target.value)}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  placeholder="ivanov" />
+                  placeholder="ivanov"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Пароль *</label>
-                <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  placeholder="Минимум 6 символов" />
+                  placeholder="Минимум 6 символов"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Телефон</label>
-                <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  placeholder="+7 (999) 123-45-67" />
+                  placeholder="+7 (999) 123-45-67"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Отдел</label>
-                <input type="text" value={department} onChange={(e) => setDepartment(e.target.value)}
+                <input
+                  type="text"
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  placeholder="Разработка" />
+                  placeholder="Разработка"
+                />
               </div>
-              <button type="submit" disabled={loading}
-                className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50">
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
+              >
                 {loading ? 'Регистрация...' : 'Зарегистрироваться'}
               </button>
             </form>
+          )}
+
+          {/* Информация для первого входа */}
+          {mode === 'login' && (
+            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-sm font-semibold text-blue-900 mb-2">
+                <i className="fas fa-info-circle mr-1"></i>
+                Первый вход в систему
+              </p>
+              <p className="text-xs text-blue-800 mb-2">
+                Используйте данные администратора:
+              </p>
+              <div className="bg-white p-2 rounded border border-blue-300">
+                <code className="text-sm font-mono text-blue-900">
+                  Логин: <strong>admin</strong><br/>
+                  Пароль: <strong>admin123</strong>
+                </code>
+              </div>
+              <p className="text-xs text-blue-800 mt-2">
+                <i className="fas fa-lightbulb mr-1"></i>
+                Если не работает, очистите localStorage в консоли браузера (F12)
+              </p>
+            </div>
           )}
         </div>
       </div>

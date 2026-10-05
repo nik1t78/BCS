@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
+import { forceReset } from '../store';
 
 export default function ResetData() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [reset, setReset] = useState(false);
 
   const handleReset = () => {
-    localStorage.clear();
+    forceReset();
     setReset(true);
     setTimeout(() => {
       window.location.reload();

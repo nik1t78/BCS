@@ -1,8 +1,13 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { getTheme, setTheme } from '../store';
 
 export default function ThemeToggle() {
   const [theme, setCurrentTheme] = React.useState<'light' | 'dark'>(getTheme());
+
+  useEffect(() => {
+    // Применяем тему при монтировании
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+  }, [theme]);
 
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
