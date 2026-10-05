@@ -412,7 +412,7 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
               className={`px-3 py-2 text-sm ${view === "calendar" ? "bg-blue-600 text-white" : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"}`}
               title="Календарь (месяц/неделя)"
             >
-              <i className="far fa-calendar-alt mr-1"></i>Календарь
+              <i className="fas fa-calendar-alt mr-1"></i>Календарь
             </button>
           </div>
           {/* Переключатель компактного режима списка */}
@@ -884,10 +884,10 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                   </div>
                   <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
                     <p>
-                      <i className="far fa-calendar mr-2 text-blue-500"></i>
+                      <i className="fas fa-calendar mr-2 text-blue-500"></i>
                       {new Date(vm.date).toLocaleDateString("ru-RU")}
                       <span className="mx-2">•</span>
-                      <i className="far fa-clock mr-2 text-blue-500"></i>
+                      <i className="fas fa-clock mr-2 text-blue-500"></i>
                       {vm.startTime} - {vm.endTime}
                     </p>
                     {vm.room && (
@@ -1284,10 +1284,10 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                           </span>
                         </div>
                         <p className={`${compact ? "text-xs" : "text-sm"} text-gray-600 dark:text-gray-400`}>
-                          <i className="far fa-calendar mr-1"></i>
+                          <i className="fas fa-calendar mr-1"></i>
                           {new Date(meeting.date).toLocaleDateString("ru-RU")}
                           <span className="mx-2">•</span>
-                          <i className="far fa-clock mr-1"></i>
+                          <i className="fas fa-clock mr-1"></i>
                           {meeting.startTime} - {meeting.endTime}
                           {meeting.room && (
                             <>

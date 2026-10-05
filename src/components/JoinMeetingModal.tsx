@@ -45,11 +45,11 @@ export default function JoinMeetingModal({ meeting, onClose }: JoinMeetingModalP
             {meeting.description && <p className="text-blue-100 mb-4">{meeting.description}</p>}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div>
-                <i className="far fa-calendar mr-2"></i>
+                <i className="fas fa-calendar mr-2"></i>
                 <span className="font-medium">{new Date(meeting.date).toLocaleDateString("ru-RU")}</span>
               </div>
               <div>
-                <i className="far fa-clock mr-2"></i>
+                <i className="fas fa-clock mr-2"></i>
                 <span className="font-medium">
                   {meeting.startTime} - {meeting.endTime}
                 </span>

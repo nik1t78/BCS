@@ -818,14 +818,17 @@ export async function updateSettings(data: any): Promise<boolean> {
 export async function updateProfile(data: any): Promise<User | null> {
   try {
     const response = await profileAPI.update(data);
+    // Бэкенд отдаёт пользователя в snake_case — приводим к формату UI,
+    // иначе avatar/createdAt и др. поля теряются и аватар не отображается.
+    const user = mapUser(response?.user ?? response);
     // Обновляем пользователя в localStorage
     const auth = localStorage.getItem("vks_auth");
     if (auth) {
       const authData = JSON.parse(auth);
-      authData.user = response;
+      authData.user = user;
       localStorage.setItem("vks_auth", JSON.stringify(authData));
     }
-    return response;
+    return user;
   } catch (error) {
     console.error("Update profile error:", error);
     return null;
@@ -956,10 +959,29 @@ export async function deleteTemplate(id: string): Promise<boolean> {
 }
 
 // ============ ATTACHMENTS ============
+// Бэкенд отдаёт snake_case-поля (file_path, mime_type...) — приводим их к
+// camelCase-типу Attachment и строим корректный URL: файлы лежат в Laravel
+// public disk и доступны только по префиксу /storage/ (см. nginx alias).
+function mapAttachment(raw: any): Attachment {
+  const relPath: string = String(raw?.file_path ?? raw?.filePath ?? "");
+  const storageUrl = /^https?:\/\//i.test(relPath) ? relPath : `/storage/${relPath.replace(/^\/+/, "")}`;
+  return {
+    id: String(raw.id),
+    meetingId: String(raw.meeting_id ?? raw.meetingId ?? ""),
+    userId: String(raw.user_id ?? raw.userId ?? ""),
+    fileName: raw.file_name ?? raw.fileName ?? "",
+    filePath: storageUrl,
+    fileSize: Number(raw.file_size ?? raw.fileSize ?? 0),
+    mimeType: raw.mime_type ?? raw.mimeType ?? "application/octet-stream",
+    createdAt: raw.created_at ?? raw.createdAt ?? "",
+  } as Attachment;
+}
+
 export async function getAttachments(meetingId: string): Promise<Attachment[]> {
   try {
     const response = await attachmentsAPI.getByMeeting(meetingId);
-    return response.data || response;
+    const list = Array.isArray(response) ? response : (response.data ?? []);
+    return list.map(mapAttachment);
   } catch (error) {
     console.error("Get attachments error:", error);
     return [];
@@ -971,7 +993,7 @@ export async function uploadAttachment(meetingId: string, file: File): Promise<A
     const formData = new FormData();
     formData.append("file", file);
     const response = await attachmentsAPI.upload(meetingId, formData);
-    return response;
+    return mapAttachment(response);
   } catch (error) {
     console.error("Upload attachment error:", error);
     return null;

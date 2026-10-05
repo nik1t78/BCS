@@ -471,7 +471,7 @@ export default function MeetingMinutes({ meetingId, user, users, canWrite }: Mee
                       )}
                       {t.deadline && (
                         <span className={isOverdue(t) ? "text-red-500 font-medium" : ""}>
-                          <i className="far fa-calendar mr-1"></i>
+                          <i className="fas fa-calendar mr-1"></i>
                           {new Date(t.deadline).toLocaleDateString("ru-RU")}
                           {isOverdue(t) && " · просрочено"}
                         </span>
@@ -483,7 +483,7 @@ export default function MeetingMinutes({ meetingId, user, users, canWrite }: Mee
                         onClick={() => toggleComments(t.id)}
                         className="px-1.5 py-0.5 rounded text-gray-500 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                       >
-                        <i className="far fa-comment mr-1"></i>
+                        <i className="fas fa-comment mr-1"></i>
                         {(t.comments ?? []).length}
                       </button>
                     </p>

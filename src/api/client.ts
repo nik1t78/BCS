@@ -51,10 +51,13 @@ const tryRefreshToken = (): Promise<boolean> => {
 const apiRequest = async (endpoint: string, options: RequestInit = {}, _retried = false): Promise<any> => {
   const token = getToken();
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-  };
+  // Для multipart/FormData заголовок Content-Type не устанавливаем —
+  // браузер сам добавит его с корректным boundary (иначе Laravel не
+  // распознаёт загружаемый файл и валидация «file is required» падает).
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+  const headers: Record<string, string> = isFormData
+    ? { Accept: "application/json" }
+    : { "Content-Type": "application/json", Accept: "application/json" };
 
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
@@ -451,7 +454,7 @@ export const attachmentsAPI = {
     apiRequest(`/meetings/${meetingId}/attachments`, {
       method: "POST",
       body: formData,
-      headers: {}, // Не устанавливаем Content-Type, чтобы браузер установил multipart/form-data
+      // Content-Type с boundary выставляет браузер (см. apiRequest: для FormData заголовок не ставится)
     }),
 
   delete: (id: string) =>

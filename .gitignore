@@ -1,7 +1,12 @@
-# Build output
+# PHP / Laravel
+vendor/
+composer.lock
+
+# Node.js / Frontend
+node_modules/
 dist/
 
-# Environment files
+# Environment & Logs
 .env
 .env.local
-.env.*.local
+*.log

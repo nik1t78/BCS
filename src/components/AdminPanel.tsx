@@ -1138,10 +1138,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       </div>
                       <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
                         <p>
-                          <i className="far fa-calendar mr-2 text-blue-500"></i>
+                          <i className="fas fa-calendar mr-2 text-blue-500"></i>
                           {new Date(vm.date).toLocaleDateString("ru-RU")}
                           <span className="mx-2">•</span>
-                          <i className="far fa-clock mr-2 text-blue-500"></i>
+                          <i className="fas fa-clock mr-2 text-blue-500"></i>
                           {vm.startTime} - {vm.endTime}
                         </p>
                         {vm.room && (

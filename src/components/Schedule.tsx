@@ -313,7 +313,7 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
                           )}
                         </p>
                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                          <i className="far fa-clock mr-1"></i>
+                          <i className="fas fa-clock mr-1"></i>
                           {meeting.startTime} - {meeting.endTime}
                           {canSeeDetails && meeting.room && (
                             <span className="ml-3">

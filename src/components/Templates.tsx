@@ -307,7 +307,7 @@ export default function Templates({ userId }: TemplatesProps) {
 
             <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400 mb-4">
               <p>
-                <i className="far fa-clock mr-2"></i>
+                <i className="fas fa-clock mr-2"></i>
                 {template.durationMinutes} мин
               </p>
               {template.room && (
