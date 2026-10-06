@@ -81,6 +81,10 @@
 
 ### Продакшен (Docker) — подробности в [DEPLOYMENT.md](DEPLOYMENT.md)
 
+`backend/composer.lock` обязан быть в репозитории: без него `composer install`
+в образе обращается к packagist за последними версиями и при нестабильной сети
+падает с `curl error 28 ... Connection timed out`.
+
 ```bash
 cp .env.example .env      # задать DB_PASSWORD, DB_ROOT_PASSWORD, REDIS_PASSWORD, APP_KEY
 docker compose up -d --build

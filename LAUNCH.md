@@ -2,6 +2,11 @@
 
 ## Вариант 1 — Docker (рекомендуется, сервер/прод)
 
+> **Обязательно:** `backend/composer.lock` должен быть в репозитории. Без него
+> `composer install` в образе идёт на packagist за «latest» и при плохой сети
+> падает с `curl error 28 ... Connection timed out`. Если lock'а нет —
+> сгенерируйте его локально (`cd backend && composer update --lock`) и закоммитьте.
+
 ```bash
 # 1. Клонировать репозиторий
 git clone <адрес-репозитория> && cd BCS
@@ -31,9 +36,13 @@ docker compose exec backend php artisan route:cache
 ```bash
 git pull
 docker compose build frontend backend
-docker compose up -d
+docker compose up -d          # пересоздать контейнеры из новых образов
+# vendor живёт в volume backend_vendor — после git pull обновляем зависимости
+# внутри контейнера (один раз, виден всем: backend / queue / scheduler):
+docker compose exec backend composer install --no-dev --prefer-dist --optimize-autoloader
 docker compose exec backend php artisan migrate --force
 docker compose exec backend php artisan optimize:clear && docker compose exec backend php artisan optimize
+docker compose restart queue scheduler    # worker'ы перечитают новый код
 ```
 
 ## Вариант 2 — локальная разработка без Docker
