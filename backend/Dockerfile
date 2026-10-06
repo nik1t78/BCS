@@ -24,7 +24,7 @@ WORKDIR /var/www/html
 COPY composer.json composer.lock ./
 RUN --mount=type=cache,target=/var/www/.composer \
     set -eux; \
-    composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction --no-scripts; \
+    composer install --no-dev --prefer-dist --no-interaction --no-scripts; \
     mkdir -p storage/app/public storage/framework/cache/data storage/framework/sessions \
              storage/framework/testing storage/framework/views storage/logs bootstrap/cache; \
     chown -R www-data:www-data vendor storage bootstrap/cache; \
@@ -33,16 +33,40 @@ RUN --mount=type=cache,target=/var/www/.composer \
 # Затем код приложения
 COPY . .
 
-# Минимальный .env для сборки: без него `php artisan package:discover` падает.
-# Секретов здесь нет — рантайм-значения приходят из compose `environment:`.
-RUN cp .env.dev.example .env \
-    && composer dump-autoload --optimize --no-dev --classmap-authoritative \
-    && php artisan package:discover --ansi || true \
-    && rm -f .env \
-    && mkdir -p storage/app/public storage/framework/cache/data storage/framework/sessions \
-                storage/framework/testing storage/framework/views storage/logs bootstrap/cache \
-    && chown -R www-data:www-data storage bootstrap/cache \
-    && chmod -R 775 storage bootstrap/cache
+# Собираем автозагрузчик БЕЗ запуска composer-скриптов (--no-scripts): скрипт
+# post-autoload-dump вызывает `php artisan package:discover`, а файла artisan в
+# рабочей копии может не быть (тогда сборка падала с
+# "Could not open input file: artisan").
+RUN --mount=type=cache,target=/var/www/.composer \
+    set -eux; \
+    composer dump-autoload --optimize --no-dev --classmap-authoritative --no-scripts
+
+# Права на storage/ и bootstrap/cache. 0777, а не привычные 0775, потому что в
+# docker-compose ./backend монтируется поверх /var/www/html, а bootstrap/cache
+# дополнительно перекрывается именованным volume: docker копирует в созданный
+# volume содержимое образа, но владельцем каталога всегда делает root — без
+# world-writable Laravel падал с "The ... directory must be present and
+# writable" (не удавалось создать packages.php/services.php).
+#
+# Список автопровайдеров (bootstrap/cache/packages.php) генерируем сами —
+# отдельным шагом ПОСЛЕ COPY . ., т.к. bind-mount ./backend затирает файлы
+# образа в этом каталоге. Команда `php artisan package:discover` для этого же
+# действия требует полного каркаса Laravel (artisan + config/*), поэтому если
+# artisan нет — используем резервный скрипт.
+COPY docker/laravel-package-discovery.php /tmp/package-discovery.php
+RUN set -eux; \
+    mkdir -p storage/app/public storage/app/tmp storage/app/backups \
+             storage/framework/cache/data storage/framework/sessions \
+             storage/framework/testing storage/framework/views storage/logs bootstrap/cache; \
+    if [ -f artisan ] && php artisan package:discover --ansi; then \
+        :; \
+    else \
+        echo "artisan/package:discover недоступен — генерирую packages.php напрямую"; \
+        php /tmp/package-discovery.php; \
+    fi; \
+    rm -f /tmp/package-discovery.php; \
+    chown -R www-data:www-data storage bootstrap/cache; \
+    chmod -R 777 storage bootstrap/cache
 
 # ================= OPcache: быстрый и лёгкий PHP =================
 RUN cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
