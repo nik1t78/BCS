@@ -20,8 +20,8 @@ docker-compose up -d --build
 
 ### 3. Инициализация базы данных и backend
 ```bash
-# Копирование .env файла
-docker exec vks-backend cp .env.example .env
+# Копирование .env файла (нет секретов в образе — только заготовка)
+docker exec vks-backend sh -c '[ -f .env ] || cp .env.dev.example .env'
 
 # Генерация APP_KEY
 docker exec vks-backend php artisan key:generate

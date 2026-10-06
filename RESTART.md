@@ -45,7 +45,7 @@ docker-compose up -d         # поднять заново
 Выполните инициализацию один раз:
 
 ```bash
-docker exec vks-backend cp -n .env.example .env
+docker exec vks-backend sh -c '[ -f .env ] || cp .env.dev.example .env'
 docker exec vks-backend php artisan key:generate
 docker exec vks-backend php artisan migrate --force
 docker exec vks-backend php artisan db:seed --class=VksDatabaseSeeder --force
@@ -59,8 +59,12 @@ docker exec vks-backend php artisan db:seed --class=VksDatabaseSeeder --force
 
 ```bash
 docker-compose up -d --build    # пересобрать образы frontend/backend
+# vendor смонтирован из volume backend_vendor и НЕ пересобирается вместе с
+# образом — зависимости обновляются внутри контейнера:
+docker exec vks-backend composer install --no-dev --prefer-dist --optimize-autoloader
 docker exec vks-backend php artisan migrate --force
 docker exec vks-backend php artisan config:clear
+docker restart vks-queue vks-scheduler   # worker'ы перечитают новый код
 ```
 
 Фронтенд собирается контейнером `vks-frontend-builder` в общий volume

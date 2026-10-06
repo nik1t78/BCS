@@ -62,6 +62,16 @@ services:
       - type: bind
         source: ./backend/storage
         target: /var/www/html/storage
+      # vendor смонтирован из именованного volume: в ./backend/vendor лежат
+      # dev-пакеты (faker), а bind-mount целиком перекрывал бы prod-vendor
+      # из образа. При создании volume docker копирует в него содержимое
+      # образа по этому пути — там уже правильный --no-dev набор.
+      - type: volume
+        source: backend_vendor
+        target: /var/www/html/vendor
+      - type: volume
+        source: backend_bootstrap_cache
+        target: /var/www/html/bootstrap/cache
     environment:
       DB_CONNECTION: mysql
       DB_HOST: mysql
@@ -167,6 +177,14 @@ services:
       - type: bind
         source: ./backend
         target: /var/www/html
+      # Общие с backend сервисы должны видеть ОДИН и тот же vendor, иначе
+      # queue будет работать по коду/autoloader'у из ./backend/vendor (dev).
+      - type: volume
+        source: backend_vendor
+        target: /var/www/html/vendor
+      - type: volume
+        source: backend_bootstrap_cache
+        target: /var/www/html/bootstrap/cache
     environment:
       DB_CONNECTION: mysql
       DB_HOST: mysql
@@ -201,6 +219,14 @@ services:
       - type: bind
         source: ./backend
         target: /var/www/html
+      # Общие с backend сервисы должны видеть ОДИН и тот же vendor, иначе
+      # queue будет работать по коду/autoloader'у из ./backend/vendor (dev).
+      - type: volume
+        source: backend_vendor
+        target: /var/www/html/vendor
+      - type: volume
+        source: backend_bootstrap_cache
+        target: /var/www/html/bootstrap/cache
     environment:
       DB_CONNECTION: mysql
       DB_HOST: mysql
@@ -220,3 +246,7 @@ networks:
 
 volumes:
   frontend_build:
+  # Единый prod-vendor для backend/queue/scheduler (не пересобирается при
+  # `docker compose down`, обновляется `composer install` внутри vks-backend)
+  backend_vendor:
+  backend_bootstrap_cache:
