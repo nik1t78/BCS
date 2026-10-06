@@ -311,7 +311,7 @@ export function initializeDemoData(): void {
   const admin = createUser({
     name: "Администратор Системы",
     login: "admin",
-    password: "admin123",
+    password: "vks_2026",
     role: "admin",
     phone: "+7 (999) 000-00-01",
     department: "IT",
@@ -323,7 +323,7 @@ export function initializeDemoData(): void {
   const moderator = createUser({
     name: "Сидоров Константин Львович",
     login: "moderator",
-    password: "mod123",
+    password: "vks_2026",
     role: "moderator",
     phone: "+7 (999) 333-44-55",
     department: "HR",
@@ -335,7 +335,7 @@ export function initializeDemoData(): void {
   const ivanov = createUser({
     name: "Иванов Алексей Сергеевич",
     login: "ivanov",
-    password: "user123",
+    password: "vks_2026",
     role: "user",
     phone: "+7 (999) 111-22-33",
     department: "Разработка",
@@ -346,7 +346,7 @@ export function initializeDemoData(): void {
   const petrova = createUser({
     name: "Петрова Мария Владимировна",
     login: "petrova",
-    password: "user123",
+    password: "vks_2026",
     role: "user",
     phone: "+7 (999) 222-33-44",
     department: "Менеджмент",
