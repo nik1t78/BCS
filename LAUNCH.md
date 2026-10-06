@@ -17,7 +17,12 @@ cp .env.example .env
 openssl rand -hex 16   # → DB_PASSWORD
 openssl rand -hex 16   # → DB_ROOT_PASSWORD
 openssl rand -hex 16   # → REDIS_PASSWORD
-# вписать их в .env
+# вписать их в .env, включая APP_KEY — иначе compose прерывается со строкой
+# "required variable APP_KEY is missing a value" (пустое значение APP_KEY=
+# тоже считается отсутствующим):
+docker compose run --rm backend php artisan key:generate --show
+# → скопировать вывод (base64:...) в APP_KEY=... в .env
+# Windows PowerShell: Copy-Item .env.example .env; Get-Content .env
 
 # 3. Собрать и запустить всё (frontend, backend, nginx, mysql, redis, queue, scheduler)
 docker compose up -d --build
