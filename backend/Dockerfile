@@ -1,5 +1,7 @@
 # syntax=docker/dockerfile:1
-FROM php:8.4-fpm-alpine as base
+# ВАЖНО: контекст сборки этого Dockerfile — каталог backend/ (см. build.context в
+# docker-compose.yml), поэтому COPY здесь видит только файлы внутри backend/.
+FROM php:8.4-fpm-alpine AS base
 
 # Системные зависимости (alpine — образ в ~3 раза меньше debian-варианта)
 RUN apk add --no-cache \
@@ -53,7 +55,11 @@ RUN --mount=type=cache,target=/var/www/.composer \
 # образа в этом каталоге. Команда `php artisan package:discover` для этого же
 # действия требует полного каркаса Laravel (artisan + config/*), поэтому если
 # artisan нет — используем резервный скрипт.
-COPY docker/laravel-package-discovery.php /tmp/package-discovery.php
+#
+# Скрипт лежит рядом с Dockerfile (в backend/), а НЕ в корневом docker/:
+# контекст сборки = ./backend, и COPY ../docker/... или docker/... упал бы с
+# "failed to compute cache key: ... /docker/laravel-package-discovery.php: not found".
+COPY docker-package-discovery.php /tmp/package-discovery.php
 RUN set -eux; \
     mkdir -p storage/app/public storage/app/tmp storage/app/backups \
              storage/framework/cache/data storage/framework/sessions \
