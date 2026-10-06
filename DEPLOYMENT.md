@@ -37,9 +37,9 @@ docker exec vks-backend php artisan db:seed --class=VksDatabaseSeeder --force
 Откройте в браузере: `http://ваш-сервер-ip/`
 
 ## Демо доступы
-- **Администратор**: login: `admin`, password: `admin123`
-- **Модератор**: login: `moderator`, password: `moderator123`
-- **Пользователь**: login: `user`, password: `user123`
+- **Администратор**: login: `admin`, password: `vks_2026`
+- **Модератор**: login: `moderator`, password: `vks_2026`
+- **Пользователь**: login: `user`, password: `vks_2026`
 
 ## Управление сервисами
 

@@ -20,7 +20,7 @@ class VksDatabaseSeeder extends Seeder
         // пароль как есть — иначе происходит двойное хеширование и вход ломается.
         $admin = User::updateOrCreate(['login' => 'admin'], [
             'name' => 'Администратор Системы',
-            'password' => 'admin123',
+            'password' => 'vks_2026',
             'role' => 'admin',
             'phone' => '+7 (999) 000-00-01',
             'department' => 'IT',
@@ -30,7 +30,7 @@ class VksDatabaseSeeder extends Seeder
 
         $user1 = User::updateOrCreate(['login' => 'ivanov'], [
             'name' => 'Иванов Алексей Сергеевич',
-            'password' => 'user123',
+            'password' => 'vks_2026',
             'role' => 'user',
             'phone' => '+7 (999) 111-22-33',
             'department' => 'Разработка',
@@ -40,7 +40,7 @@ class VksDatabaseSeeder extends Seeder
 
         $user2 = User::updateOrCreate(['login' => 'petrova'], [
             'name' => 'Петрова Мария Владимировна',
-            'password' => 'user123',
+            'password' => 'vks_2026',
             'role' => 'user',
             'phone' => '+7 (999) 222-33-44',
             'department' => 'Менеджмент',
@@ -50,7 +50,7 @@ class VksDatabaseSeeder extends Seeder
 
         $moderator = User::updateOrCreate(['login' => 'sidorov'], [
             'name' => 'Сидоров Константин Львович',
-            'password' => 'mod123',
+            'password' => 'vks_2026',
             'role' => 'moderator',
             'phone' => '+7 (999) 333-44-55',
             'department' => 'HR',
@@ -245,8 +245,8 @@ class VksDatabaseSeeder extends Seeder
         $this->command->info('✅ Демо-данные успешно созданы!');
         $this->command->info('');
         $this->command->info('Демо-аккаунты:');
-        $this->command->info('  Админ: admin@vks.local / admin123');
-        $this->command->info('  Пользователь: ivanov@vks.local / user123');
-        $this->command->info('  Модератор: sidorov@vks.local / mod123');
+        $this->command->info('  Админ: admin@vks.local / vks_2026');
+        $this->command->info('  Пользователь: ivanov@vks.local / vks_2026');
+        $this->command->info('  Модератор: sidorov@vks.local / vks_2026');
     }
 }
