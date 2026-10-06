@@ -63,20 +63,20 @@ services:
         source: ./backend/storage
         target: /var/www/html/storage
     environment:
-      - DB_CONNECTION=mysql
-      - DB_HOST=mysql
-      - DB_PORT=3306
-      - DB_DATABASE=${DB_DATABASE:-vks_schedule}
-      - DB_USERNAME=${DB_USERNAME:-vks_user}
-      - DB_PASSWORD=${DB_PASSWORD:?Укажите DB_PASSWORD в файле .env рядом с docker-compose.yml}
-      - REDIS_HOST=redis
-      - REDIS_PASSWORD=${REDIS_PASSWORD:?Укажите REDIS_PASSWORD в файле .env}
-      - REDIS_PORT=6379
-      - APP_KEY=${APP_KEY:?Укажите APP_KEY в .env (сгенерировать: php artisan key:generate)}
-      - APP_ENV=${APP_ENV:-production}
-      - APP_DEBUG=false
-      - MESSENGER=${MESSENGER:-max}
-      - MAX_BOT_TOKEN=${MAX_BOT_TOKEN:-}
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: "${DB_DATABASE:-vks_schedule}"
+      DB_USERNAME: "${DB_USERNAME:-vks_user}"
+      DB_PASSWORD: "${DB_PASSWORD:?Укажите DB_PASSWORD в файле .env рядом с docker-compose.yml}"
+      REDIS_HOST: redis
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?Укажите REDIS_PASSWORD в файле .env}"
+      REDIS_PORT: 6379
+      APP_KEY: "${APP_KEY:?Укажите APP_KEY в .env (сгенерировать: php artisan key:generate)}"
+      APP_ENV: "${APP_ENV:-production}"
+      APP_DEBUG: "false"
+      MESSENGER: "${MESSENGER:-max}"
+      MAX_BOT_TOKEN: "${MAX_BOT_TOKEN:-}"
     depends_on:
       - mysql
       - redis
@@ -168,18 +168,18 @@ services:
         source: ./backend
         target: /var/www/html
     environment:
-      - DB_CONNECTION=mysql
-      - DB_HOST=mysql
-      - DB_PORT=3306
-      - DB_DATABASE=${DB_DATABASE:-vks_schedule}
-      - DB_USERNAME=${DB_USERNAME:-vks_user}
-      - DB_PASSWORD=${DB_PASSWORD:?Укажите DB_PASSWORD в файле .env рядом с docker-compose.yml}
-      - REDIS_HOST=redis
-      - REDIS_PASSWORD=${REDIS_PASSWORD:?Укажите REDIS_PASSWORD в файле .env}
-      - REDIS_PORT=6379
-      - APP_KEY=${APP_KEY:?Укажите APP_KEY в .env}
-      - MESSENGER=${MESSENGER:-max}
-      - MAX_BOT_TOKEN=${MAX_BOT_TOKEN:-}
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: "${DB_DATABASE:-vks_schedule}"
+      DB_USERNAME: "${DB_USERNAME:-vks_user}"
+      DB_PASSWORD: "${DB_PASSWORD:?Укажите DB_PASSWORD в файле .env рядом с docker-compose.yml}"
+      REDIS_HOST: redis
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?Укажите REDIS_PASSWORD в файле .env}"
+      REDIS_PORT: 6379
+      APP_KEY: "${APP_KEY:?Укажите APP_KEY в .env}"
+      MESSENGER: "${MESSENGER:-max}"
+      MAX_BOT_TOKEN: "${MAX_BOT_TOKEN:-}"
     depends_on:
       - backend
       - redis
@@ -202,13 +202,13 @@ services:
         source: ./backend
         target: /var/www/html
     environment:
-      - DB_CONNECTION=mysql
-      - DB_HOST=mysql
-      - DB_PORT=3306
-      - DB_DATABASE=${DB_DATABASE:-vks_schedule}
-      - DB_USERNAME=${DB_USERNAME:-vks_user}
-      - DB_PASSWORD=${DB_PASSWORD:?Укажите DB_PASSWORD в файле .env рядом с docker-compose.yml}
-      - APP_KEY=${APP_KEY:?Укажите APP_KEY в .env}
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: "${DB_DATABASE:-vks_schedule}"
+      DB_USERNAME: "${DB_USERNAME:-vks_user}"
+      DB_PASSWORD: "${DB_PASSWORD:?Укажите DB_PASSWORD в файле .env рядом с docker-compose.yml}"
+      APP_KEY: "${APP_KEY:?Укажите APP_KEY в .env}"
     depends_on:
       - backend
     networks:
