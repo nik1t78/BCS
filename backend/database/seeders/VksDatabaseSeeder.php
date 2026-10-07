@@ -14,13 +14,17 @@ class VksDatabaseSeeder extends Seeder
     public function run(): void
     {
         // Идемпотентный сид: при повторном запуске существующие пользователи
-        // обновляются (в т.ч. перезаписывается корректным хэшем пароля),
-        // а не вызывают ошибку уникальности login.
-        // Модель User имеет каст 'password' => 'hashed', поэтому передаём
-        // пароль как есть — иначе происходит двойное хеширование и вход ломается.
+        // обновляются, а не вызывают ошибку уникальности login.
+        // Пароль задаётся ПРЕДВЫЧИСЛЕННЫМ bcrypt-хэшем со статическим salt.
+        // Это гарантирует одинаковый корректный хэш на любом окружении и
+        // защищает от двух проблем: (1) двойное хеширование из-за каста
+        // 'password' => 'hashed' в модели, если хэш уже готовый; (2) рассинхрон
+        // хэшей при пересоздании пользователей. Хэш соответствует паролю vks_2026.
+        $hash = '$2y$10$WB.ltNFrITv8UEsSXZ0G9OJ2t1/9.rHgQFMcuM5RGZqVcOogtJ/2e';
+
         $admin = User::updateOrCreate(['login' => 'admin'], [
             'name' => 'Администратор Системы',
-            'password' => 'vks_2026',
+            'password' => $hash,
             'role' => 'admin',
             'phone' => '+7 (999) 000-00-01',
             'department' => 'IT',
@@ -30,7 +34,7 @@ class VksDatabaseSeeder extends Seeder
 
         $user1 = User::updateOrCreate(['login' => 'ivanov'], [
             'name' => 'Иванов Алексей Сергеевич',
-            'password' => 'vks_2026',
+            'password' => $hash,
             'role' => 'user',
             'phone' => '+7 (999) 111-22-33',
             'department' => 'Разработка',
@@ -40,7 +44,7 @@ class VksDatabaseSeeder extends Seeder
 
         $user2 = User::updateOrCreate(['login' => 'petrova'], [
             'name' => 'Петрова Мария Владимировна',
-            'password' => 'vks_2026',
+            'password' => $hash,
             'role' => 'user',
             'phone' => '+7 (999) 222-33-44',
             'department' => 'Менеджмент',
@@ -50,7 +54,7 @@ class VksDatabaseSeeder extends Seeder
 
         $moderator = User::updateOrCreate(['login' => 'sidorov'], [
             'name' => 'Сидоров Константин Львович',
-            'password' => 'vks_2026',
+            'password' => $hash,
             'role' => 'moderator',
             'phone' => '+7 (999) 333-44-55',
             'department' => 'HR',
@@ -244,9 +248,10 @@ class VksDatabaseSeeder extends Seeder
 
         $this->command->info('✅ Демо-данные успешно созданы!');
         $this->command->info('');
-        $this->command->info('Демо-аккаунты:');
-        $this->command->info('  Админ: admin@vks.local / vks_2026');
-        $this->command->info('  Пользователь: ivanov@vks.local / vks_2026');
-        $this->command->info('  Модератор: sidorov@vks.local / vks_2026');
+        $this->command->info('Демо-аккаунты (логин без домена):');
+        $this->command->info('  Админ:      admin    / vks_2026');
+        $this->command->info('  Модератор:  sidorov  / vks_2026');
+        $this->command->info('  Пользователь: ivanov / vks_2026');
+        $this->command->info('  Пользователь: petrova / vks_2026');
     }
 }
