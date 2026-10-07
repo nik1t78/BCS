@@ -11,3 +11,4 @@ vendor/
 # Логи и данные SQLite
 database/*.sqlite
 database/*.sqlite-journal
+bootstrap/cache/*.php
