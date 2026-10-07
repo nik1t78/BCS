@@ -6,12 +6,19 @@ FROM php:8.4-fpm-alpine AS base
 # Системные зависимости (alpine — образ в ~3 раза меньше debian-варианта)
 # mariadb-client (mysqldump) обязателен: команда `php artisan db:backup`
 # (ежедневный бэкап БД в 02:30) вызывает mysqldump внутри контейнера.
+#
+# phpredis (pecl install redis) обязателен: в .env стоят
+# QUEUE_CONNECTION=redis и CACHE_STORE=redis, а predis в composer.json нет
+# (дефолтный REDIS_CLIENT=phpredis). Без расширения падают rate-limiter
+# (throttle:api/throttle:login), SSE-стрим уведомлений и планировщик.
 RUN apk add --no-cache \
         git curl icu-dev libpng-dev libjpeg-turbo-dev freetype-dev \
         oniguruma-dev libxml2-dev libzip-dev zip unzip autoconf g++ make linux-headers \
         mariadb-client \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j"$(nproc)" pdo_mysql mbstring exif pcntl bcmath gd zip opcache
+    && docker-php-ext-install -j"$(nproc)" pdo_mysql mbstring exif pcntl bcmath gd zip opcache \
+    && pecl install redis \
+    && docker-php-ext-enable redis
 
 # Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Подготовка проекта к запуску через Docker Desktop на Windows.
 
@@ -143,8 +143,7 @@ if (-not (Test-Path $rootEnv)) {
         # В скачанном архиве .env.example может отсутствовать — создаём минимальный,
         # иначе docker compose не сможет интерполировать переменные.
         @'
-# Сайт по адресу http://<IP машины>/ без порта — Nginx на 80 порту
-HTTP_PORT=80
+# Сайт по адресу http://<IP машины>/ без порта — Nginx на 80 порту (зафиксирован)
 listen_ip=0.0.0.0
 APP_KEY=
 APP_ENV=production
@@ -208,24 +207,14 @@ Write-Host ''
 Write-Host 'Готово. Следующая команда:' -ForegroundColor Cyan
 Write-Host '    docker compose up -d --build'
 Write-Host ''
-$port = '80'
-if (Test-Path '.env') {
-    $m = Select-String -Path '.env' -Pattern '^HTTP_PORT=(.+)$' | Select-Object -Last 1
-    if ($m) { $port = $m.Matches[0].Groups[1].Value.Trim() }
-}
 # IP этой машины (не Docker-адаптеров) — чтобы пользователи открывали http://<IP>/
 $ip = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
     Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' -and
                    $_.InterfaceAlias -notmatch 'vEthernet|Docker|WSL|Loopback' } |
     Sort-Object -Property SkipSourceRouterCount).IPAddress | Select-Object -First 1
-if ($port -eq '80') {
-    Write-Host "Для пользователей сайт будет по адресу: http://${ip}/" -ForegroundColor Cyan
-} else {
-    Write-Host "Для пользователей сайт будет по адресу: http://${ip}:$port" -ForegroundColor Cyan
-    Write-Host 'Чтобы адрес был без порта (http://IP/), поставьте в .env HTTP_PORT=80' -ForegroundColor Yellow
-}
-Write-Host 'Если доступ из сети не работает — разрешите входящий TCP-порт' "$port" 'в брандмауэре Windows:'
-Write-Host "    New-NetFirewallRule -DisplayName 'VKS web' -Direction Inbound -Protocol TCP -LocalPort $port"
+Write-Host "Для пользователей сайт будет по адресу: http://${ip}/" -ForegroundColor Cyan
+Write-Host 'Если доступ из сети не работает — разрешите входящий TCP-порт 80 в брандмауэре Windows:'
+Write-Host "    New-NetFirewallRule -DisplayName 'VKS web' -Direction Inbound -Protocol TCP -LocalPort 80"
 Write-Host ''
 Write-Host 'Перед первым запуском проверьте в .env значения DB_PASSWORD / DB_ROOT_PASSWORD / REDIS_PASSWORD,' -ForegroundColor Yellow
 Write-Host 'а также MAX_BOT_TOKEN (если нужны уведомления в MAX).'
