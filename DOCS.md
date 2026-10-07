@@ -155,7 +155,7 @@ docker compose up -d --build
 
 # 4. Инициализация базы (только при ПЕРВОМ запуске)
 docker compose exec backend php artisan migrate --force
-docker compose exec backend php artisan storage:link        # для картинок/вложений
+# вложения отдаются nginx напрямую из storage/app/public (storage:link не обязателен)
 docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder --force
 docker compose exec backend php artisan config:cache
 docker compose exec backend php artisan route:cache
@@ -663,7 +663,7 @@ git clone https://github.com/nik1t78/BCS.git vks && cd vks
 bash ./setup-project.sh                # каркас Laravel + .env + APP_KEY
 docker compose up -d --build
 docker compose exec backend php artisan migrate --force
-docker compose exec backend php artisan storage:link
+# вложения отдаются nginx напрямую из storage/app/public (storage:link не обязателен)
 docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder --force
 docker compose exec backend php artisan optimize
 sudo systemctl enable docker           # автозапуск после перезагрузки
