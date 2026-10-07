@@ -8,84 +8,9 @@ export function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substr(2);
 }
 
-// ============ DEMO DATA ============
-export function initializeDemoData(): void {
-  const existing = getUsers();
-  if (existing.length > 0) return;
-
-  createAdminUser();
-}
-
-export function createAdminUser(): void {
-  const adminId = generateId();
-
-  // Создаём администратора со статическим паролем
-  const adminUser: User = {
-    id: adminId,
-    name: 'Администратор Системы',
-    login: 'admin',
-    password: 'admin123', // Статический пароль - смените после первого входа!
-    role: 'admin',
-    phone: '',
-    department: 'IT',
-    position: 'Системный администратор',
-    createdAt: new Date().toISOString(),
-    isActive: true,
-  };
-
-  const users = getUsers();
-  users.push(adminUser);
-  localStorage.setItem('vks_users', JSON.stringify(users));
-
-  // Пустой список конференций при первом запуске
-  localStorage.setItem('vks_meetings', JSON.stringify([]));
-}
-
-export function forceReset(): void {
-  localStorage.clear();
-  createAdminUser();
-}
-
-export function getAdminTempPassword(): string | null {
-  return localStorage.getItem('vks_admin_temp_password');
-}
-
-export function clearAdminTempPassword(): void {
-  localStorage.removeItem('vks_admin_temp_password');
-}
-
-export function mustChangePassword(userId: string): boolean {
-  const users = getUsers();
-  const user = users.find(u => u.id === userId);
-  return user?.mustChangePassword || false;
-}
-
-export function setPasswordChanged(userId: string): void {
-  const users = getUsers();
-  const updated = users.map(u => u.id === userId ? { ...u, mustChangePassword: false } : u);
-  localStorage.setItem('vks_users', JSON.stringify(updated));
-  
-  // Обновляем текущего пользователя если это он
-  const currentUser = getCurrentUser();
-  if (currentUser && currentUser.id === userId) {
-    const updatedUser = { ...currentUser, mustChangePassword: false };
-    localStorage.setItem('vks_auth', JSON.stringify({ token: getToken(), user: updatedUser }));
-  }
-}
-
-// THEME
-export function getTheme(): 'light' | 'dark' {
-  return (localStorage.getItem('vks_theme') as 'light' | 'dark') || 'light';
-}
-
-export function setTheme(theme: 'light' | 'dark'): void {
-  localStorage.setItem('vks_theme', theme);
-  document.documentElement.classList.toggle('dark', theme === 'dark');
-}
-
-// TEMPLATES
-export function getTemplates(): any[] {
-  const data = localStorage.getItem('vks_templates');
+// USERS
+export function getUsers(): User[] {
+  const data = localStorage.getItem("vks_users");
   return data ? JSON.parse(data) : [];
 }
 
