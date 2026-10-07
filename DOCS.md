@@ -216,9 +216,12 @@ lint → format check → typecheck → build (+ тесты бэкенда).
 | 👤 Пользователь | `ivanov`    | `ivanov123`  | Разработка | Frontend Developer |
 | 👤 Пользователь | `petrova`   | `petrova123` | Менеджмент | Project Manager |
 
-⚠️ **Важно:** старые пароли `admin123` / `user123` / `mod123` из устаревших инструкций
-(демо-аккаунты вида `admin@vks.local`) **больше не действуют** — они были удалены из
-проекта; актуальные доступы — только из таблицы выше (пароль = логин + `123`).
+⚠️ **Важно:** актуальные доступы — только из таблицы выше (пароль = логин + `123`).
+Старые схемы (`vks_2026`, демо-аккаунты вида `admin@vks.local`, `user123`, `mod123`)
+из устаревших инструкций **больше не действуют**. Если при входе получаете 422
+«Неверный логин или пароль» — выполните заново сидирование (п.7 инструкции раздела 8):
+`docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder --force`
+— оно перезапишет корректные bcrypt-хэши.
 
 В продакшене смените пароли (Админка → пользователи) и включите политику смены
 пароля при первом входе (`must_change_password`). Регистрация новых сотрудников —
@@ -445,6 +448,58 @@ gunzip -c backend/storage/app/backups/backup-ДАТА.sql.gz | \
 ---
 
 ## 8. Диагностика типовых ошибок
+
+### Полная пошаговая инструкция «с нуля» (Windows, PowerShell) — делайте строго по порядку
+
+```powershell
+# 1. Свежий код (настраиваем ветку main один раз):
+cd D:\server\BCS-main
+git fetch origin main
+git branch --set-upstream-to=origin/main main   # убирает "There is no tracking information"
+git reset --hard origin/main                    # локальная main = актуальный GitHub
+git pull                                        # теперь просто git pull работает сам
+
+# 2. Удалить битый симлинк, если он остался на диске (ломает docker build:
+#    "failed to solve: invalid file request public/storage"):
+Remove-Item -Force -Recurse backend\public\storage -ErrorAction SilentlyContinue
+
+# 3. ОСТАНОВИТЬ контейнеры БЕЗ флага -v !!! (-v удаляет базу данных MySQL!)
+docker compose down
+
+# 4. Настройка проекта (конфиги Laravel, .env, APP_KEY):
+powershell -ExecutionPolicy Bypass -File .\setup-project.ps1
+
+# 5. Сборка и запуск всех сервисов:
+docker compose up -d --build
+
+# 6. Дождаться запуска mysql (STATUS = healthy), проверить:
+docker compose ps
+
+# 7. Миграции + демо-данные (пароли login+123):
+docker compose exec backend php artisan migrate --force
+docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder --force
+
+# 8. Кэши конфигурации и маршрутов (команду storage:link НЕ выполнять — не нужна):
+docker compose exec backend php artisan config:cache
+docker compose exec backend php artisan route:cache
+
+# 9. Открыть в браузере http://10.48.4.235/ или http://localhost/
+#    Если фронт «не догрузился» / старые шрифты — Ctrl+F5 (жёсткая перезагрузка).
+```
+
+Если доступ из сети не работает — разрешите порт 80 в брандмауэре Windows:
+```powershell
+New-NetFirewallRule -DisplayName 'VKS web' -Direction Inbound -Protocol TCP -LocalPort 80
+```
+
+### Ошибка сборки: `failed to solve: invalid file request public/storage`
+
+Причина: в git был закоммичен файл-симлинк `backend/public/storage`, который на Windows
+распаковывается как обычный файл и ломает сборку Docker-образа backend. Исправлено
+(коммит `8bbff146`): симлинк удалён из репозитория, nginx отдаёт вложения напрямую из
+`storage/app/public`. Что делать: обновить код (`git pull`) и удалить остаток с диска
+(`Remove-Item backend\public\storage`). Команду `php artisan storage:link` больше
+запускать не нужно.
 
 ### Ошибка миграции: `Base table or view already exists: 1050 Table 'users' already exists`
 
