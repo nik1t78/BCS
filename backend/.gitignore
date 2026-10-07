@@ -1,0 +1,13 @@
+# Локальные секреты (токены ботов) — не коммитить
+.env
+.env.*
+!.env.example
+!.env.dev.example
+storage/*.key
+
+# Composer-зависимости (в docker-среде vendor живёт в volume backend_vendor)
+vendor/
+
+# Логи и данные SQLite
+database/*.sqlite
+database/*.sqlite-journal

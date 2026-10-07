@@ -1,59 +1,66 @@
-import React, { useState } from 'react';
-import { login, register } from '../store';
+import React, { useState } from "react";
+import { login, register } from "../store-api";
 
 interface AuthPageProps {
   onLogin: () => void;
 }
 
 export default function AuthPage({ onLogin }: AuthPageProps) {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [loginValue, setLoginValue] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [department, setDepartment] = useState('');
-  const [error, setError] = useState('');
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [loginValue, setLoginValue] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [department, setDepartment] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setLoading(true);
-    
-    setTimeout(() => {
-      const result = login(loginValue, password);
+
+    try {
+      const result = await login(loginValue, password);
       if (result.success) {
         onLogin();
       } else {
-        setError(result.error || 'Ошибка входа');
+        setError(result.error || "Ошибка входа");
       }
+    } catch (error: any) {
+      setError(error.message || "Ошибка входа");
+    } finally {
       setLoading(false);
-    }, 500);
+    }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    
+    setError("");
+
     if (!name || !loginValue || !password) {
-      setError('Заполните все обязательные поля');
+      setError("Заполните все обязательные поля");
       return;
     }
     if (password.length < 6) {
-      setError('Пароль должен быть не менее 6 символов');
+      setError("Пароль должен быть не менее 6 символов");
       return;
     }
 
     setLoading(true);
-    setTimeout(() => {
-      const result = register(name, loginValue, password, phone, department);
+
+    try {
+      const result = await register(name, loginValue, password, phone, department);
       if (result.success) {
         onLogin();
       } else {
-        setError(result.error || 'Ошибка регистрации');
+        setError(result.error || "Ошибка регистрации");
       }
+    } catch (error: any) {
+      setError(error.message || "Ошибка регистрации");
+    } finally {
       setLoading(false);
-    }, 500);
+    }
   };
 
   return (
@@ -94,7 +101,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
             </div>
           )}
 
-          {mode === 'login' ? (
+          {mode === "login" ? (
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Логин</label>

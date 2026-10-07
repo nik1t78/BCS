@@ -12,6 +12,7 @@ class Notification extends Model
     protected $fillable = [
         'user_id',
         'meeting_id',
+        'title',
         'message',
         'type',
         'read',
@@ -20,6 +21,44 @@ class Notification extends Model
     protected $casts = [
         'read' => 'boolean',
     ];
+
+    /**
+     * После создания in-app уведомления — продублировать его в мессенджер
+     * (MAX) получателя, если он привязан и интеграция включена.
+     */
+    protected static function booted(): void
+    {
+        static::created(function (Notification $notification) {
+            // Realtime: мгновенная доставка в канал пользователя
+            // (SSE /api/notifications/stream). Публикуем ДО дублирования в
+            // мессенджер и вне зависимости от него — это лёгкая запись в Redis.
+            try {
+                app(\App\Services\RealtimeNotifier::class)->publish(
+                    (int) $notification->user_id,
+                    [
+                        'id' => (string) $notification->id,
+                        'message' => $notification->message,
+                        'type' => $notification->type,
+                        'meeting_id' => $notification->meeting_id !== null ? (string) $notification->meeting_id : null,
+                        'timestamp' => optional($notification->created_at)->toIso8601String(),
+                    ]
+                );
+            } catch (\Throwable $e) {
+                // нет Redis / не тот драйвер очереди — молча продолжаем (поллинг работает)
+            }
+
+            try {
+                if (\App\Services\MessengerNotifier::isEnabled()) {
+                    $user = $notification->user()->first();
+                    if ($user) {
+                        \App\Services\MessengerNotifier::notifyMeeting($user, $notification);
+                    }
+                }
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Messenger delivery failed: ' . $e->getMessage());
+            }
+        });
+    }
 
     /**
      * Пользователь уведомления

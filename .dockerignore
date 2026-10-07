@@ -1,0 +1,10 @@
+# Максимально уменьшаем контекст сборки: node_modules и артефакты не отправляются
+# на docker-демон (иначе сборка frontend может занимать минуты и гигабайты RAM)
+node_modules
+dist
+.git
+docker/mysql/data
+backend/vendor
+backend/storage/logs
+*.log
+*.bundle

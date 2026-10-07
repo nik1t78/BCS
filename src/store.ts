@@ -1,188 +1,9 @@
-import { User, Meeting, Notification, Settings } from './types';
+// Простой store с localStorage для локальной работы
+import { User, Meeting, Notification, Tag, MeetingTemplate } from "./types";
 
-const USERS_KEY = 'vks_users';
-const MEETINGS_KEY = 'vks_meetings';
-const NOTIFICATIONS_KEY = 'vks_notifications';
-const SETTINGS_KEY = 'vks_settings';
-const AUTH_KEY = 'vks_auth';
+export type { User, Meeting, Notification, Tag, MeetingTemplate };
 
-export const defaultSettings: Settings = {
-  soundEnabled: true,
-  browserNotifications: true,
-  defaultReminderMinutes: 15,
-  workHoursStart: '09:00',
-  workHoursEnd: '18:00',
-};
-
-// AUTH
-export function getCurrentUser(): User | null {
-  const data = localStorage.getItem(AUTH_KEY);
-  if (!data) return null;
-  const auth = JSON.parse(data);
-  return auth.user || null;
-}
-
-export function getToken(): string | null {
-  const data = localStorage.getItem(AUTH_KEY);
-  if (!data) return null;
-  return JSON.parse(data).token;
-}
-
-export function login(login: string, password: string): { success: boolean; user?: User; error?: string } {
-  const users = getUsers();
-  const user = users.find(u => u.login.toLowerCase() === login.toLowerCase() && u.password === password);
-  if (!user) return { success: false, error: 'Неверный логин или пароль' };
-  if (!user.isActive) return { success: false, error: 'Аккаунт заблокирован' };
-
-  const token = 'tok_' + Date.now().toString(36) + Math.random().toString(36).substr(2);
-  const updatedUser = { ...user, lastLogin: new Date().toISOString() };
-  
-  const usersUpdated = users.map(u => u.id === user.id ? updatedUser : u);
-  localStorage.setItem(USERS_KEY, JSON.stringify(usersUpdated));
-  localStorage.setItem(AUTH_KEY, JSON.stringify({ token, user: updatedUser }));
-  
-  return { success: true, user: updatedUser };
-}
-
-export function register(name: string, login: string, password: string, phone?: string, department?: string): { success: boolean; user?: User; error?: string } {
-  const users = getUsers();
-  if (users.find(u => u.login.toLowerCase() === login.toLowerCase())) {
-    return { success: false, error: 'Пользователь с таким логином уже существует' };
-  }
-
-  const newUser: User = {
-    id: generateId(),
-    name,
-    login,
-    password,
-    role: 'user',
-    phone: phone || '',
-    department: department || '',
-    position: '',
-    createdAt: new Date().toISOString(),
-    isActive: true,
-  };
-
-  users.push(newUser);
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
-
-  const token = 'tok_' + Date.now().toString(36) + Math.random().toString(36).substr(2);
-  localStorage.setItem(AUTH_KEY, JSON.stringify({ token, user: newUser }));
-
-  return { success: true, user: newUser };
-}
-
-export function logout(): void {
-  localStorage.removeItem(AUTH_KEY);
-}
-
-export function updateProfile(user: User): void {
-  const users = getUsers();
-  const updated = users.map(u => u.id === user.id ? user : u);
-  localStorage.setItem(USERS_KEY, JSON.stringify(updated));
-  localStorage.setItem(AUTH_KEY, JSON.stringify({ token: getToken(), user }));
-}
-
-// USERS
-export function getUsers(): User[] {
-  const data = localStorage.getItem(USERS_KEY);
-  return data ? JSON.parse(data) : [];
-}
-
-export function updateUser(user: User): void {
-  const users = getUsers();
-  const updated = users.map(u => u.id === user.id ? user : u);
-  localStorage.setItem(USERS_KEY, JSON.stringify(updated));
-}
-
-export function deleteUser(id: string): void {
-  const users = getUsers().filter(u => u.id !== id);
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
-}
-
-export function changeUserRole(id: string, role: User['role']): void {
-  const users = getUsers();
-  const updated = users.map(u => u.id === id ? { ...u, role } : u);
-  localStorage.setItem(USERS_KEY, JSON.stringify(updated));
-}
-
-export function toggleUserActive(id: string): void {
-  const users = getUsers();
-  const updated = users.map(u => u.id === id ? { ...u, isActive: !u.isActive } : u);
-  localStorage.setItem(USERS_KEY, JSON.stringify(updated));
-}
-
-// MEETINGS
-export function getMeetings(): Meeting[] {
-  const data = localStorage.getItem(MEETINGS_KEY);
-  return data ? JSON.parse(data) : [];
-}
-
-export function saveMeetings(meetings: Meeting[]): void {
-  localStorage.setItem(MEETINGS_KEY, JSON.stringify(meetings));
-}
-
-export function addMeeting(meeting: Meeting): void {
-  const meetings = getMeetings();
-  meetings.push(meeting);
-  saveMeetings(meetings);
-}
-
-export function updateMeeting(updated: Meeting): void {
-  const meetings = getMeetings();
-  const index = meetings.findIndex(m => m.id === updated.id);
-  if (index !== -1) {
-    meetings[index] = updated;
-    saveMeetings(meetings);
-  }
-}
-
-export function deleteMeeting(id: string): void {
-  const meetings = getMeetings().filter(m => m.id !== id);
-  saveMeetings(meetings);
-}
-
-// NOTIFICATIONS
-export function getNotifications(): Notification[] {
-  const data = localStorage.getItem(NOTIFICATIONS_KEY);
-  return data ? JSON.parse(data) : [];
-}
-
-export function getUserNotifications(userId: string): Notification[] {
-  return getNotifications().filter(n => n.userId === userId);
-}
-
-export function saveNotifications(notifications: Notification[]): void {
-  localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(notifications));
-}
-
-export function addNotification(notification: Notification): void {
-  const notifications = getNotifications();
-  notifications.unshift(notification);
-  if (notifications.length > 200) notifications.length = 200;
-  saveNotifications(notifications);
-}
-
-export function markNotificationRead(id: string): void {
-  const notifications = getNotifications().map(n => n.id === id ? { ...n, read: true } : n);
-  saveNotifications(notifications);
-}
-
-export function markAllNotificationsRead(userId: string): void {
-  const notifications = getNotifications().map(n => n.userId === userId ? { ...n, read: true } : n);
-  saveNotifications(notifications);
-}
-
-// SETTINGS
-export function getSettings(): Settings {
-  const data = localStorage.getItem(SETTINGS_KEY);
-  return data ? JSON.parse(data) : defaultSettings;
-}
-
-export function saveSettings(settings: Settings): void {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-}
-
+// Генерация ID
 export function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substr(2);
 }
@@ -268,73 +89,407 @@ export function getTemplates(): any[] {
   return data ? JSON.parse(data) : [];
 }
 
-export function addTemplate(template: any): void {
-  const templates = getTemplates();
-  templates.push(template);
-  localStorage.setItem('vks_templates', JSON.stringify(templates));
+export function saveUsers(users: User[]): void {
+  localStorage.setItem("vks_users", JSON.stringify(users));
 }
 
-export function updateTemplate(updated: any): void {
-  const templates = getTemplates();
-  const index = templates.findIndex((t: any) => t.id === updated.id);
-  if (index !== -1) {
-    templates[index] = updated;
-    localStorage.setItem('vks_templates', JSON.stringify(templates));
-  }
+export function createUser(user: Omit<User, "id" | "createdAt">): User {
+  const users = getUsers();
+  const newUser: User = {
+    ...user,
+    id: generateId(),
+    createdAt: new Date().toISOString(),
+  };
+  users.push(newUser);
+  saveUsers(users);
+  return newUser;
 }
 
-export function deleteTemplate(id: string): void {
-  const templates = getTemplates().filter((t: any) => t.id !== id);
-  localStorage.setItem('vks_templates', JSON.stringify(templates));
+export function updateUser(id: string, data: Partial<User>): User | null {
+  const users = getUsers();
+  const index = users.findIndex((u) => u.id === id);
+  if (index === -1) return null;
+  users[index] = { ...users[index], ...data };
+  saveUsers(users);
+  return users[index];
 }
 
-// TAGS
-export function getTags(): any[] {
-  const data = localStorage.getItem('vks_tags');
+export function deleteUser(id: string): boolean {
+  const users = getUsers();
+  const filtered = users.filter((u) => u.id !== id);
+  if (filtered.length === users.length) return false;
+  saveUsers(filtered);
+  return true;
+}
+
+export function toggleUserActive(id: string): User | null {
+  const users = getUsers();
+  const user = users.find((u) => u.id === id);
+  if (!user) return null;
+  user.isActive = !user.isActive;
+  saveUsers(users);
+  return user;
+}
+
+export function changeUserRole(id: string, role: User["role"]): User | null {
+  return updateUser(id, { role });
+}
+
+export function resetUserPassword(id: string, password: string): User | null {
+  return updateUser(id, { password });
+}
+
+// MEETINGS
+export function getMeetings(): Meeting[] {
+  const data = localStorage.getItem("vks_meetings");
+  return data ? (JSON.parse(data) as Meeting[]) : [];
+}
+
+export function saveMeetings(meetings: Meeting[]): void {
+  localStorage.setItem("vks_meetings", JSON.stringify(meetings));
+}
+
+export function createMeeting(meeting: Omit<Meeting, "id" | "createdAt">): Meeting {
+  const meetings = getMeetings();
+  const newMeeting: Meeting = {
+    ...meeting,
+    id: generateId(),
+    createdAt: new Date().toISOString(),
+  };
+  meetings.push(newMeeting);
+  saveMeetings(meetings);
+
+  // Создаём уведомления для участников
+  meeting.participants.forEach((participantId) => {
+    if (participantId !== meeting.organizerId) {
+      addNotification({
+        userId: participantId,
+        meetingId: newMeeting.id,
+        message: `👤 Вас добавили в конференцию "${meeting.title}"`,
+        type: "user-added",
+        timestamp: new Date().toISOString(),
+        read: false,
+      });
+    }
+  });
+
+  return newMeeting;
+}
+
+export function updateMeeting(id: string, data: Partial<Meeting>): Meeting | null {
+  const meetings = getMeetings();
+  const index = meetings.findIndex((m) => m.id === id);
+  if (index === -1) return null;
+  meetings[index] = { ...meetings[index], ...data };
+  saveMeetings(meetings);
+  return meetings[index];
+}
+
+export function deleteMeeting(id: string): boolean {
+  const meetings = getMeetings();
+  const filtered = meetings.filter((m) => m.id !== id);
+  if (filtered.length === meetings.length) return false;
+  saveMeetings(filtered);
+  return true;
+}
+
+// NOTIFICATIONS
+export function getNotifications(): Notification[] {
+  const data = localStorage.getItem("vks_notifications");
   return data ? JSON.parse(data) : [];
 }
 
-export function addTag(tag: any): void {
-  const tags = getTags();
-  tags.push(tag);
-  localStorage.setItem('vks_tags', JSON.stringify(tags));
+export function saveNotifications(notifications: Notification[]): void {
+  localStorage.setItem("vks_notifications", JSON.stringify(notifications));
 }
 
-export function updateTag(updated: any): void {
-  const tags = getTags();
-  const index = tags.findIndex((t: any) => t.id === updated.id);
-  if (index !== -1) {
-    tags[index] = updated;
-    localStorage.setItem('vks_tags', JSON.stringify(tags));
+export function addNotification(notification: Omit<Notification, "id">): Notification {
+  const notifications = getNotifications();
+  const newNotification: Notification = {
+    ...notification,
+    id: generateId(),
+  };
+  notifications.unshift(newNotification);
+  saveNotifications(notifications);
+  return newNotification;
+}
+
+export function markNotificationRead(id: string): void {
+  const notifications = getNotifications();
+  const notification = notifications.find((n) => n.id === id);
+  if (notification) {
+    notification.read = true;
+    saveNotifications(notifications);
   }
 }
 
-export function deleteTag(id: string): void {
-  const tags = getTags().filter((t: any) => t.id !== id);
-  localStorage.setItem('vks_tags', JSON.stringify(tags));
+export function markAllNotificationsRead(): void {
+  const notifications = getNotifications();
+  notifications.forEach((n) => (n.read = true));
+  saveNotifications(notifications);
 }
 
-// ATTACHMENTS
-export function getAttachments(meetingId?: string): any[] {
-  const data = localStorage.getItem('vks_attachments');
-  const attachments = data ? JSON.parse(data) : [];
-  return meetingId ? attachments.filter((a: any) => a.meetingId === meetingId) : attachments;
+export function clearAllNotifications(): void {
+  saveNotifications([]);
 }
 
-export function addAttachment(attachment: any): void {
-  const attachments = getAttachments();
-  attachments.push(attachment);
-  localStorage.setItem('vks_attachments', JSON.stringify(attachments));
+// TAGS
+export function getTags(): Tag[] {
+  const data = localStorage.getItem("vks_tags");
+  return data ? JSON.parse(data) : [];
 }
 
-export function deleteAttachment(id: string): void {
-  const attachments = getAttachments().filter((a: any) => a.id !== id);
-  localStorage.setItem('vks_attachments', JSON.stringify(attachments));
+export function createTag(tag: Omit<Tag, "id">): Tag {
+  const tags = getTags();
+  const newTag: Tag = {
+    ...tag,
+    id: generateId(),
+  };
+  tags.push(newTag);
+  localStorage.setItem("vks_tags", JSON.stringify(tags));
+  return newTag;
 }
 
-// HISTORY
-export function getHistory(meetingId?: string): any[] {
-  const data = localStorage.getItem('vks_history');
-  const history = data ? JSON.parse(data) : [];
-  return meetingId ? history.filter((h: any) => h.meetingId === meetingId) : history;
+export function updateTag(id: string, data: Partial<Tag>): Tag | null {
+  const tags = getTags();
+  const index = tags.findIndex((t) => t.id === id);
+  if (index === -1) return null;
+  tags[index] = { ...tags[index], ...data };
+  localStorage.setItem("vks_tags", JSON.stringify(tags));
+  return tags[index];
+}
+
+export function deleteTag(id: string): boolean {
+  const tags = getTags();
+  const filtered = tags.filter((t) => t.id !== id);
+  if (filtered.length === tags.length) return false;
+  localStorage.setItem("vks_tags", JSON.stringify(filtered));
+  return true;
+}
+
+// TEMPLATES
+export function getTemplates(): MeetingTemplate[] {
+  const data = localStorage.getItem("vks_templates");
+  return data ? JSON.parse(data) : [];
+}
+
+export function createTemplate(template: Omit<MeetingTemplate, "id">): MeetingTemplate {
+  const templates = getTemplates();
+  const newTemplate: MeetingTemplate = {
+    ...template,
+    id: generateId(),
+  };
+  templates.push(newTemplate);
+  localStorage.setItem("vks_templates", JSON.stringify(templates));
+  return newTemplate;
+}
+
+export function updateTemplate(id: string, data: Partial<MeetingTemplate>): MeetingTemplate | null {
+  const templates = getTemplates();
+  const index = templates.findIndex((t) => t.id === id);
+  if (index === -1) return null;
+  templates[index] = { ...templates[index], ...data };
+  localStorage.setItem("vks_templates", JSON.stringify(templates));
+  return templates[index];
+}
+
+export function deleteTemplate(id: string): boolean {
+  const templates = getTemplates();
+  const filtered = templates.filter((t) => t.id !== id);
+  if (filtered.length === templates.length) return false;
+  localStorage.setItem("vks_templates", JSON.stringify(filtered));
+  return true;
+}
+
+// AUTH
+export function login(login: string, password: string): { success: boolean; user?: User; error?: string } {
+  const users = getUsers();
+  const user = users.find((u) => u.login === login && u.password === password);
+  if (!user) {
+    return { success: false, error: "Неверный логин или пароль" };
+  }
+  if (!user.isActive) {
+    return { success: false, error: "Аккаунт заблокирован" };
+  }
+  localStorage.setItem("vks_current_user", JSON.stringify(user));
+  return { success: true, user };
+}
+
+export function register(
+  name: string,
+  login: string,
+  password: string,
+  phone?: string,
+  department?: string
+): { success: boolean; user?: User; error?: string } {
+  const users = getUsers();
+  if (users.find((u) => u.login === login)) {
+    return { success: false, error: "Пользователь с таким логином уже существует" };
+  }
+  const newUser = createUser({
+    name,
+    login,
+    password,
+    role: "user",
+    phone,
+    department,
+    isActive: true,
+  });
+  localStorage.setItem("vks_current_user", JSON.stringify(newUser));
+  return { success: true, user: newUser };
+}
+
+export function logout(): void {
+  localStorage.removeItem("vks_current_user");
+}
+
+export function getCurrentUser(): User | null {
+  const data = localStorage.getItem("vks_current_user");
+  return data ? JSON.parse(data) : null;
+}
+
+export function updateProfile(data: Partial<User>): User | null {
+  const currentUser = getCurrentUser();
+  if (!currentUser) return null;
+  const updated = updateUser(currentUser.id, data);
+  if (updated) {
+    localStorage.setItem("vks_current_user", JSON.stringify(updated));
+  }
+  return updated;
+}
+
+export function changePassword(currentPassword: string, newPassword: string): boolean {
+  const currentUser = getCurrentUser();
+  if (!currentUser || currentUser.password !== currentPassword) {
+    return false;
+  }
+  updateUser(currentUser.id, { password: newPassword });
+  return true;
+}
+
+// THEME
+export function getTheme(): "light" | "dark" {
+  return (localStorage.getItem("vks_theme") as "light" | "dark") || "light";
+}
+
+export function setTheme(theme: "light" | "dark"): void {
+  localStorage.setItem("vks_theme", theme);
+  document.documentElement.classList.toggle("dark", theme === "dark");
+}
+
+// INIT DEMO DATA
+export function initializeDemoData(): void {
+  const users = getUsers();
+  if (users.length > 0) return;
+
+  // Создаём администратора
+  const admin = createUser({
+    name: "Администратор Системы",
+    login: "admin",
+    password: "vks_2026",
+    role: "admin",
+    phone: "+7 (999) 000-00-01",
+    department: "IT",
+    position: "Системный администратор",
+    isActive: true,
+  });
+
+  // Создаём модератора
+  const moderator = createUser({
+    name: "Сидоров Константин Львович",
+    login: "moderator",
+    password: "vks_2026",
+    role: "moderator",
+    phone: "+7 (999) 333-44-55",
+    department: "HR",
+    position: "HR Manager",
+    isActive: true,
+  });
+
+  // Создаём тестовых пользователей
+  const ivanov = createUser({
+    name: "Иванов Алексей Сергеевич",
+    login: "ivanov",
+    password: "vks_2026",
+    role: "user",
+    phone: "+7 (999) 111-22-33",
+    department: "Разработка",
+    position: "Frontend Developer",
+    isActive: true,
+  });
+
+  const petrova = createUser({
+    name: "Петрова Мария Владимировна",
+    login: "petrova",
+    password: "vks_2026",
+    role: "user",
+    phone: "+7 (999) 222-33-44",
+    department: "Менеджмент",
+    position: "Project Manager",
+    isActive: true,
+  });
+
+  // Создаём тестовые конференции
+  const today = new Date().toISOString().split("T")[0];
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().split("T")[0];
+
+  createMeeting({
+    title: "Еженедельный стендап",
+    description: "Обсуждение прогресса команды",
+    date: today,
+    startTime: "10:00",
+    endTime: "10:30",
+    organizerId: petrova.id,
+    participants: [ivanov.id, petrova.id, moderator.id],
+    link: "https://meet.google.com/abc-defg-hij",
+    room: "Переговорная №1",
+    status: "scheduled",
+    priority: "high",
+    reminderMinutes: 15,
+    recurring: "weekly",
+    isPrivate: false,
+  });
+
+  createMeeting({
+    title: "Обзор проекта Q4",
+    description: "Презентация результатов квартала",
+    date: today,
+    startTime: "14:00",
+    endTime: "15:30",
+    organizerId: admin.id,
+    participants: [ivanov.id, petrova.id],
+    link: "https://zoom.us/j/123456789",
+    room: "Конференц-зал А",
+    status: "scheduled",
+    priority: "high",
+    reminderMinutes: 30,
+    recurring: "none",
+    isPrivate: false,
+  });
+
+  createMeeting({
+    title: "Дизайн-ревью",
+    description: "Обсуждение нового интерфейса",
+    date: tomorrow,
+    startTime: "11:00",
+    endTime: "12:00",
+    organizerId: ivanov.id,
+    participants: [ivanov.id, petrova.id],
+    link: "https://teams.microsoft.com/meet/123",
+    room: "Онлайн",
+    status: "scheduled",
+    priority: "medium",
+    reminderMinutes: 15,
+    recurring: "none",
+    isPrivate: false,
+  });
+}
+
+// Инициализация при загрузке
+initializeDemoData();
+
+// Сброс всех данных
+export function forceReset(): void {
+  localStorage.clear();
+  initializeDemoData();
 }

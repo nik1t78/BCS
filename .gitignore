@@ -1,38 +1,19 @@
-# Dependencies
+# Зависимости (ставятся через npm install / composer install)
 node_modules/
 backend/vendor/
 
-# Build
-dist/
-
-# Environment
+# Локальные секреты — НИКОГДА не коммитить! Только .env.example в git.
 .env
-.env.local
-.env.*.local
+backend/.env
 
-# Logs
-logs/
-*.log
-npm-debug.log*
-
-# OS
-.DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Docker
+# Данные MySQL (bind-mount) — локальное хранилище на сервере, в git не нужен
 docker/mysql/data/
 
-# Backend
-backend/storage/logs/*
-backend/storage/framework/cache/*
-backend/storage/framework/sessions/*
-backend/storage/framework/views/*
-!backend/storage/logs/.gitkeep
-.next/
-build/
+# Артефакты сборки (создаются docker/Dockerfile при запуске)
+dist/
+
+# Логи и временные файлы
+*.log
+storage/logs/*.log
+.DS_Store
+Thumbs.db

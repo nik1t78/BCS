@@ -13,15 +13,17 @@ class User extends Authenticatable
 
     protected $fillable = [
         'name',
-        'email',
+        'login',
         'password',
         'role',
         'phone',
+        'max_chat_id',
         'department',
         'position',
         'avatar',
         'is_active',
         'last_login',
+        'must_change_password',
     ];
 
     protected $hidden = [
@@ -30,7 +32,6 @@ class User extends Authenticatable
     ];
 
     protected $casts = [
-        'email_verified_at' => 'datetime',
         'last_login' => 'datetime',
         'password' => 'hashed',
         'is_active' => 'boolean',
