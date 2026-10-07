@@ -107,7 +107,7 @@ services:
       # Наружный порт берётся из .env (переменная HTTP_PORT).
       # Чтобы сайт открывался без порта (http://10.48.4.235/), поставьте HTTP_PORT=80.
       # listen_ip задайте в .env как 127.0.0.1, если доступ нужен только с этой машины.
-      - "${listen_ip:-0.0.0.0}:${HTTP_PORT:-80}:80"
+      - "${listen_ip:-0.0.0.0}:80:80"
     volumes:
       # Long (explicit) syntax — immune to the legacy docker-compose v1
       # "too many colons" parser bug triggered by Windows drive paths.
