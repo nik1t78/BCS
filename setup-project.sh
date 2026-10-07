@@ -90,6 +90,9 @@ if [ ! -f "$ROOT/.env" ]; then
     # В скачанном архиве .env.example может отсутствовать (он совпадает по имени
     # с gitignore-маской) — создаём минимальный файл, иначе compose не соберётся.
     cat > "$ROOT/.env" <<'EOF'
+# Сайт по адресу http://<IP машины>/ без порта — Nginx на 80 порту
+HTTP_PORT=80
+listen_ip=0.0.0.0
 APP_KEY=
 APP_ENV=production
 APP_DEBUG=false
@@ -107,6 +110,20 @@ else
   skip "уже существует"
 fi
 
+# IP этой машины — чтобы Laravel (APP_URL) и ссылки генерировались по http://<IP>/
+MYIP=$(hostname -I 2>/dev/null | awk '{print $1}')
+if [ -n "$MYIP" ]; then
+  for f in "$ROOT/.env" "$BACKEND/.env"; do
+    if grep -qE '^SITE_IP=' "$f"; then
+      sed -i.bak "s|^SITE_IP=.*|SITE_IP=$MYIP|" "$f" && rm -f "$f.bak"
+    else
+      printf 'SITE_IP=%s\n' "$MYIP" >>"$f"
+    fi
+  done
+  grep -qE '^APP_URL=' "$BACKEND/.env" || printf 'APP_URL=http://%s\n' "$MYIP" >>"$BACKEND/.env"
+  ok "SITE_IP=$MYIP записан в .env (сайт будет по http://$MYIP/)"
+fi
+
 BK="$(grep -m1 -E '^APP_KEY=' "$BACKEND/.env" | cut -d= -f2- | tr -d '\r' || true)"
 if [ -n "$BK" ] && ! grep -qE '^APP_KEY=..*' "$ROOT/.env"; then
   grep -qE '^APP_KEY=' "$ROOT/.env" || printf 'APP_KEY=\n' >>"$ROOT/.env"
@@ -115,5 +132,17 @@ if [ -n "$BK" ] && ! grep -qE '^APP_KEY=..*' "$ROOT/.env"; then
 fi
 
 printf '\n\033[1;36mГотово. Следующая команда:\033[0m\n    docker compose up -d --build\n'
+echo
+PORT=$(grep -E '^HTTP_PORT=' .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\r')
+[ -n "$PORT" ] || PORT=80
+MYIP=$(hostname -I 2>/dev/null | awk '{print $1}')
+[ -n "$MYIP" ] || MYIP='<IP этой машины>'
+if [ "$PORT" = "80" ]; then
+  echo "Для пользователей сайт будет по адресу: http://$MYIP/"
+else
+  echo "Для пользователей сайт будет по адресу: http://$MYIP:$PORT"
+  echo "Чтобы адрес был без порта (http://IP/), поставьте в .env HTTP_PORT=80"
+fi
+echo "IP этой машины: $(hostname -I 2>/dev/null || ipconfig getifaddr en0 2>/dev/null || echo '<посмотрите через ip a / ifconfig>')"
 echo
 echo "Проверьте в .env значения DB_PASSWORD / DB_ROOT_PASSWORD / REDIS_PASSWORD и MAX_BOT_TOKEN."
