@@ -28,6 +28,31 @@ return Application::configure(basePath: dirname(__DIR__))
             'sanctum/csrf-cookie',
         ]);
     })
+    ->withSchedule(function (Illuminate\Console\Scheduling\Schedule $schedule) {
+        // ВАЖНО: в Laravel 11+/12 планировщик подключается ТОЛЬКО здесь
+        // (bootstrap/app.php). Метод schedule() в App\Console\Kernel игнорируется —
+        // из-за этого напоминания о встречах и уведомления участникам не создавались.
+        $schedule->command('meetings:send-reminders')
+                 ->everyMinute()
+                 ->withoutOverlapping()
+                 ->runInBackground();
+
+        $schedule->command('meetings:send-notifications')
+                 ->everyFifteenMinutes()
+                 ->withoutOverlapping();
+
+        $schedule->command('notifications:cleanup')
+                 ->daily()
+                 ->at('03:00');
+
+        $schedule->command('analytics:daily')
+                 ->daily()
+                 ->at('00:15');
+
+        $schedule->command('db:backup --keep=14')
+                 ->dailyAt('02:30')
+                 ->withoutOverlapping();
+    })
     ->withExceptions(function (Exceptions $exceptions) {
         //
     })->create();

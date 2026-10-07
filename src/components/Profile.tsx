@@ -103,13 +103,17 @@ export default function Profile({ user, onUpdate }: ProfileProps) {
   const [passwordSuccess, setPasswordSuccess] = useState("");
 
   const handleSave = async () => {
-    const updatedUser = await updateProfile({
-      name: formData.name,
-      phone: formData.phone,
-      department: formData.department,
-      position: formData.position,
-      avatar: avatar || undefined,
-    });
+    // Отправляем ТОЛЬКО реально изменённые поля. Иначе пустые строки
+    // (phone/department/position) проходят валидацию как nullable и затирают
+    // уже сохранённые значения в БД (например, аватар пропадал после смены пароля).
+    const payload: Record<string, unknown> = {};
+    if (formData.name !== user.name) payload.name = formData.name;
+    if ((formData.phone || "") !== (user.phone || "")) payload.phone = formData.phone;
+    if ((formData.department || "") !== (user.department || "")) payload.department = formData.department;
+    if ((formData.position || "") !== (user.position || "")) payload.position = formData.position;
+    if ((avatar || "") !== (user.avatar || "")) payload.avatar = avatar || null;
+
+    const updatedUser = Object.keys(payload).length > 0 ? await updateProfile(payload) : user;
 
     if (updatedUser) {
       onUpdate();

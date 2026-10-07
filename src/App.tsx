@@ -111,8 +111,11 @@ function App() {
         />
       )}
 
-      {/* Sidebar: на мобильных — off-canvas (fixed), на десктопе — статичный */}
+      {/* Sidebar: на мобильных — off-canvas (fixed), на десктопе — статичный.
+          key={sidebarOpen} перемонтирует сайдбар при переключении сворачивания,
+          иначе Tailwind не переопределяет мобильную ширину w-64 и панель «не закрывается» */}
       <aside
+        key={sidebarOpen ? "wide" : "collapsed"}
         className={`bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transition-all duration-300 z-50 flex flex-col
           fixed inset-y-0 left-0 w-64 ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 md:static
           ${sidebarOpen ? "md:w-64" : "md:w-20"}`}
