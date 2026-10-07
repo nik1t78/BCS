@@ -107,11 +107,22 @@ $envText  = Get-Content $backendEnv -Raw
 $appKeyIn = [regex]::Match($envText, '(?m)^APP_KEY=(.*)$')
 if (-not $appKeyIn.Success -or [string]::IsNullOrWhiteSpace($appKeyIn.Groups[1].Value)) {
     Write-Step 'Генерация APP_KEY (php artisan key:generate)'
-    $composeUp = @(docker compose ps --services --status running 2>$null)
-    if ($composeUp -contains 'backend') {
-        $key = (docker compose exec -T backend php artisan key:generate --show 2>$null | Select-Object -Last 1)
-    } else {
-        $key = (docker compose run --rm backend php artisan key:generate --show 2>$null | Select-Object -Last 1)
+    # ВАЖНО: stderr docker (сообщения "Pulling"/"Building") не должен прерывать скрипт
+    # при ErrorActionPreference='Stop' — временно ослабляем его и глушим поток ошибок.
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $composeUp = @(docker compose ps --services --status running 2>$null)
+        if ($composeUp -contains 'backend') {
+            $key = (docker compose exec -T backend php artisan key:generate --show 2>$null | Select-Object -Last 1)
+        } else {
+            $key = (docker compose run --rm backend php artisan key:generate --show 2>$null | Select-Object -Last 1)
+        }
+    } catch {
+        $key = $null
+        Write-Warning 'Не удалось выполнить docker compose (возможно, образ ещё не собран или Docker недоступен).'
+    } finally {
+        $ErrorActionPreference = $prevEAP
     }
     if ($key -match '^(base64:)?[A-Za-z0-9+/=]{20,}$') {
         $key  = $key.Trim()
