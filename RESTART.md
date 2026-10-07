@@ -39,6 +39,12 @@ docker compose down          # остановить всё корректно
 docker compose up -d         # поднять заново
 ```
 
+⚠️ Если `vks-nginx` или `vks-queue` постоянно в статусе `Restarting` — скорее
+всего, на сервере старая копия проекта (например, ошибка
+`"limit_req_zone" directive is not allowed here`). Обновите код (`git pull`) и
+выполните `docker compose restart nginx`. Подробные симптомы и решения —
+в [TROUBLESHOOTING.md](TROUBLESHOOTING.md), Шаг 1.
+
 ## Сайт НЕ открывается по IP (например http://10.48.4.235/)
 
 Полная пошаговая диагностика — в **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)**.
@@ -74,6 +80,7 @@ docker exec vks-backend php artisan db:seed --class=VksDatabaseSeeder --force
 ## Обновление кода (после git pull)
 
 ```bash
+git pull
 docker compose up -d --build    # пересобрать образы frontend/backend
 # vendor смонтирован из volume backend_vendor и НЕ пересобирается вместе с
 # образом — зависимости обновляются внутри контейнера:
