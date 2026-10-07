@@ -58,7 +58,7 @@ docker compose exec backend php artisan route:cache
 # 5. Открыть в браузере
 #    http://localhost                  — с этой машины
 #    http://<IP этой машины>/          — для пользователей локальной сети
-#    (Nginx слушает 0.0.0.0; порт — HTTP_PORT из .env, по умолчанию 80,
+#    (Nginx слушает 0.0.0.0; наружный порт зафиксирован в docker-compose.yml = 80,
 #     поэтому адрес БЕЗ порта: например http://10.48.4.235/ . Если не открывается —
 #     разрешите TCP-порт 80 в брандмауэре Windows:
 #     New-NetFirewallRule -DisplayName 'VKS web' -Direction Inbound -Protocol TCP -LocalPort 80)

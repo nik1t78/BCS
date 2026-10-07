@@ -90,8 +90,7 @@ if [ ! -f "$ROOT/.env" ]; then
     # В скачанном архиве .env.example может отсутствовать (он совпадает по имени
     # с gitignore-маской) — создаём минимальный файл, иначе compose не соберётся.
     cat > "$ROOT/.env" <<'EOF'
-# Сайт по адресу http://<IP машины>/ без порта — Nginx на 80 порту
-HTTP_PORT=80
+# Сайт по адресу http://<IP машины>/ без порта — Nginx на 80 порту (зафиксирован)
 listen_ip=0.0.0.0
 APP_KEY=
 APP_ENV=production
@@ -133,16 +132,11 @@ fi
 
 printf '\n\033[1;36mГотово. Следующая команда:\033[0m\n    docker compose up -d --build\n'
 echo
-PORT=$(grep -E '^HTTP_PORT=' .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\r')
-[ -n "$PORT" ] || PORT=80
+# Наружный порт Nginx зафиксирован в docker-compose.yml = 80,
+# поэтому адрес сайта всегда БЕЗ порта в браузере.
 MYIP=$(hostname -I 2>/dev/null | awk '{print $1}')
 [ -n "$MYIP" ] || MYIP='<IP этой машины>'
-if [ "$PORT" = "80" ]; then
-  echo "Для пользователей сайт будет по адресу: http://$MYIP/"
-else
-  echo "Для пользователей сайт будет по адресу: http://$MYIP:$PORT"
-  echo "Чтобы адрес был без порта (http://IP/), поставьте в .env HTTP_PORT=80"
-fi
+echo "Для пользователей сайт будет по адресу: http://$MYIP/"
 echo "IP этой машины: $(hostname -I 2>/dev/null || ipconfig getifaddr en0 2>/dev/null || echo '<посмотрите через ip a / ifconfig>')"
 echo
 echo "Проверьте в .env значения DB_PASSWORD / DB_ROOT_PASSWORD / REDIS_PASSWORD и MAX_BOT_TOKEN."
