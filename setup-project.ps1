@@ -8,7 +8,8 @@
 
     Что делает:
       1. Копирует отсутствующие файлы конфигурации из docker/skeleton/laravel12/config
-         в backend/config (существующие файлы НЕ перезаписывает).
+         в backend/config, а недостающие миграции (queue/cache) — в
+         backend/database/migrations (существующие файлы НЕ перезаписывает).
       2. Создаёт структуру каталогов backend/storage и backend/bootstrap/cache
          (из docker/skeleton/laravel12/.staging).
       3. Создаёт backend/.env из .env.example (если его нет) и генерирует APP_KEY.
@@ -67,6 +68,23 @@ foreach ($file in Get-ChildItem -Path $srcConfig -Filter '*.php' -File) {
     } else {
         Copy-Item $file.FullName $target -Force
         Write-Ok "$($file.Name) — скопирован из каркаса"
+    }
+}
+
+# ------------------------------------------------------------ 1b. миграции
+Write-Step 'Миграции Laravel (backend/database/migrations)'
+$srcMig = Join-Path $Skeleton 'database\migrations'
+$dstMig = Join-Path $Backend 'database\migrations'
+if (Test-Path $srcMig) {
+    New-Item -ItemType Directory -Force -Path $dstMig | Out-Null
+    foreach ($file in Get-ChildItem -Path $srcMig -Filter '*.php' -File) {
+        $target = Join-Path $dstMig $file.Name
+        if (Test-Path $target) {
+            Write-Skip "$($file.Name) — уже есть"
+        } else {
+            Copy-Item $file.FullName $target -Force
+            Write-Ok "$($file.Name) — скопирована из каркаса"
+        }
     }
 }
 

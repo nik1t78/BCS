@@ -445,7 +445,48 @@ gunzip -c backend/storage/app/backups/backup-ДАТА.sql.gz | \
 
 ---
 
-## 8. Диагностика: не открывается по IP
+## 8. Диагностика типовых ошибок
+
+### Ошибка миграции: `Base table or view already exists: 1050 Table 'users' already exists`
+
+Причина: база была создана старой версией миграций (в ней дублировалось создание
+таблицы `users`). В текущем коде дубль убран. Если ошибка появилась на вашей машине:
+
+```powershell
+# вариант А — данные не нужны, пересоздать базу с нуля (самый чистый):
+docker compose down -v          # удалит том mysql_data и все контейнеры
+docker compose up -d --build
+# дождаться "healthy" mysql (docker compose ps), затем:
+docker compose exec backend php artisan migrate --force
+docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder --force
+
+# вариант Б — сохранить данные: удалить только запись о зависшей миграции и продолжить
+docker compose exec backend php artisan migrate:status
+docker compose exec mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" vks_schedule \
+  -e "delete from migrations where migration='2024_01_01_000000_create_vks_tables';"
+docker compose exec backend php artisan migrate --force
+```
+
+После `git pull` повторите `docker compose build` (образы содержат старые миграции)
+или используйте `docker compose up -d --build`.
+
+### PowerShell: «NativeCommandError» при запуске setup-project.ps1
+
+Старая версия скрипта прерывалась, когда docker писал в stderr (`redis Pulling`,
+`Container ... Running`). Это НЕ ошибка проекта — обновите скрипт (`git pull`) и
+запустите заново; в текущей версии stderr игнорируется намеренно.
+
+### `Target class [Database\Seeders\VksDemoSeeder] does not exist`
+
+Такого сидера нет — правильное имя класса `VksDatabaseSeeder`:
+
+```bash
+docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder --force
+# или просто (он вызывается из DatabaseSeeder по умолчанию):
+docker compose exec backend php artisan db:seed --force
+```
+
+### Не открывается по IP
 
 Сайт доступен по адресу **`http://IP-сервера/` без порта** (nginx слушает 80).
 Если по `http://10.48.4.235/` ничего не открывается, пройдите чек-лист сверху вниз.

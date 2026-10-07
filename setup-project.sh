@@ -35,6 +35,19 @@ for f in "$SKELETON"/config/*.php; do
   fi
 done
 
+# 1b. отсутствующие миграции каркаса (queue/cache) -------------------------
+step "Миграции Laravel (backend/database/migrations)"
+mkdir -p "$BACKEND/database/migrations"
+for f in "$SKELETON"/database/migrations/*.php; do
+  [ -e "$f" ] || continue
+  target="$BACKEND/database/migrations/$(basename "$f")"
+  if [ -f "$target" ]; then
+    skip "$(basename "$f") — уже есть"
+  else
+    cp "$f" "$target"; ok "$(basename "$f") — скопирована из каркаса"
+  fi
+done
+
 # 2. storage + bootstrap/cache --------------------------------------------
 step "Каталоги backend/storage и backend/bootstrap/cache"
 for rel in storage bootstrap; do
