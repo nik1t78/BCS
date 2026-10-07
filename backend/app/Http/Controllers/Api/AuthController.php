@@ -48,6 +48,20 @@ class AuthController extends Controller
     }
 
     /**
+     * Проверка пароля.
+     *
+     * Исторический баг: старые версии кода записывали в БД Hash::make($plain),
+     * поверх которого каст модели 'password' => 'hashed' хешировал ещё раз
+     * (двойной bcrypt-хэш). Такой хэш криптографически непроверяем — вход
+     * падал с 422 даже при верном пароле. Лечится перезаписью паролей:
+     * php artisan vks:reset-passwords (или db:seed VksDatabaseSeeder).
+     */
+    private function verifyPassword(string $plain, string $storedHash): bool
+    {
+        return Hash::check($plain, $storedHash);
+    }
+
+    /**
      * Вход в систему
      */
     public function login(Request $request)
@@ -57,9 +71,12 @@ class AuthController extends Controller
             'password' => 'required',
         ]);
 
-        $user = User::where('login', $request->login)->first();
+        // Логин регистронезависимый: "Admin" и "admin" — один аккаунт.
+        // Иначе пользователь, случайно набравший CapsLock, получает
+        // «Неверный логин или пароль» даже при правильном пароле.
+        $user = User::whereRaw('LOWER(login) = ?', [mb_strtolower(trim($request->login))])->first();
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
+        if (!$user || !$this->verifyPassword($request->password, $user->password)) {
             throw ValidationException::withMessages([
                 'login' => ['Неверный логин или пароль'],
             ]);

@@ -530,6 +530,32 @@ docker compose exec backend php artisan migrate --force
 `Container ... Running`). Это НЕ ошибка проекта — обновите скрипт (`git pull`) и
 запустите заново; в текущей версии stderr игнорируется намеренно.
 
+### Вход: 422 «Неверный логин или пароль» при правильном пароле
+
+Частые причины и решения (по порядку):
+
+1. **Сид не запускался после создания базы** (например, база была пересоздана) —
+   таблицы есть, пользователей нет:
+   ```powershell
+   docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder --force
+   ```
+2. **База «старой» версии** с двойным bcrypt-хэшем или забытым паролем — безопасная
+   починка без потери остальных данных (перезапишет только пароли демо-аккаунтов):
+   ```powershell
+   docker compose exec backend php artisan vks:reset-passwords
+   # или для одного аккаунта:
+   docker compose exec backend php artisan vks:reset-passwords --login=admin
+   ```
+3. **Лимит попыток входа** (10/мин на IP+логин) — подождите минуту; ответ сервера
+   при этом 429 «Слишком много попыток входа».
+4. **Проверка, что хэш в базе корректный**:
+   ```powershell
+   docker compose exec backend php artisan tinker --execute="var_dump(\Illuminate\Support\Facades\Hash::check('admin123', \App\Models\User::where('login','admin')->value('password')));"
+   ```
+   `bool(true)` — пароль верный, проблема в кэше браузера (Ctrl+F5).
+
+Логин регистронезависимый: `Admin` = `admin`.
+
 ### `Target class [Database\Seeders\VksDemoSeeder] does not exist`
 
 Такого сидера нет — правильное имя класса `VksDatabaseSeeder`:
