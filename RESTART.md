@@ -118,6 +118,15 @@ gunzip -c backend/storage/app/backups/backup-ДАТА.sql.gz | \
   docker compose exec -T mysql mysql -uroot -p"$(grep DB_ROOT_PASSWORD .env 2>/dev/null | cut -d= -f2 || grep MYSQL_ROOT_PASSWORD backend/.env | cut -d= -f2)" vks_schedule
 ```
 
+## Частые ошибки и решения
+
+| Ошибка | Причина | Решение |
+|---|---|---|
+| nginx: `"limit_req_zone" directive is not allowed here` | устаревшая версия конфига в образе/монтировании | обновите код (`git pull`) — директивы вынесены из `server {}`; затем `docker compose up -d --force-recreate nginx` |
+| MySQL `Access denied for user 'vks_user' ... (using password: NO)` | пароли в `.env` не совпадают с уже созданной БД ИЛИ нет `.env` | 1) скопируйте `.env.example` → `.env`; 2) если пароль менялся — пересоздайте пользователя или удалите `docker/mysql/data` и выполните полный запуск заново (данные будут потеряны!) |
+| `Connection refused (Host: mysql)` | контейнер mysql ещё не поднялся | подождите 20–40 с, проверьте `docker compose ps`, при `Restarting` смотрите `docker compose logs mysql` |
+| `vks-queue` в статусе Restarting | обычно следствие ошибок БД/redis выше | после исправления паролей: `docker compose restart queue scheduler` |
+
 ## Полезные команды
 
 | Задача | Команда |
