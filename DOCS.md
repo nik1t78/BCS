@@ -714,6 +714,8 @@ curl -I http://localhost/        # должно быть 200
 | `vks-queue` в статусе Restarting | следствие ошибок БД/redis выше | после исправления паролей: `docker compose restart queue scheduler` |
 | composer `curl error 28 ... Connection timed out` | нет `backend/composer.lock` | убедитесь, что lock в репозитории; иначе `cd backend && composer update --lock` и закоммитьте |
 | PowerShell: `docker : redis Pulling ... NativeCommandError` | stderr Docker при `ErrorActionPreference=Stop` | обновите `setup-project.ps1` (`git pull`) — исправлено |
+| `/api/auth/login` → **502 Bad Gateway** | nginx не смог получить ответ от php-fpm (backend): контейнер ещё стартовал, упал из-за недоступного redis/mysql или завис на медленном запросе | 1) `docker compose ps` — backend должен быть `Up (healthy)`; 2) `docker compose logs backend --tail=30`; 3) `docker compose restart backend nginx`; 4) проверьте пароли redis/mysql в `.env`. В docker-compose добавлены явные `SESSION_DRIVER/CACHE_STORE/QUEUE_CONNECTION` и healthcheck backend. |
+| `/api/auth/login` → **429 Too Many Requests** | сработал rate-limiter `throttle:login` (слишком много попыток) | подождите 60 секунд или `docker compose exec backend php artisan cache:clear` |
 
 ---
 

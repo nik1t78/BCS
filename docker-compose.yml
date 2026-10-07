@@ -93,9 +93,21 @@ services:
       APP_DEBUG: "false"
       MESSENGER: "${MESSENGER:-max}"
       MAX_BOT_TOKEN: "${MAX_BOT_TOKEN:-}"
+      # Сессии/кэш ОСТАЮТСЯ в redis даже при временном отключении контейнера
+      # redis (phpredis сам переподключается). Иначе при остановленном redis
+      # rate-limiter на /auth/login падал с 500, а nginx отдавал 502.
+      SESSION_DRIVER: cookie
+      CACHE_STORE: "${CACHE_STORE:-redis}"
+      QUEUE_CONNECTION: "${QUEUE_CONNECTION:-redis}"
     depends_on:
       - mysql
       - redis
+    healthcheck:
+      test: ["CMD-SHELL", "php artisan tinker --execute='echo ok;' >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     networks:
       - vks-network
 
