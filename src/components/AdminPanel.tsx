@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { User, Meeting } from "../types";
-import { authAPI, downloadBlob, adminLoadAPI } from "../api/client";
+import { authAPI, downloadBlob, adminLoadAPI, roomsAPI } from "../api/client";
 import { unwrapList, mapMeeting } from "../store-api";
 import { exportToExcel } from "../utils/export";
 import { SortMode, SORT_OPTIONS, sortMeetings } from "../utils/meetingSort";
@@ -336,6 +336,9 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [activeTab, setActiveTab] = useState<"users" | "meetings" | "rooms" | "stats" | "trash" | "audit">("users");
+  // Количество переговорных комнат — бейдж на вкладке «Комнаты» (как у
+  // «Пользователи» и «Конференции»).
+  const [roomsCount, setRoomsCount] = useState<number | undefined>(undefined);
   const [trashed, setTrashed] = useState<Meeting[]>([]);
   const [trashLoading, setTrashLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -511,6 +514,14 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     } finally {
       setLoading(false);
     }
+    // Бейдж количества комнат грузим отдельно — его сбой не должен ломать всю админку.
+    roomsAPI
+      .list()
+      .then((res: any) => {
+        const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+        setRoomsCount(list.length);
+      })
+      .catch(() => setRoomsCount(undefined));
   };
 
   // User management
@@ -779,7 +790,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
           {[
             { id: "users", label: "Пользователи", icon: "fa-users", count: users.length },
             { id: "meetings", label: "Конференции", icon: "fa-video", count: meetings.length },
-            { id: "rooms", label: "Комнаты", icon: "fa-door-open" },
+            { id: "rooms", label: "Комнаты", icon: "fa-door-open", count: roomsCount },
             { id: "stats", label: "Статистика", icon: "fa-chart-bar" },
             ...(user.role === "admin" ? [{ id: "trash", label: "Корзина", icon: "fa-trash-restore" }] : []),
             ...(user.role === "admin" ? [{ id: "audit", label: "Аудит", icon: "fa-shield-alt" }] : []),

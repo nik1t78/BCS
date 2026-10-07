@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\User;
 use App\Models\Meeting;
 use App\Models\Notification;
+use App\Models\Room;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Carbon\Carbon;
@@ -253,6 +254,18 @@ class VksDatabaseSeeder extends Seeder
             'type' => 'user-added',
             'read' => true,
         ]);
+
+        // Переговорные комнаты: без них вкладка «Комнаты» в админке и выбор
+        // комнаты при создании конференции пустые (счётчик показывал 0).
+        $demoRooms = [
+            ['name' => 'Переговорная А (3 этаж)', 'capacity' => 8,  'location' => 'Кабинет 301', 'equipment' => ['Проектор', 'Доска', 'Видеоконференцсвязь']],
+            ['name' => 'Переговорная Б (3 этаж)', 'capacity' => 5,  'location' => 'Кабинет 305', 'equipment' => ['Телевизор', 'Доска']],
+            ['name' => 'Конференц-зал (4 этаж)',  'capacity' => 20, 'location' => 'Кабинет 410', 'equipment' => ['Проектор', 'Микрофоны', 'Камера ВКС', 'Доска']],
+            ['name' => 'Митинг-рум (2 этаж)',     'capacity' => 4,  'location' => 'Кабинет 215', 'equipment' => ['Телевизор']],
+        ];
+        foreach ($demoRooms as $room) {
+            Room::updateOrCreate(['name' => $room['name']], $room + ['is_active' => true]);
+        }
 
         $this->command->info('✅ Демо-данные успешно созданы!');
         $this->command->info('');
