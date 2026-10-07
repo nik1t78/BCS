@@ -44,7 +44,12 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
   const hasAccessTo = (m: Meeting) =>
     Number(m.organizerId) === Number(user.id) || (m.participants ?? []).some((p) => Number(p) === Number(user.id));
 
-  const visibleMeetings = user.role === "admin" || user.role === "moderator" ? meetings : meetings.filter(hasAccessTo);
+  // Как в «Расписании»: обычный пользователь видит ВСЕ ВКС (участие + общедоступные),
+  // скрыты только приватные, к которым у него нет доступа.
+  const visibleMeetings =
+    user.role === "admin" || user.role === "moderator"
+      ? meetings
+      : meetings.filter((m) => m.isPrivate !== true || hasAccessTo(m));
 
   useEffect(() => {
     const today = toDateKey(currentTime);

@@ -35,9 +35,16 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
     setLoading(true);
     const [allMeetings, users] = await Promise.all([getMeetings(), getUsersForDisplay(user.role)]);
 
-    // Модераторы и админы видят все конференции, обычные пользователи - только свои
+    // Админ/модератор — все конференции. Обычный пользователь — ВСЕ ВКС:
+    // организованные им, с его участием + общедоступные (не приватные).
+    // Приватная встреча без участия скрыта; у приватных с участием название
+    // остаётся закрытым («Конференция») — см. canSeeDetails ниже.
     const visibleMeetings =
-      user.role === "admin" || user.role === "moderator" ? allMeetings : allMeetings.filter(hasAccessTo);
+      user.role === "admin" || user.role === "moderator"
+        ? allMeetings
+        : allMeetings.filter(
+            (m) => m.isPrivate !== true || hasAccessTo(m),
+          );
 
     setMeetings(visibleMeetings);
     setAllUsers(users);
