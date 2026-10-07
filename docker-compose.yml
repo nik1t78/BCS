@@ -81,9 +81,11 @@ services:
       DB_PORT: 3306
       DB_DATABASE: "${DB_DATABASE:-vks_schedule}"
       DB_USERNAME: "${DB_USERNAME:-vks_user}"
-      DB_PASSWORD: "${DB_PASSWORD:-}"
+      # Пароль по умолчанию СОВПАДАЕТ с MYSQL_PASSWORD контейнера mysql,
+      # иначе при отсутствии .env получаем "Access denied ... using password: NO"
+      DB_PASSWORD: "${DB_PASSWORD:-vks_2026}"
       REDIS_HOST: redis
-      REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-vks_2026_redis}"
       REDIS_PORT: 6379
       APP_URL: "http://${SITE_IP:-localhost}"
       APP_KEY: "${APP_KEY:-dev-placeholder-key}"
@@ -136,7 +138,7 @@ services:
     container_name: vks-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root-changelogme}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-vks_2026_root}
       MYSQL_DATABASE: ${DB_DATABASE:-vks_schedule}
       MYSQL_USER: ${DB_USERNAME:-vks_user}
       MYSQL_PASSWORD: ${DB_PASSWORD:-vks_2026}
@@ -166,7 +168,7 @@ services:
     restart: unless-stopped
     # Только внутренняя сеть, лимит памяти и выгрузка старых ключей —
     # redis не съест оперативку; пароль обязателен.
-    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-redis-changelogme}
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-vks_2026_redis}
     networks:
       - vks-network
 
@@ -198,9 +200,9 @@ services:
       DB_PORT: 3306
       DB_DATABASE: "${DB_DATABASE:-vks_schedule}"
       DB_USERNAME: "${DB_USERNAME:-vks_user}"
-      DB_PASSWORD: "${DB_PASSWORD:-}"
+      DB_PASSWORD: "${DB_PASSWORD:-vks_2026}"
       REDIS_HOST: redis
-      REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-vks_2026_redis}"
       REDIS_PORT: 6379
       APP_URL: "http://${SITE_IP:-localhost}"
       APP_KEY: "${APP_KEY:-dev-placeholder-key}"
@@ -241,7 +243,7 @@ services:
       DB_PORT: 3306
       DB_DATABASE: "${DB_DATABASE:-vks_schedule}"
       DB_USERNAME: "${DB_USERNAME:-vks_user}"
-      DB_PASSWORD: "${DB_PASSWORD:-}"
+      DB_PASSWORD: "${DB_PASSWORD:-vks_2026}"
       APP_URL: "http://${SITE_IP:-localhost}"
       APP_KEY: "${APP_KEY:-dev-placeholder-key}"
     depends_on:
