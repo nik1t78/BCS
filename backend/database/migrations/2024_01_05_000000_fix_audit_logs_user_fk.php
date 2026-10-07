@@ -28,18 +28,20 @@ return new class extends Migration
 
         $database = DB::connection()->getDatabaseName();
 
-        $fk = DB::select_one(
+        // ВАЖНО: DB::select_one() существует только в Laravel 11+.
+        // В более старых версиях используем стандартный DB::select().
+        $rows = DB::select(
             'SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE
              WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?
                AND REFERENCED_TABLE_NAME = ? LIMIT 1',
             [$database, 'audit_logs', 'user_id', 'users']
         );
 
-        if (!$fk) {
+        if (empty($rows)) {
             return;
         }
 
-        $name = $fk->CONSTRAINT_NAME;
+        $name = $rows[0]->CONSTRAINT_NAME;
 
         // Отвязываем «сирот» — записи аудита удалённых пользователей,
         // иначе ALTER не сможет применить новый FK.

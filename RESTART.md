@@ -39,6 +39,12 @@ docker compose down          # остановить всё корректно
 docker compose up -d         # поднять заново
 ```
 
+⚠️ Если `vks-nginx` или `vks-queue` постоянно в статусе `Restarting` — скорее
+всего, на сервере старая копия проекта (например, ошибка
+`"limit_req_zone" directive is not allowed here`). Обновите код (`git pull`) и
+выполните `docker compose restart nginx`. Подробные симптомы и решения —
+в [TROUBLESHOOTING.md](TROUBLESHOOTING.md), Шаг 1.
+
 ## Сайт НЕ открывается по IP (например http://10.48.4.235/)
 
 Полная пошаговая диагностика — в **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)**.
@@ -74,6 +80,7 @@ docker exec vks-backend php artisan db:seed --class=VksDatabaseSeeder --force
 ## Обновление кода (после git pull)
 
 ```bash
+git pull
 docker compose up -d --build    # пересобрать образы frontend/backend
 # vendor смонтирован из volume backend_vendor и НЕ пересобирается вместе с
 # образом — зависимости обновляются внутри контейнера:
@@ -117,6 +124,15 @@ docker compose up -d mysql                                # поднять MySQL
 gunzip -c backend/storage/app/backups/backup-ДАТА.sql.gz | \
   docker compose exec -T mysql mysql -uroot -p"$(grep DB_ROOT_PASSWORD .env 2>/dev/null | cut -d= -f2 || grep MYSQL_ROOT_PASSWORD backend/.env | cut -d= -f2)" vks_schedule
 ```
+
+## Частые ошибки и решения
+
+| Ошибка | Причина | Решение |
+|---|---|---|
+| nginx: `"limit_req_zone" directive is not allowed here` | устаревшая версия конфига в образе/монтировании | обновите код (`git pull`) — директивы вынесены из `server {}`; затем `docker compose up -d --force-recreate nginx` |
+| MySQL `Access denied for user 'vks_user' ... (using password: NO)` | пароли в `.env` не совпадают с уже созданной БД ИЛИ нет `.env` | 1) скопируйте `.env.example` → `.env`; 2) если пароль менялся — пересоздайте пользователя или удалите `docker/mysql/data` и выполните полный запуск заново (данные будут потеряны!) |
+| `Connection refused (Host: mysql)` | контейнер mysql ещё не поднялся | подождите 20–40 с, проверьте `docker compose ps`, при `Restarting` смотрите `docker compose logs mysql` |
+| `vks-queue` в статусе Restarting | обычно следствие ошибок БД/redis выше | после исправления паролей: `docker compose restart queue scheduler` |
 
 ## Полезные команды
 
