@@ -164,4 +164,5 @@ backend — `composer install → php artisan test`.
 
 - [START_HERE.md](START_HERE.md) — быстрая инструкция: как запустить проект (Docker/dev) и пошаговая настройка уведомлений в мессенджер MAX (бот → .env → привязка аккаунта);
 - [DEPLOYMENT.md](DEPLOYMENT.md) — пошаговая установка на сервер;
-- [RESTART.md](RESTART.md) — перезапуск сервисов и типовые проблемы.
+- [RESTART.md](RESTART.md) — перезапуск сервисов и типовые проблемы;
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — сайт не открывается по IP: диагностика (брандмауэр, занятый порт 80, listen_ip).
