@@ -1,1 +1,23 @@
-(empty)
+# Зависимости и артефакты сборки — не должны попадать в git
+node_modules/
+
+# Build output (собирается контейнером vks-frontend-builder)
+dist/
+
+# Логи и временные файлы
+*.log
+nohup.out
+
+# Данные MySQL (bind-mount на хосте — локально, не в git)
+docker/mysql/data/*
+!docker/mysql/data/.gitkeep
+
+# Бэкапы базы данных
+backend/storage/app/backups/*
+!backend/storage/app/backups/.gitkeep
+
+# IDE / ОС
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

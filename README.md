@@ -48,8 +48,9 @@
   - `app/Models/` — Eloquent-модели (Meeting, MeetingMinute, MeetingTask,
     TaskComment, MeetingRsvp, Room, Notification, User…);
   - `app/Services/MaxMessengerService.php` — отправка уведомлений в MAX Bot API;
-  - `app/Console/Commands/` — `backup:database`, `notifications:send`,
-    `reminders:send`, `notifications:cleanup`;
+  - `app/Console/Commands/` — `db:backup` (ежедневный бэкап БД в 02:30),
+    `meetings:send-notifications`, `meetings:send-reminders`,
+    `notifications:cleanup`, `analytics:daily`;
   - `routes/api.php` — все маршруты (`throttle:api`, роли, can:admin).
 - `docker/`, `Dockerfile`, `docker-compose.yml` — контейнеризация;
 - `.github/workflows/ci.yml` — CI: lint → format check → typecheck → build (+ backend tests).
@@ -137,7 +138,7 @@ npm run lint           # ESLint по src/
 npm run format         # Prettier --write по src/
 
 # Бэкенд
-php artisan backup:database            # резервная копия БД (в storage/app/backups)
+php artisan db:backup --keep=14        # резервная копия БД (в backend/storage/app/backups, ротация 14 копий)
 php artisan schedule:run               # ручной запуск планировщика (напоминания, бэкап)
 php artisan migrate                    # применить миграции (включая новые таблицы)
 ```
