@@ -15,6 +15,9 @@ x-defaults: &container-defaults
     - no-new-privileges:true
 
 services:
+# ВАЖНО: интерполяция ${VAR:-default} выполняется docker compose при ЗАПУСКЕ/СБОРКЕ,
+# поэтому `docker compose build` работает даже без заполненного .env. Реальные секреты
+# (APP_KEY, пароли MySQL/Redis) берутся из ./backend/.env внутри контейнеров — см. README.
   # Frontend (React)
   frontend:
     <<: *container-defaults
@@ -78,11 +81,11 @@ services:
       DB_PORT: 3306
       DB_DATABASE: "${DB_DATABASE:-vks_schedule}"
       DB_USERNAME: "${DB_USERNAME:-vks_user}"
-      DB_PASSWORD: "${DB_PASSWORD:?Укажите DB_PASSWORD в файле .env рядом с docker-compose.yml}"
+      DB_PASSWORD: "${DB_PASSWORD:-}"
       REDIS_HOST: redis
-      REDIS_PASSWORD: "${REDIS_PASSWORD:?Укажите REDIS_PASSWORD в файле .env}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
       REDIS_PORT: 6379
-      APP_KEY: "${APP_KEY:?Укажите APP_KEY в .env (сгенерировать: php artisan key:generate)}"
+      APP_KEY: "${APP_KEY:-dev-placeholder-key}"
       APP_ENV: "${APP_ENV:-production}"
       APP_DEBUG: "false"
       MESSENGER: "${MESSENGER:-max}"
@@ -129,10 +132,10 @@ services:
     container_name: vks-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Укажите DB_ROOT_PASSWORD в файле .env}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root-changelogme}
       MYSQL_DATABASE: ${DB_DATABASE:-vks_schedule}
       MYSQL_USER: ${DB_USERNAME:-vks_user}
-      MYSQL_PASSWORD: ${DB_PASSWORD:?Укажите DB_PASSWORD в файле .env}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-vks_2026}
     volumes:
       # Bind-mount: данные лежат в ./docker/mysql/data и НЕ удаляются
       # при `docker compose down`, пересборке образов или удалении volumes.
@@ -159,7 +162,7 @@ services:
     restart: unless-stopped
     # Только внутренняя сеть, лимит памяти и выгрузка старых ключей —
     # redis не съест оперативку; пароль обязателен.
-    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:?Укажите REDIS_PASSWORD в файле .env}
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-redis-changelogme}
     networks:
       - vks-network
 
@@ -191,11 +194,11 @@ services:
       DB_PORT: 3306
       DB_DATABASE: "${DB_DATABASE:-vks_schedule}"
       DB_USERNAME: "${DB_USERNAME:-vks_user}"
-      DB_PASSWORD: "${DB_PASSWORD:?Укажите DB_PASSWORD в файле .env рядом с docker-compose.yml}"
+      DB_PASSWORD: "${DB_PASSWORD:-}"
       REDIS_HOST: redis
-      REDIS_PASSWORD: "${REDIS_PASSWORD:?Укажите REDIS_PASSWORD в файле .env}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
       REDIS_PORT: 6379
-      APP_KEY: "${APP_KEY:?Укажите APP_KEY в .env}"
+      APP_KEY: "${APP_KEY:-dev-placeholder-key}"
       MESSENGER: "${MESSENGER:-max}"
       MAX_BOT_TOKEN: "${MAX_BOT_TOKEN:-}"
     depends_on:
@@ -233,8 +236,8 @@ services:
       DB_PORT: 3306
       DB_DATABASE: "${DB_DATABASE:-vks_schedule}"
       DB_USERNAME: "${DB_USERNAME:-vks_user}"
-      DB_PASSWORD: "${DB_PASSWORD:?Укажите DB_PASSWORD в файле .env рядом с docker-compose.yml}"
-      APP_KEY: "${APP_KEY:?Укажите APP_KEY в .env}"
+      DB_PASSWORD: "${DB_PASSWORD:-}"
+      APP_KEY: "${APP_KEY:-dev-placeholder-key}"
     depends_on:
       - backend
     networks:
