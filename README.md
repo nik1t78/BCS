@@ -94,8 +94,15 @@ docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder --forc
 docker compose exec backend php artisan optimize       # config/route/view cache
 ```
 
-Приложение доступно на `http://localhost:8080` (порт проброшен только на 127.0.0.1;
-наружу публикуется через ваш reverse-proxy с HTTPS).
+Приложение доступно на `http://localhost` и, так как Nginx слушает `0.0.0.0`,
+для пользователей локальной сети — на `http://<IP этой машины>/` без порта в адресе
+(например `http://10.48.4.235/`). Это работает при `HTTP_PORT=80` в `.env` (значение по
+умолчанию); `listen_ip=127.0.0.1` вернёт доступ только с самой машины.
+Для доступа из сети разрешите входящий TCP-порт 80 в брандмауэре Windows:
+`New-NetFirewallRule -DisplayName 'VKS web' -Direction Inbound -Protocol TCP -LocalPort 80`.
+Если порт 80 на машине занят другим веб-сервером (IIS/Apache) — временно поставьте
+`HTTP_PORT=8080` (адрес будет `http://IP:8080`) или освободите 80-й порт.
+Наружу (в интернет) публикуется через ваш reverse-proxy с HTTPS.
 
 ### Режим разработки
 
