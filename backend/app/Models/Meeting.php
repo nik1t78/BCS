@@ -1,0 +1,224 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Carbon\Carbon;
+
+class Meeting extends Model
+{
+    use HasFactory, SoftDeletes;
+
+    protected $fillable = [
+        'title',
+        'description',
+        'date',
+        'start_time',
+        'end_time',
+        'organizer_id',
+        'participants',
+        'participant_emails',
+        'link',
+        'room',
+        'status',
+        'reminder_minutes',
+        'recurring',
+        'repeat_until',
+        'rrule',
+        'priority',
+        'is_private',
+    ];
+
+    protected $casts = [
+        'date' => 'date',
+        'repeat_until' => 'date',
+        'participants' => 'array',
+        'participant_emails' => 'array',
+        'is_private' => 'boolean',
+        'reminder_minutes' => 'integer',
+    ];
+
+    /**
+     * Организатор конференции
+     */
+    public function organizer()
+    {
+        return $this->belongsTo(User::class, 'organizer_id');
+    }
+
+    /**
+     * Уведомления связанные с конференцией
+     */
+    public function notifications()
+    {
+        return $this->hasMany(Notification::class);
+    }
+
+    /**
+     * Теги конференции
+     */
+    public function tags()
+    {
+        return $this->belongsToMany(Tag::class, 'meeting_tag');
+    }
+
+    /**
+     * Вложения конференции
+     */
+    public function attachments()
+    {
+        return $this->hasMany(Attachment::class);
+    }
+
+    /**
+     * История изменений конференции
+     */
+    public function history()
+    {
+        return $this->hasMany(MeetingHistory::class);
+    }
+
+    /**
+     * Протокол встречи (записи обсуждения/решений)
+     */
+    public function minutes()
+    {
+        return $this->hasMany(MeetingMinute::class);
+    }
+
+    /**
+     * Задачи / action items встречи
+     */
+    public function tasks()
+    {
+        return $this->hasMany(MeetingTask::class);
+    }
+
+    /**
+     * Подтверждения присутствия (RSVP)
+     */
+    public function rsvps()
+    {
+        return $this->hasMany(MeetingRsvp::class);
+    }
+
+    /**
+     * Scope: корзина (только мягко удалённые), виден админу/модератору целиком,
+     * обычному пользователю — только его встречи
+     */
+    public function scopeOnlyTrashed($query)
+    {
+        return $query->onlyTrashed();
+    }
+
+    /**
+     * Scope: только предстоящие
+     */
+    public function scopeUpcoming($query)
+    {
+        return $query->where('date', '>=', now()->toDateString())
+                     ->whereIn('status', ['scheduled', 'in-progress']);
+    }
+
+    /**
+     * Scope: только мои
+     */
+    public function scopeMyMeetings($query, $userId)
+    {
+        return $query->where(function($q) use ($userId) {
+            $q->where('organizer_id', $userId)
+              ->orWhereJsonContains('participants', $userId);
+        });
+    }
+
+    /**
+     * Проверка: конференция начинается в указанное время
+     */
+    public function isStartingAt($time): bool
+    {
+        // Сравнение через Carbon: MySQL отдаёт TIME-колонку в формате 'H:i:s'
+        return $this->date->isToday()
+            && Carbon::parse($this->start_time)->format('H:i') === $time;
+    }
+
+    /**
+     * Проверка: нужно отправить напоминание
+     */
+    public function needsReminderAt($time): bool
+    {
+        if (!$this->date->isToday()) return false;
+        
+        $reminderTime = Carbon::parse($this->date->toDateString() . ' ' . $this->start_time)
+            ->subMinutes($this->reminder_minutes ?? 15);
+        
+        return $reminderTime->format('H:i') === $time;
+    }
+
+    /**
+     * Получить цвет приоритета
+     */
+    public function getPriorityColorAttribute(): string
+    {
+        return match($this->priority) {
+            'high' => 'red',
+            'medium' => 'yellow',
+            'low' => 'green',
+            default => 'gray',
+        };
+    }
+
+    /**
+     * Получить текст статуса
+     */
+    public function getStatusTextAttribute(): string
+    {
+        return match($this->status) {
+            'scheduled' => 'Запланирована',
+            'in-progress' => 'Идёт',
+            'completed' => 'Завершена',
+            'cancelled' => 'Отменена',
+            default => 'Неизвестно',
+        };
+    }
+
+    /**
+     * Проверка: пользователь является участником
+     */
+    public function isParticipant($userId): bool
+    {
+        return in_array($userId, $this->participants ?? []);
+    }
+
+    /**
+     * Проверка: пользователь является организатором
+     */
+    public function isOrganizer($userId): bool
+    {
+        return $this->organizer_id === $userId;
+    }
+
+    /**
+     * Проверка: пользователь имеет доступ
+     */
+    public function hasAccess($user): bool
+    {
+        if (!$this->is_private) return true;
+        return $this->isOrganizer($user->id) || $this->isParticipant($user->id) || $user->isAdmin();
+    }
+
+    /**
+     * Scope: доступные пользователю
+     */
+    public function scopeAccessibleBy($query, $user)
+    {
+        if ($user->isAdmin()) return $query;
+        
+        return $query->where(function($q) use ($user) {
+            $q->where('is_private', false)
+              ->orWhere('organizer_id', $user->id)
+              ->orWhereJsonContains('participants', $user->id);
+        });
+    }
+}

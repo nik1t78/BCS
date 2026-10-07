@@ -1,0 +1,355 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
+use App\Models\User;
+use App\Models\UserSetting;
+use Illuminate\Database\QueryException;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
+
+class UserController extends Controller
+{
+    /**
+     * Список пользователей (admin/moderator)
+     */
+    public function index(Request $request)
+    {
+        if (!$request->user()->isAdminOrModerator()) {
+            return response()->json(['message' => 'Доступ запрещён'], 403);
+        }
+
+        $query = User::query();
+
+        if ($request->has('search')) {
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('login', 'like', "%{$search}%")
+                  ->orWhere('department', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->has('role')) {
+            $query->where('role', $request->role);
+        }
+
+        $users = $query->orderBy('name')->paginate($request->get('per_page', 50));
+
+        return response()->json($users);
+    }
+
+    /**
+     * Публичный справочник пользователей (для любого авторизованного).
+     * Нужен календарю, карточкам конференций и выбору участников, чтобы
+     * показывать ФИО организатора/участников. Возвращает только безопасные
+     * поля (id, name, login, department, position, isActive).
+     */
+    public function publicList(Request $request)
+    {
+        return response()->json(
+            User::query()
+                ->select('id', 'name', 'login', 'department', 'position', 'is_active')
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get()
+        );
+    }
+
+    /**
+     * Создание пользователя (admin)
+     */
+    public function store(Request $request)
+    {
+        if (!$request->user()->isAdmin()) {
+            return response()->json(['message' => 'Доступ запрещён'], 403);
+        }
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'login' => 'required|string|unique:users',
+            'password' => 'required|min:6',
+            'role' => 'required|in:admin,moderator,user',
+            'phone' => 'nullable|string|max:20',
+            'department' => 'nullable|string|max:255',
+            'position' => 'nullable|string|max:255',
+            'is_active' => 'boolean',
+        ]);
+
+        // Каст 'password' => 'hashed' в модели сам выполнит хеширование
+        $user = User::create($validated);
+
+        return response()->json($user, 201);
+    }
+
+    /**
+     * Получить пользователя
+     */
+    public function show(Request $request, $id)
+    {
+        if (!$request->user()->isAdminOrModerator()) {
+            return response()->json(['message' => 'Доступ запрещён'], 403);
+        }
+
+        $user = User::findOrFail($id);
+        return response()->json($user);
+    }
+
+    /**
+     * Обновление пользователя
+     */
+    public function update(Request $request, $id)
+    {
+        $currentUser = $request->user();
+        $user = User::findOrFail($id);
+
+        // Пользователь может обновлять только свой профиль
+        if ($user->id !== $currentUser->id && !$currentUser->isAdmin()) {
+            return response()->json(['message' => 'Доступ запрещён'], 403);
+        }
+
+        $validated = $request->validate([
+            'name' => 'sometimes|string|max:255',
+            'login' => 'sometimes|string|unique:users,login,' . $id,
+            'phone' => 'nullable|string|max:20',
+            'department' => 'nullable|string|max:255',
+            'position' => 'nullable|string|max:255',
+        ]);
+
+        $user->update($validated);
+
+        return response()->json($user);
+    }
+
+    /**
+     * Обновление профиля текущего пользователя
+     */
+    public function updateProfile(Request $request)
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'name' => 'sometimes|string|max:255',
+            'login' => 'sometimes|string|unique:users,login,' . $user->id,
+            'phone' => 'nullable|string|max:20',
+            'department' => 'nullable|string|max:255',
+            'position' => 'nullable|string|max:255',
+            'avatar' => 'nullable|string|max:3000000',
+        ]);
+
+        $user->update($validated);
+
+        return response()->json($user);
+    }
+
+    /**
+     * Смена пароля
+     */
+    public function changePassword(Request $request)
+    {
+        $request->validate([
+            'current_password' => 'required',
+            'password' => 'required|min:6|confirmed',
+        ]);
+
+        $user = $request->user();
+
+        if (!Hash::check($request->current_password, $user->password)) {
+            return response()->json(['message' => 'Неверный текущий пароль'], 422);
+        }
+
+        // Каст 'password' => 'hashed' в модели сам выполнит хеширование.
+        // Смена пароля пользователем снимает флаг обязательной смены при первом входе.
+        $user->update([
+            'password' => $request->password,
+            'must_change_password' => false,
+        ]);
+
+        AuditLog::log($request, 'password_changed', $user);
+
+        return response()->json(['message' => 'Пароль изменён']);
+    }
+
+    /**
+     * Удаление пользователя (admin)
+     *
+     * Ранее удалялся только сам пользователь, из-за чего MySQL/MariaDB
+     * отклонял DELETE при наличии связанных записей (FOREIGN_KEY_CONSTRAINT_VIOLATION):
+     *   - personal_access_tokens (morph-связь, каскад по id не срабатывает);
+     *   - audit_logs.user_id — в старых миграциях FK был без "set null",
+     *     поэтому удаление пользователя, совершавшего действия, падало с 500.
+     * Теперь в транзакции сначала чистятся зависимые записи токенов, а записи
+     * аудита отвязываются (user_id = NULL), после чего пользователь удаляется.
+     */
+    public function destroy(Request $request, $id)
+    {
+        if (!$request->user()->isAdmin()) {
+            return response()->json(['message' => 'Доступ запрещён'], 403);
+        }
+
+        if ($id == $request->user()->id) {
+            return response()->json(['message' => 'Нельзя удалить свой аккаунт'], 422);
+        }
+
+        $user = User::findOrFail($id);
+
+        try {
+            DB::transaction(function () use ($user, $request) {
+                // Токены Sanctum (morph: tokenable_type/tokenable_id)
+                DB::table('personal_access_tokens')
+                    ->where('tokenable_type', get_class($user))
+                    ->where('tokenable_id', $user->id)
+                    ->delete();
+
+                // Записи аудита, где пользователь указан как "user_id"
+                // (в базе может быть FK без ON DELETE SET NULL — отвязываем явно)
+                if (Schema::hasColumn('audit_logs', 'user_id')) {
+                    DB::table('audit_logs')
+                        ->where('user_id', $user->id)
+                        ->update(['user_id' => null]);
+                }
+
+                $user->delete();
+            });
+        } catch (QueryException $e) {
+            // Остались связи, которые нельзя снять автоматически (например,
+            // таблицы, добавленные сторонними миграциями) — возвращаем
+            // понятную ошибку вместо «Не удалось удалить пользователя».
+            \Log::error('User delete failed due to related records', [
+                'target_user_id' => $user->id,
+                'sql_state' => $e->getCode(),
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Не удалось удалить пользователя: у него остались связанные записи, '
+                    . 'которые блокируют удаление. Сначала удалите его конференции или заблокируйте аккаунт.',
+            ], 409);
+        }
+
+        AuditLog::log($request, 'user_deleted', null, ['name' => $user->name, 'login' => $user->login]);
+
+        return response()->json(['message' => 'Пользователь удалён']);
+    }
+
+    /**
+     * Изменение роли (admin)
+     */
+    public function changeRole(Request $request, $id)
+    {
+        if (!$request->user()->isAdmin()) {
+            return response()->json(['message' => 'Доступ запрещён'], 403);
+        }
+
+        $request->validate([
+            'role' => 'required|in:admin,moderator,user',
+        ]);
+
+        $user = User::findOrFail($id);
+        $oldRole = $user->role;
+        $user->update(['role' => $request->role]);
+
+        AuditLog::log($request, 'user_role_changed', $user, ['role' => $oldRole], ['role' => $request->role]);
+
+        return response()->json($user);
+    }
+
+    /**
+     * Блокировка/разблокировка (admin/moderator)
+     */
+    public function toggleActive(Request $request, $id)
+    {
+        if (!$request->user()->isAdminOrModerator()) {
+            return response()->json(['message' => 'Доступ запрещён'], 403);
+        }
+
+        if ($id == $request->user()->id) {
+            return response()->json(['message' => 'Нельзя заблокировать свой аккаунт'], 422);
+        }
+
+        $user = User::findOrFail($id);
+        $user->update(['is_active' => !$user->is_active]);
+
+        AuditLog::log($request, $user->is_active ? 'user_unblocked' : 'user_blocked', $user);
+
+        return response()->json($user);
+    }
+
+    /**
+     * Получить настройки
+     */
+    public function getSettings(Request $request)
+    {
+        return response()->json($request->user()->getSettings());
+    }
+
+    /**
+     * Обновить настройки
+     */
+    public function updateSettings(Request $request)
+    {
+        $settings = $request->user()->getSettings();
+
+        $validated = $request->validate([
+            'sound_enabled' => 'boolean',
+            'browser_notifications' => 'boolean',
+            'default_reminder_minutes' => 'integer|min:5|max:1440',
+            'work_hours_start' => 'date_format:H:i',
+            'work_hours_end' => 'date_format:H:i',
+            'timezone' => 'string|max:50',
+        ]);
+
+        $settings->update($validated);
+
+        return response()->json($settings);
+    }
+
+    /**
+     * Статистика (admin)
+     */
+    public function getStats(Request $request)
+
+    {
+        if (!$request->user()->isAdmin()) {
+            return response()->json(['message' => 'Доступ запрещён'], 403);
+        }
+
+        return response()->json([
+            'total_users' => User::count(),
+            'active_users' => User::where('is_active', true)->count(),
+            'admins' => User::where('role', 'admin')->count(),
+            'moderators' => User::where('role', 'moderator')->count(),
+            'users' => User::where('role', 'user')->count(),
+            'new_this_month' => User::whereMonth('created_at', now()->month)->count(),
+            // Продуктовая аналитика (журнал user_activity, см. middleware TrackActivity).
+            // Таблица появляется после php artisan migrate — до этого отдаём нули.
+            ...$this->engagementStats(),
+        ]);
+    }
+
+    /** DAU/MAU и тренд за 14 дней из daily_stats/user_activity */
+    private function engagementStats(): array
+    {
+        try {
+            if (!\Illuminate\Support\Facades\DB::getSchemaBuilder()->hasTable('daily_stats')) {
+                return ['dau' => null, 'mau' => null, 'trend' => []];
+            }
+            $today = \Illuminate\Support\Facades\DB::table('daily_stats')->where('date', now()->toDateString())->first();
+            $trend = \Illuminate\Support\Facades\DB::table('daily_stats')
+                ->where('date', '>=', now()->subDays(13)->toDateString())
+                ->orderBy('date')
+                ->get(['date', 'dau', 'mau', 'actions']);
+            return [
+                'dau' => $today?->dau,
+                'mau' => $today?->mau,
+                'trend' => $trend,
+            ];
+        } catch (\Throwable $e) {
+            return ['dau' => null, 'mau' => null, 'trend' => []];
+        }
+    }
+}
