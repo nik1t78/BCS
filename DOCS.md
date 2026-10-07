@@ -16,7 +16,6 @@
 | 9 | Развёртывание на Linux-сервере |
 | 10 | Структура проекта и полезные команды |
 | 11 | История исправлений |
-| 12 | Идеи новых функций (Roadmap) |
 
 ---
 
@@ -486,6 +485,31 @@ docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder --forc
 docker compose exec backend php artisan db:seed --force
 ```
 
+### nginx: `[emerg] unknown log format "buffer=32k"` (контейнер vks-nginx в цикле Restarting)
+
+Причина: в `docker/nginx/default.conf` директива `access_log ... buffer=32k flush=5s;`
+использовалась без объявления именованного формата (`log_format`) — nginx считает
+«buffer=32k» именем формата, не находит его и падает при старте.
+
+Исправление (в текущем коде на GitHub): добавлен `log_format vks_combined` на уровне http,
+`access_log` использует его. Обновите конфиг одним из способов:
+
+```powershell
+# способ 1 — через git:
+git pull
+docker compose up -d --force-recreate nginx
+
+# способ 2 — если git недоступен, вручную отредактируйте docker/nginx/default.conf:
+#   в начало файла (после строк limit_req_zone/limit_conn_zone) добавьте:
+#     log_format vks_combined '$remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent"';
+#   а строку access_log внутри server{} замените на:
+#     access_log /var/log/nginx/access.log vks_combined;
+docker compose restart nginx
+```
+
+Проверка: `docker compose logs nginx` — должно быть «Configuration complete; ready for start up»
+без [emerg], статус контейнера — Up.
+
 ### Не открывается по IP
 
 Сайт доступен по адресу **`http://IP-сервера/` без порта** (nginx слушает 80).
@@ -736,7 +760,7 @@ php artisan optimize / optimize:clear  # кеш config/route/view
 
 ---
 
-## 12. Идеи новых функций (Roadmap)
+## 11. Идеи новых функций (Roadmap)
 
 1. Экспорт протоколов встреч в PDF и отправка в MAX *(печатный PDF уже есть)*.
 2. Календарь-синхронизация (ICS-подписка) + напоминание в MAX за 15 мин *(экспорт .ics уже есть)*.
