@@ -4,9 +4,12 @@
 FROM php:8.4-fpm-alpine AS base
 
 # Системные зависимости (alpine — образ в ~3 раза меньше debian-варианта)
+# mariadb-client (mysqldump) обязателен: команда `php artisan db:backup`
+# (ежедневный бэкап БД в 02:30) вызывает mysqldump внутри контейнера.
 RUN apk add --no-cache \
         git curl icu-dev libpng-dev libjpeg-turbo-dev freetype-dev \
         oniguruma-dev libxml2-dev libzip-dev zip unzip autoconf g++ make linux-headers \
+        mariadb-client \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j"$(nproc)" pdo_mysql mbstring exif pcntl bcmath gd zip opcache
 

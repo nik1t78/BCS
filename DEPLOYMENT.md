@@ -15,7 +15,7 @@ cd vks-schedule
 
 ### 2. Запуск всех сервисов
 ```bash
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 ### 3. Инициализация базы данных и backend
@@ -46,30 +46,33 @@ docker exec vks-backend php artisan db:seed --class=VksDatabaseSeeder --force
 ### Просмотр логов
 ```bash
 # Все логи
-docker-compose logs -f
+docker compose logs -f
 
 # Backend логи
-docker-compose logs -f backend
+docker compose logs -f backend
 
 # Frontend логи
-docker-compose logs -f nginx
+docker compose logs -f nginx
 ```
 
 ### Перезапуск / запуск после выключения света
 ```bash
-docker-compose up -d      # поднять все сервисы (быстрый старт с сохранённой БД)
-docker-compose restart    # перезапуск уже запущенных контейнеров
+docker compose up -d      # поднять все сервисы (быстрый старт с сохранённой БД)
+docker compose restart    # перезапуск уже запущенных контейнеров
 ```
 Подробная инструкция — в [RESTART.md](RESTART.md).
 
 ### Остановка
 ```bash
-docker-compose down
+docker compose down
 ```
 
-### Полная очистка (с удалением БД)
+### Полная очистка (удаление именованных volumes)
 ```bash
-docker-compose down -v
+docker compose down -v
+# Удалит volumes: frontend_build, backend_vendor, backend_bootstrap_cache.
+# Данные MySQL лежат в bind-папке ./docker/mysql/data — она НЕ удаляется;
+# НИКОГДА не удаляйте эту папку вручную, если не хотите потерять базу.
 ```
 
 ## Структура проекта
@@ -81,7 +84,7 @@ vks-schedule/
 │   ├── routes/          # Маршруты API
 │   └── storage/         # Файлы, логи
 ├── src/                 # React frontend
-├── docker-compose.yml   # Конфигурация Docker
+├── docker compose.yml   # Конфигурация Docker
 └── DEPLOYMENT.md        # Эта инструкция
 ```
 
@@ -90,13 +93,13 @@ vks-schedule/
 - **3306** - MySQL (только внутри сети Docker)
 
 ## Безопасность
-1. Смените пароли в `docker-compose.yml` перед production
+1. Смените пароли в `docker compose.yml` перед production
 2. Настройте HTTPS через reverse proxy (nginx, traefik)
 3. Закройте порт 3306 фаерволом для внешнего доступа
 
 ## Обновление
 ```bash
 git pull
-docker-compose up -d --build
+docker compose up -d --build
 docker exec vks-backend php artisan migrate --force
 ```

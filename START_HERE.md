@@ -132,7 +132,7 @@ docker exec vks-backend php artisan queue:work --once          # если дос
 
 ### Напоминания по расписанию
 
-Контейнер `vks-scheduler` каждые минуты вызывает `schedule:run`: команда `reminders:send` шлёт напоминания о ближайших встречах (по `reminder_minutes`) — in-app + в MAX тем, кто привязан. Резервная копия БД (`db:backup --keep=14`) выполняется ежедневно автоматически, файлы в `storage/app/backups/`.
+Контейнер `vks-scheduler` каждую минуту вызывает `schedule:run`: команда `meetings:send-reminders` шлёт напоминания о ближайших встречах (по `reminder_minutes`) — in-app + в MAX тем, кто привязан. Резервная копия БД (`db:backup --keep=14`) выполняется ежедневно в 02:30 автоматически, файлы в `backend/storage/app/backups/`.
 
 `MESSENGER=none` полностью выключает внешний канал (in-app остаётся).
 

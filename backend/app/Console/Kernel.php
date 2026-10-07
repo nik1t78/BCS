@@ -26,6 +26,12 @@ class Kernel extends ConsoleKernel
                  ->daily()
                  ->at('03:00');
 
+        // Уведомления о конференциях текущего дня — каждые 15 минут
+        // (команда сама пропускает уже отправленные уведомления)
+        $schedule->command('meetings:send-notifications')
+                 ->everyFifteenMinutes()
+                 ->withoutOverlapping();
+
         // Продуктовая аналитика: снимок DAU/MAU, ежедневно в 00:15
         // (по умолчанию считается текущий день; догон вчерашнего — при перезапуске)
         $schedule->command('analytics:daily')
