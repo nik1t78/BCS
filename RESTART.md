@@ -99,7 +99,7 @@ ls -lh backend/storage/app/backups/                       # посмотреть
 ```bash
 docker compose up -d mysql                                # поднять MySQL
 gunzip -c backend/storage/app/backups/backup-ДАТА.sql.gz | \
-  docker compose exec -T mysql mysql -uroot -p"$(grep DB_ROOT_PASSWORD .env | cut -d= -f2)" vks_schedule
+  docker compose exec -T mysql mysql -uroot -p"$(grep DB_ROOT_PASSWORD .env 2>/dev/null | cut -d= -f2 || grep MYSQL_ROOT_PASSWORD backend/.env | cut -d= -f2)" vks_schedule
 ```
 
 ## Полезные команды
