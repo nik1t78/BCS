@@ -198,28 +198,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
             </form>
           )}
 
-          {/* Информация для первого входа */}
-          {mode === 'login' && (
-            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm font-semibold text-blue-900 mb-2">
-                <i className="fas fa-info-circle mr-1"></i>
-                Первый вход в систему
-              </p>
-              <p className="text-xs text-blue-800 mb-2">
-                Используйте данные администратора:
-              </p>
-              <div className="bg-white p-2 rounded border border-blue-300">
-                <code className="text-sm font-mono text-blue-900">
-                  Логин: <strong>admin</strong><br/>
-                  Пароль: <strong>admin123</strong>
-                </code>
-              </div>
-              <p className="text-xs text-blue-800 mt-2">
-                <i className="fas fa-lightbulb mr-1"></i>
-                Если не работает, очистите localStorage в консоли браузера (F12)
-              </p>
-            </div>
-          )}
+          {/* Подсказка по входу (демо-данные на экране авторизации скрыты) */}
         </div>
       </div>
     </div>
