@@ -1,5 +1,26 @@
 # 🚀 Как запустить проект (ВКС Расписание)
 
+## Вариант 0 — скачал архив без git (Windows, самый быстрый путь)
+
+Проект можно не клонировать: распакуйте архив в `D:\server\BCS` и выполните ОДИН раз
+подготовку — она восстановит каркас Laravel (`backend/config`, `backend/storage`,
+`backend/bootstrap/cache`), создаст `.env`-файлы и сгенерирует `APP_KEY`:
+
+```powershell
+cd D:\server\BCS
+powershell -ExecutionPolicy Bypass -File .\setup-project.ps1
+docker compose up -d --build
+```
+
+Linux/macOS/WSL — то же самое скриптом `bash ./setup-project.sh`.
+
+Проверьте, что в `backend/` есть `composer.json`, `composer.lock`, `artisan`,
+`bootstrap/app.php`, а также файлы `docker/skeleton/laravel12/**` — без них скрипт
+остановится с понятным сообщением. Если чего-то из этого нет, архив неполный:
+перекачайте его (или используйте `git clone`).
+
+Дальше — шаги 4–5 из раздела «Вариант 1» (миграции и кеш конфигурации).
+
 ## Вариант 1 — Docker (рекомендуется, сервер/прод)
 
 > **Обязательно:** `backend/composer.lock` должен быть в репозитории. Без него
@@ -17,12 +38,13 @@ cp .env.example .env
 openssl rand -hex 16   # → DB_PASSWORD
 openssl rand -hex 16   # → DB_ROOT_PASSWORD
 openssl rand -hex 16   # → REDIS_PASSWORD
-# вписать их в .env, включая APP_KEY — иначе compose прерывается со строкой
-# "required variable APP_KEY is missing a value" (пустое значение APP_KEY=
-# тоже считается отсутствующим):
+# вписать их в .env, включая APP_KEY. Пустое значение APP_KEY= docker compose
+# считает отсутствующим и прерывается со строкой
+# "required variable APP_KEY is missing a value":
 docker compose run --rm backend php artisan key:generate --show
-# → скопировать вывод (base64:...) в APP_KEY=... в .env
+# → скопировать вывод (base64:...) в APP_KEY=... в .env И в backend/.env
 # Windows PowerShell: Copy-Item .env.example .env; Get-Content .env
+# Проще: запустить setup-project.ps1 / setup-project.sh — он сделает это сам.
 
 # 3. Собрать и запустить всё (frontend, backend, nginx, mysql, redis, queue, scheduler)
 docker compose up -d --build
