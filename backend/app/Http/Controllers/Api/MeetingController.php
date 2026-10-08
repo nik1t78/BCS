@@ -209,7 +209,10 @@ class MeetingController extends Controller
     {
         $user = $request->user();
 
-        if ($meeting->organizer_id !== $user->id && !$user->isAdmin()) {
+        // Право редактировать: организатор, админ, модератор или участник встречи
+        // (по запросу участников они могут править название/время и смотреть описание).
+        $isParticipant = in_array($user->id, array_map('intval', $meeting->participants ?? []), true);
+        if ($meeting->organizer_id !== $user->id && !$user->isAdmin() && !$user->isModerator() && !$isParticipant) {
             return response()->json(['message' => 'Доступ запрещён'], 403);
         }
 
@@ -343,7 +346,9 @@ class MeetingController extends Controller
     {
         $user = $request->user();
 
-        if ($meeting->organizer_id !== $user->id && !$user->isAdmin()) {
+        // Перенос доступен организатору, админу, модератору и участникам встречи.
+        $isParticipant = in_array($user->id, array_map('intval', $meeting->participants ?? []), true);
+        if ($meeting->organizer_id !== $user->id && !$user->isAdmin() && !$user->isModerator() && !$isParticipant) {
             return response()->json(['message' => 'Доступ запрещён'], 403);
         }
 
