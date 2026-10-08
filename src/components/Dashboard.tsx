@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { User, Meeting } from "../types";
 import { getMeetings, getUsersForDisplay } from "../store-api";
 import { occursOn, withDate } from "../utils/recurrence";
+import FreeRoomsWidget from "./FreeRoomsWidget";
+import { icsAPI } from "../api/client";
 
 interface DashboardProps {
   user: User;
@@ -18,6 +20,28 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
   // В одно время может быть несколько конференций — храним все «следующие» (с тем же датой/временем старта)
   const [nextMeetings, setNextMeetings] = useState<Meeting[]>([]);
   const [countdown, setCountdown] = useState("");
+  // Экспорт «Мой календарь ВКС» в .ics
+  const [icsLoading, setIcsLoading] = useState(false);
+
+  const handleDownloadIcs = async () => {
+    setIcsLoading(true);
+    try {
+      const blob = await icsAPI.download();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "vks-my-schedule.ics";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("ICS export error:", e);
+      alert("Не удалось сформировать файл .ics");
+    } finally {
+      setIcsLoading(false);
+    }
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -44,12 +68,13 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
   const hasAccessTo = (m: Meeting) =>
     Number(m.organizerId) === Number(user.id) || (m.participants ?? []).some((p) => Number(p) === Number(user.id));
 
-  // Как в «Расписании»: обычный пользователь видит ВСЕ ВКС (участие + общедоступные),
-  // скрыты только приватные, к которым у него нет доступа.
+  // На главной («Обзор») обычный пользователь видит ТОЛЬКО свои ВКС —
+  // организованные им или где он участник. Все остальные конференции —
+  // в разделе «Расписание». Админ/модератор видят всё.
   const visibleMeetings =
     user.role === "admin" || user.role === "moderator"
       ? meetings
-      : meetings.filter((m) => m.isPrivate !== true || hasAccessTo(m));
+      : meetings.filter((m) => hasAccessTo(m));
 
   useEffect(() => {
     const today = toDateKey(currentTime);

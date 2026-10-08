@@ -809,7 +809,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             >
               <i className={`fas ${tab.icon}`}></i>
               {tab.label}
-              {tab.count !== undefined && (
+              {tab.count !== undefined && tab.count > 0 && (
                 <span
                   className={`text-xs px-1.5 py-0.5 rounded-full ${activeTab === tab.id ? "bg-white/20" : "bg-gray-200 dark:bg-gray-600"}`}
                 >

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { User, Meeting } from "../types";
 import { getMeetings, getUsersForDisplay, rescheduleMeeting, checkRescheduleConflicts, updateMeeting } from "../store-api";
+import { roomsAPI } from "../api/client";
 import { occursOn, withDate } from "../utils/recurrence";
 
 interface ScheduleProps {
@@ -17,6 +18,10 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
   const [view, setView] = useState<"day" | "week" | "month">("week");
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [filter, setFilter] = useState<"all" | "my" | "today" | "upcoming">("all");
+  // Справочник всех переговорных комнат (включая созданные пользователями)
+  // и фильтр календаря по комнате.
+  const [rooms, setRooms] = useState<any[]>([]);
+  const [roomFilter, setRoomFilter] = useState("");
   const [loading, setLoading] = useState(true);
   // drag&drop переноса встреч между днями календаря
   const [dragMeetingId, setDragMeetingId] = useState<string | null>(null);
@@ -32,6 +37,15 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
   useEffect(() => {
     loadData();
   }, [user]);
+
+  // Загружаем справочник комнат — пользователи видят ВСЕ комнаты,
+  // включая те, что создали другие пользователи (даже без встреч).
+  useEffect(() => {
+    roomsAPI
+      .list()
+      .then((res: any) => setRooms(Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : []))
+      .catch(() => setRooms([]));
+  }, []);
 
   const openMeeting = (m: Meeting) => {
     setSelectedMeeting(m);
@@ -114,6 +128,7 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
   };
 
   const visibleMeetings = meetings.filter((m) => {
+    if (roomFilter && m.room !== roomFilter) return false;
     if (filter === "my") return hasAccessTo(m);
     if (filter === "today") return occursOn(m, new Date());
     if (filter === "upcoming") return m.status !== "completed" && m.status !== "cancelled";
@@ -338,6 +353,34 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
             </button>
           ))}
         </div>
+
+        {/* Комнаты: в календаре показываем ВСЕ переговорные комнаты справочника,
+            включая те, что создали пользователи и в которых пока нет встреч. */}
+        {rooms.length > 0 && (
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+              <i className="fas fa-door-open mr-1"></i>Комнаты:
+            </span>
+            {rooms.map((r: any) => {
+              const active = roomFilter === r.name;
+              return (
+                <button
+                  key={r.id ?? r.name}
+                  onClick={() => setRoomFilter(active ? "" : r.name)}
+                  title={active ? "Показать все комнаты" : `Показать только «${r.name}»`}
+                  className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                    active
+                      ? "bg-red-600 text-white border-red-600"
+                      : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-red-400"
+                  }`}
+                >
+                  {r.name}
+                  {r.capacity ? <span className="opacity-60 ml-1">·{r.capacity}</span> : null}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Schedule View */}
