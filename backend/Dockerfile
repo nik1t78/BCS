@@ -113,3 +113,8 @@ RUN { \
 
 EXPOSE 9000
 CMD ["php-fpm"]
+
+# ================= fallback: гарантированный TCP-listen 9000 =================
+# Если образ не пересобран (--no-cache не применён) или шаг zz-listen.conf
+# потерян, entrypoint ниже при старте сам допишет listen = 0.0.0.0:9000.
+# Это страхует от 502 "connect() failed (111: Connection refused)".

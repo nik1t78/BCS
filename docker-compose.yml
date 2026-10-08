@@ -115,6 +115,12 @@ services:
           echo "[vks] redis недоступен — переключаю кэш/очередь на file/database"
           sed -i 's/^CACHE_STORE=.*/CACHE_STORE=file/; s/^QUEUE_CONNECTION=.*/QUEUE_CONNECTION=database/' /var/www/html/.env 2>/dev/null || true
         fi
+        # Самолечение TCP-listen: nginx стучится на backend:9000, а базовый
+        # образ php-fpm-alpine по умолчанию слушает UNIX-сокет -> 502 refused.
+        if ! grep -qs 'listen = 0.0.0.0:9000' /usr/local/etc/php-fpm.d/zz-listen.conf; then
+          echo '[vks] чиню php-fpm listen -> 0.0.0.0:9000'
+          { echo '[www]'; echo 'listen = 0.0.0.0:9000'; echo 'clear_env = no'; } > /usr/local/etc/php-fpm.d/zz-listen.conf
+        fi
         exec php-fpm
     depends_on:
       - mysql
