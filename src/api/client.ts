@@ -507,3 +507,26 @@ export const maxAPI = {
   link: (chatId: string) => apiRequest("/max/link", { method: "PUT", body: JSON.stringify({ chat_id: chatId }) }),
   unlink: () => apiRequest("/max/link", { method: "DELETE" }),
 };
+
+// Массовая загрузка участников встречи списком/CSV (id, логин или ФИО через ; , \n)
+export const bulkParticipantsAPI = {
+  add: (meetingId: string | number, participants: string, notify = true) =>
+    apiRequest(`/meetings/${meetingId}/participants/bulk`, {
+      method: "POST",
+      body: JSON.stringify({ participants, notify }),
+    }),
+};
+
+// Экспорт расписания в iCalendar (.ics)
+export const icsAPI = {
+  download: () => downloadBlob("/schedule.ics"),
+};
+
+// Web Push подписки браузера
+export const pushAPI = {
+  subscribe: (sub: PushSubscriptionJSON) =>
+    apiRequest("/push/subscribe", { method: "POST", body: JSON.stringify(sub) }),
+  list: () => apiRequest("/push/subscriptions"),
+  unsubscribe: (id: string | number) => apiRequest(`/push/subscribe/${id}`, { method: "DELETE" }),
+  test: () => apiRequest("/push/test", { method: "POST" }),
+};

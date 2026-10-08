@@ -101,5 +101,15 @@ RUN cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
         echo 'session.cookie_samesite=Lax'; \
     } > /usr/local/etc/php/conf.d/zz-app.ini
 
+# ================= listen on TCP 0.0.0.0:9000 =================
+# По умолчанию php-fpm-alpine слушает UNIX-сокет /proc/self/fd/2, а nginx
+# стучится к нам по TCP backend:9000 — отсюда стабильные 502
+# "connect() failed (111: Connection refused) ... upstream fastcgi://...:9000".
+RUN { \
+        echo '[www]'; \
+        echo 'listen = 0.0.0.0:9000'; \
+        echo 'clear_env = no'; \
+    } > /usr/local/etc/php-fpm.d/zz-listen.conf
+
 EXPOSE 9000
 CMD ["php-fpm"]

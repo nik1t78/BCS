@@ -123,6 +123,18 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/rooms', [\App\Http\Controllers\Api\RoomController::class, 'index']);
     Route::get('/rooms/{room}/availability', [\App\Http\Controllers\Api\RoomController::class, 'availability']);
 
+    // Массовая загрузка участников встречи списком/CSV (id, логин или ФИО через ; , \n)
+    Route::post('/meetings/{meeting}/participants/bulk', [\App\Http\Controllers\Api\MeetingBulkParticipantsController::class, 'store']);
+
+    // Экспорт расписания в iCalendar (.ics): скачать или подписаться ссылкой
+    Route::get('/schedule.ics', [\App\Http\Controllers\Api\MeetingIcsController::class, 'index']);
+
+    // Web Push: подписки браузера на push-уведомления
+    Route::post('/push/subscribe', [\App\Http\Controllers\Api\PushSubscriptionController::class, 'store']);
+    Route::get('/push/subscriptions', [\App\Http\Controllers\Api\PushSubscriptionController::class, 'index']);
+    Route::delete('/push/subscribe/{id}', [\App\Http\Controllers\Api\PushSubscriptionController::class, 'destroy']);
+    Route::post('/push/test', [\App\Http\Controllers\Api\PushSubscriptionController::class, 'testPush']);
+
     // Интеграция с мессенджером MAX (max.ru): deep-link на чат бота для уведомлений
     Route::get('/max/status', function (\Illuminate\Http\Request $request) {
         return response()->json([

@@ -298,6 +298,35 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
           </div>
         )}
       </div>
+
+      {/* Быстрые действия: экспорт календаря (.ics) и виджет свободных комнат */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+        <FreeRoomsWidget />
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow p-4 flex flex-col justify-between">
+          <div>
+            <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-2">
+              <i className="fas fa-calendar-minus mr-2 text-blue-600" aria-hidden="true"></i>
+              Мой календарь ВКС
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Скачайте файл .ics со своими встречами (название, время, комната, описание)
+              и добавьте его в Outlook, Яндекс.Календарь или Google Calendar — расписание
+              будет видно даже вне системы.
+            </p>
+          </div>
+          <button
+            onClick={handleDownloadIcs}
+            disabled={icsLoading}
+            className="mt-3 self-start bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition-colors disabled:opacity-50"
+          >
+            {icsLoading ? (
+              <><i className="fas fa-circle-notch fa-spin mr-1"></i> Формирование…</>
+            ) : (
+              <><i className="fas fa-download mr-1"></i> Скачать .ics</>
+            )}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

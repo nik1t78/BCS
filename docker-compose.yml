@@ -97,8 +97,25 @@ services:
       # redis (phpredis сам переподключается). Иначе при остановленном redis
       # rate-limiter на /auth/login падал с 500, а nginx отдавал 502.
       SESSION_DRIVER: cookie
+      # Кэш/очередь по умолчанию в redis. Если redis недоступен, Laravel 12
+      # при CACHE_STORE=redis падает с 500 на КАЖДОМ запросе (phpredis не может
+      # подключиться) — nginx видит закрытое соединение и отдаёт 502. Поэтому
+      # docker-entrypoint ниже проверяет доступность redis и тихо переключает
+      # backend на file/database без перезапуска контейнера.
       CACHE_STORE: "${CACHE_STORE:-redis}"
       QUEUE_CONNECTION: "${QUEUE_CONNECTION:-redis}"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        check_redis() {
+          php -r '$s=@fsockopen("redis",6379,$e,$m,2); if($s){fwrite(STDOUT,"OK\n");exit(0);} fwrite(STDOUT,"FAIL\n");exit(1);' 2>/dev/null
+        }
+        if [ "$$(check_redis)" != "OK" ]; then
+          echo "[vks] redis недоступен — переключаю кэш/очередь на file/database"
+          sed -i 's/^CACHE_STORE=.*/CACHE_STORE=file/; s/^QUEUE_CONNECTION=.*/QUEUE_CONNECTION=database/' /var/www/html/.env 2>/dev/null || true
+        fi
+        exec php-fpm
     depends_on:
       - mysql
       - redis

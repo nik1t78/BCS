@@ -38,6 +38,14 @@ class User extends Authenticatable
     ];
 
     /**
+     * Подписки на web-push уведомления браузера
+     */
+    public function pushSubscriptions()
+    {
+        return $this->hasMany(\App\Models\PushSubscription::class);
+    }
+
+    /**
      * Проверка роли администратора
      */
     public function isAdmin(): bool
