@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { User, Meeting } from "../types";
-import { getMeetings, getUsersForDisplay, rescheduleMeeting, checkRescheduleConflicts } from "../store-api";
+import { getMeetings, getUsersForDisplay, rescheduleMeeting, checkRescheduleConflicts, updateMeeting } from "../store-api";
 import { occursOn, withDate } from "../utils/recurrence";
 
 interface ScheduleProps {
@@ -22,12 +22,48 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
   const [dragMeetingId, setDragMeetingId] = useState<string | null>(null);
   const [dragOverDate, setDragOverDate] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
-  // Модалка просмотра информации о ВКС при клике в календаре (доступна всем ролям)
-  const [viewing, setViewing] = useState<Meeting | null>(null);
+  // Детальная карточка ВКС (просмотр описания/комнаты по клику) и режим редактирования
+  const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({ title: "", startTime: "", endTime: "" });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
   }, [user]);
+
+  const openMeeting = (m: Meeting) => {
+    setSelectedMeeting(m);
+    setEditing(false);
+    setSaveError(null);
+  };
+
+  const startEdit = (m: Meeting) => {
+    setEditForm({ title: m.title ?? "", startTime: m.startTime, endTime: m.endTime });
+    setEditing(true);
+    setSaveError(null);
+  };
+
+  const saveEdit = async () => {
+    if (!selectedMeeting || !editForm.title.trim()) return;
+    setSaving(true);
+    setSaveError(null);
+    const res = await updateMeeting(selectedMeeting.id, {
+      ...selectedMeeting,
+      title: editForm.title.trim(),
+      startTime: editForm.startTime,
+      endTime: editForm.endTime,
+    });
+    setSaving(false);
+    if (res) {
+      await loadData();
+      setSelectedMeeting({ ...selectedMeeting, ...editForm });
+      setEditing(false);
+    } else {
+      setSaveError("Не удалось сохранить изменения");
+    }
+  };
 
   // API возвращает id числами, user.id — строка: сравниваем через Number
   const hasAccessTo = (m: Meeting) =>
@@ -107,19 +143,11 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
 
   const getUserName = (id: string) => allUsers.find((u) => Number(u.id) === Number(id))?.name || "—";
 
-  // Можно ли перетаскивать встречу (организатор, админ/модератор или участник — как на бэкенде)
+  // Можно ли перетаскивать встречу (только организатор или админ — как на бэкенде)
   const canDrag = (m: Meeting) =>
     m.status !== "cancelled" &&
     m.status !== "completed" &&
     (Number(m.organizerId) === Number(user.id) || user.role === "admin" || user.role === "moderator" || hasAccessTo(m));
-
-  // Клик по встрече в календаре — открыть карточку с информацией о ВКС
-  // (название, время, комната, описание, организатор). Для приватных встреч
-  // без участия детали скрыты — показываем только «Конференция» и время.
-  const openInfo = (m: Meeting): React.MouseEventHandler => (e) => {
-    e.stopPropagation();
-    setViewing(m);
-  };
 
   // Перенос встречи на другой день календаря (drag&drop)
   const handleDropOnDate = async (dateKey: string) => {
@@ -182,6 +210,20 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
           },
         }
       : {};
+
+  // Клик по встрече в календаре — открывает карточку с описанием и комнатой.
+  // suppressClick используется, чтобы не открывать модалку сразу после drag&drop.
+  let suppressClickUntil = 0;
+  const clickProps = (m: Meeting) => ({
+    onClick: () => {
+      if (Date.now() < suppressClickUntil) return;
+      openMeeting(m);
+    },
+    onDoubleClick: () => {
+      if (canDrag(m)) suppressClickUntil = Date.now() + 600;
+    },
+    title: "Подробнее о конференции",
+  });
 
   const dropTargetProps = (date: Date) => ({
     onDragOver: (e: React.DragEvent) => {
@@ -319,9 +361,8 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
                   <div
                     key={meeting.id}
                     {...dragHandlers(meeting)}
-                    onClick={openInfo(meeting)}
-                    title="Нажмите, чтобы посмотреть информацию о ВКС"
-                    className={`border-l-4 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded-r-lg p-4 cursor-pointer hover:ring-2 hover:ring-blue-300 ${canDrag(meeting) ? "active:cursor-grabbing" : ""}`}
+                    {...clickProps(meeting)}
+                    className={`border-l-4 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded-r-lg p-4 cursor-pointer hover:ring-2 hover:ring-blue-300 ${canDrag(meeting) ? "cursor-grab active:cursor-grabbing" : ""}`}
                   >
                     <div className="flex items-center justify-between">
                       <div>
@@ -406,9 +447,8 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
                         <div
                           key={meeting.id}
                           {...dragHandlers(meeting)}
-                          onClick={openInfo(meeting)}
-                          title="Нажмите, чтобы посмотреть информацию о ВКС"
-                          className={`border-l-2 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded p-1.5 mb-1 text-xs cursor-pointer hover:ring-1 hover:ring-blue-300 ${canDrag(meeting) ? "active:cursor-grabbing opacity-100" : ""} ${dragMeetingId === String(meeting.id) ? "opacity-40" : ""}`}
+                    {...clickProps(meeting)}
+                          className={`border-l-2 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded p-1.5 mb-1 text-xs cursor-pointer hover:ring-1 hover:ring-blue-300 ${canDrag(meeting) ? "cursor-grab active:cursor-grabbing opacity-100" : ""} ${dragMeetingId === String(meeting.id) ? "opacity-40" : ""}`}
                         >
                           <p className="font-medium text-gray-800 dark:text-gray-100 truncate">
                             {meeting.recurring !== "none" && <i className="fas fa-sync-alt text-blue-500 mr-1"></i>}
@@ -456,9 +496,8 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
                       <div
                         key={meeting.id}
                         {...dragHandlers(meeting)}
-                        onClick={openInfo(meeting)}
-                        title="Нажмите, чтобы посмотреть информацию о ВКС"
-                        className={`border-l-2 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded px-1 py-0.5 mb-0.5 text-xs cursor-pointer hover:ring-1 hover:ring-blue-300 ${canDrag(meeting) ? "active:cursor-grabbing" : ""} ${dragMeetingId === String(meeting.id) ? "opacity-40" : ""}`}
+                    {...clickProps(meeting)}
+                        className={`border-l-2 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded px-1 py-0.5 mb-0.5 text-xs cursor-pointer hover:ring-2 hover:ring-blue-300 ${canDrag(meeting) ? "cursor-grab active:cursor-grabbing" : ""} ${dragMeetingId === String(meeting.id) ? "opacity-40" : ""}`}
                       >
                         <p className="truncate text-gray-700 dark:text-gray-300">
                           {meeting.startTime} {canSeeDetails ? meeting.title : "Конференция"}
@@ -475,96 +514,78 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
           </div>
         </div>
       )}
+      {/* Детальная карточка ВКС: описание, комната, время; редактирование названия/времени */}
+      {selectedMeeting && (() => {
+        const canSee = user.role === "admin" || user.role === "moderator" || hasAccessTo(selectedMeeting);
+        const canEdit = canSee && selectedMeeting.status !== "cancelled" && selectedMeeting.status !== "completed";
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setSelectedMeeting(null)}>
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-lg w-full p-6" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-start justify-between mb-4">
+                <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100">
+                  {canSee ? selectedMeeting.title : "Конференция"}
+                </h3>
+                <button onClick={() => setSelectedMeeting(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none" aria-label="Закрыть">&times;</button>
+              </div>
 
-      {/* Карточка информации о ВКС (клик по встрече в календаре) */}
-      {viewing &&
-        (() => {
-          const canSeeDetails =
-            user.role === "admin" || user.role === "moderator" || hasAccessTo(viewing);
-          return (
-            <div
-              className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
-              onClick={() => setViewing(null)}
-            >
-              <div
-                className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full p-6"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">
-                    {canSeeDetails ? viewing.title : "Конференция"}
-                  </h3>
-                  <button
-                    onClick={() => setViewing(null)}
-                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-                    aria-label="Закрыть"
-                  >
-                    <i className="fas fa-times"></i>
-                  </button>
+              {editing ? (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Название</label>
+                    <input value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                      className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Начало</label>
+                      <input type="time" value={editForm.startTime} onChange={(e) => setEditForm({ ...editForm, startTime: e.target.value })}
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Окончание</label>
+                      <input type="time" value={editForm.endTime} onChange={(e) => setEditForm({ ...editForm, endTime: e.target.value })}
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    </div>
+                  </div>
+                  {saveError && <p className="text-sm text-red-500">{saveError}</p>}
+                  <div className="flex gap-2 justify-end pt-2">
+                    <button onClick={() => setEditing(false)} className="px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">Отмена</button>
+                    <button onClick={saveEdit} disabled={saving} className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
+                      {saving ? "Сохранение..." : "Сохранить"}
+                    </button>
+                  </div>
                 </div>
-                <div className="mt-3 space-y-2 text-sm text-gray-600 dark:text-gray-300">
-                  <p>
-                    <i className="fas fa-calendar mr-2 text-blue-500"></i>
-                    {new Date(viewing.date).toLocaleDateString("ru-RU", {
-                      weekday: "long",
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    })}
-                  </p>
-                  <p>
-                    <i className="fas fa-clock mr-2 text-blue-500"></i>
-                    {viewing.startTime} – {viewing.endTime}
-                  </p>
-                  {canSeeDetails && viewing.room && (
-                    <p>
-                      <i className="fas fa-map-marker-alt mr-2 text-blue-500"></i>Комната: {viewing.room}
-                    </p>
+              ) : (
+                <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
+                  <p><i className="fas fa-calendar mr-2 text-blue-500"></i>{selectedMeeting.date}, {selectedMeeting.startTime} – {selectedMeeting.endTime}</p>
+                  <p><i className="fas fa-map-marker-alt mr-2 text-red-500"></i>{canSee ? (selectedMeeting.room || "Комната не указана") : "Место скрыто"}</p>
+                  <p><i className="fas fa-user mr-2 text-green-500"></i>Организатор: {canSee ? getUserName(selectedMeeting.organizerId) : "—"}</p>
+                  {canSee && selectedMeeting.description && (
+                    <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                      <p className="font-medium text-gray-800 dark:text-gray-100 mb-1">Описание:</p>
+                      <p className="text-gray-600 dark:text-gray-400 whitespace-pre-line">{selectedMeeting.description}</p>
+                    </div>
                   )}
-                  {canSeeDetails && (
-                    <p>
-                      <i className="fas fa-user mr-2 text-blue-500"></i>Организатор: {getUserName(viewing.organizerId)}
-                    </p>
-                  )}
-                  {canSeeDetails && viewing.description && (
-                    <p className="mt-2 bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
-                      <i className="fas fa-align-left mr-2 text-blue-500"></i>
-                      {viewing.description}
-                    </p>
-                  )}
-                  {!canSeeDetails && (
-                    <p className="text-xs text-gray-400 dark:text-gray-500">
-                      Приватная конференция — детали видны только участникам.
-                    </p>
-                  )}
-                </div>
-                <div className="mt-4 flex gap-2">
-                  {canSeeDetails && viewing.link && (
-                    <a
-                      href={viewing.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700"
-                    >
+                  {canSee && selectedMeeting.link && (
+                    <a href={selectedMeeting.link} target="_blank" rel="noopener noreferrer"
+                      className="inline-block mt-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
                       <i className="fas fa-video mr-1"></i>Войти в ВКС
                     </a>
                   )}
-                  {(user.role === "admin" || user.role === "moderator" || Number(viewing.organizerId) === Number(user.id)) && (
-                    <button
-                      onClick={() => {
-                        setViewing(null);
-                        onNavigate("meetings");
-                      }}
-                      className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-lg text-sm hover:bg-gray-200 dark:hover:bg-gray-600"
-                    >
-                      <i className="fas fa-edit mr-1"></i>Открыть в «Мои ВКС»
-                    </button>
+                  {!canSee && <p className="text-gray-400 italic pt-2">Детали скрыты: вы не участник этой приватной конференции.</p>}
+                  {canEdit && (
+                    <div className="pt-3 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+                      <button onClick={() => startEdit(selectedMeeting)} className="px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200">
+                        <i className="fas fa-pen mr-1"></i>Редактировать название и время
+                      </button>
+                    </div>
                   )}
                 </div>
-              </div>
+              )}
             </div>
-          );
-        })()}
+          </div>
+        );
+      })()}
     </div>
   );
 }
