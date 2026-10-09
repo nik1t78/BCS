@@ -130,7 +130,7 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
       date: p.date ?? emptyMeeting.date,
       startTime: p.startTime ?? emptyMeeting.startTime,
       endTime: p.endTime ?? emptyMeeting.endTime,
-      room: p.room ?? emptyMeeting.room,
+      room: p.room || emptyMeeting.room,
       link: p.autoLink ? generateVksLink() : "",
     });
     setShowForm(true);

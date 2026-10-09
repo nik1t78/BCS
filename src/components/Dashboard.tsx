@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { User, Meeting } from "../types";
-import { getMeetings, getUsersForDisplay } from "../store-api";
+import { getMeetings, getUsersForDisplay, updateMeeting } from "../store-api";
 import { occursOn, withDate } from "../utils/recurrence";
 import FreeRoomsWidget from "./FreeRoomsWidget";
+import OutlookCalendar, { OutlookView } from "./OutlookCalendar";
+import { toDateKey } from "../utils/dateKey";
 import { icsAPI } from "../api/client";
 
 interface DashboardProps {
@@ -12,13 +14,25 @@ interface DashboardProps {
   onBookSlot?: (roomName: string, startTime: string, endTime: string, date: string) => void;
 }
 
-const toDateKey = (d: Date): string =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+/** Диапазон дат видимых дней календаря (для разворачивания повторов) */
+function visibleRange(days: Date[]): { from: string; to: string } {
+  const keys = days.map(toDateKey).sort();
+  return { from: keys[0], to: keys[keys.length - 1] };
+}
+
+const addDaysLocal = (d: Date, n: number): Date => {
+  const r = new Date(d);
+  r.setDate(r.getDate() + n);
+  return r;
+};
 
 export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
+  // Outlook-вид расписания аудиторий на главной: день / неделя / месяц
+  const [calView, setCalView] = useState<OutlookView>("day");
+  const [calDate, setCalDate] = useState(new Date());
   // В одно время может быть несколько конференций — храним все «следующие» (с тем же датой/временем старта)
   const [nextMeetings, setNextMeetings] = useState<Meeting[]>([]);
   const [countdown, setCountdown] = useState("");
@@ -112,16 +126,83 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
   const todayMeetings = visibleMeetings.filter((m) => m.date === toDateKey(currentTime));
   const getUserName = (id: string) => users.find((u) => Number(u.id) === Number(id))?.name || "Неизвестный";
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "high":
-        return "bg-red-100 text-red-800 border-red-200";
-      case "medium":
-        return "bg-yellow-100 text-yellow-800 border-yellow-200";
-      case "low":
-        return "bg-green-100 text-green-800 border-green-200";
-      default:
-        return "bg-gray-100 text-gray-800 border-gray-200";
+  // Видимые дни текущей вкладки (день / неделя / месяц)
+  const calDays = (() => {
+    if (calView === "day") return [calDate];
+    if (calView === "month") return [];
+    const iso = (d: Date) => (d.getDay() + 6) % 7; // пн=0
+    const start = addDaysLocal(calDate, -iso(calDate));
+    const count = calView === "workweek" ? 5 : 7;
+    return Array.from({ length: count }, (_, i) => addDaysLocal(start, i));
+  })();
+
+  // Разворачиваем повторы occurrences'ами в видимом диапазоне
+  const expandedMeetings = (() => {
+    if (calView === "month") {
+      const from = toDateKey(new Date(calDate.getFullYear(), calDate.getMonth(), 1));
+      const to = toDateKey(new Date(calDate.getFullYear(), calDate.getMonth() + 1, 0));
+      return visibleMeetings.flatMap((m) => {
+        const res: Meeting[] = [];
+        const d = new Date(`${from}T00:00`);
+        while (toDateKey(d) <= to) {
+          if (occursOn(m, d)) res.push(withDate(m, d));
+          d.setDate(d.getDate() + 1);
+        }
+        return res;
+      });
+    }
+    const { from, to } = visibleRange(calDays);
+    return visibleMeetings.flatMap((m) => {
+      const res: Meeting[] = [];
+      const d = new Date(`${from}T00:00`);
+      while (toDateKey(d) <= to) {
+        if (occursOn(m, d)) res.push(withDate(m, d));
+        d.setDate(d.getDate() + 1);
+      }
+      return res;
+    });
+  })();
+
+  const isAdminOrMod = user.role === "admin" || user.role === "moderator";
+  const displayTitle = (m: Meeting) => (isAdminOrMod || hasAccessTo(m) ? m.title : "Конференция");
+  const blockSubtitle = (m: Meeting) =>
+    isAdminOrMod || hasAccessTo(m) ? m.room || undefined : undefined;
+
+  // Клик по пустому слоту → создание ВКС с предзаполненными датой/временем
+  const handleCreateAt = (dateKey: string, startTime: string) => {
+    const startMin = Number(startTime.slice(0, 2)) * 60 + Number(startTime.slice(3, 5));
+    const endMin = Math.min(startMin + 60, 24 * 60 - 15);
+    const endTime = `${String(Math.floor(endMin / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
+    onBookSlot?.("", startTime, endTime, dateKey);
+  };
+
+  // Кнопка «Создать ВКС» — ближайший свободный 15-минутный слот сегодня
+  const handleCreateAtNow = () => {
+    const rounded = Math.ceil((currentTime.getHours() * 60 + currentTime.getMinutes()) / 15) * 15;
+    const clamped = Math.min(rounded, 23 * 60 + 45);
+    const fmt = (mins: number) => `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+    onBookSlot?.("", fmt(clamped), fmt(Math.min(clamped + 60, 23 * 60 + 45)), toDateKey(currentTime));
+  };
+
+  // Перенос встречи drag&drop — только свои (или все для админа)
+  const canDragMeeting = (m: Meeting) => isAdminOrMod || hasAccessTo(m);
+  const handleRequestMove = async (m: Meeting, dateKey: string, startTime: string) => {
+    if (!window.confirm(`Перенести «${displayTitle(m)}» на ${dateKey} ${startTime}?`)) return;
+    const realId = String(m._occurrenceOf ?? m.id);
+    await updateMeeting(realId, { date: dateKey, startTime });
+    setMeetings((prev) =>
+      prev.map((x) => (String(x.id) === realId ? { ...x, date: dateKey, startTime } : x))
+    );
+  };
+
+  // Клик по встрече → карточка как в «Расписании»: ссылка / копирование / отмена
+  const [detailMeeting, setDetailMeeting] = useState<Meeting | null>(null);
+  const copyLink = async (link: string) => {
+    try {
+      await navigator.clipboard.writeText(link);
+      alert("Ссылка скопирована");
+    } catch {
+      alert(link);
     }
   };
 
@@ -271,67 +352,148 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
           );
         })()}
 
-      {/* Today's Schedule */}
+      {/* Расписание аудиторий — как в Outlook: сетка времени, день/рабочая неделя/неделя/месяц.
+          Клик по пустому слоту → создание ВКС; клик по встрече → карточка со ссылкой «Войти». */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
-        <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4">
-          <i className="fas fa-calendar-day text-purple-500 mr-2"></i>
-          Сегодня{todayMeetings.length > 0 ? ` (${todayMeetings.length})` : ""}
-        </h2>
-        {todayMeetings.length === 0 ? (
-          <p className="text-center text-gray-400 py-8">Нет конференций на сегодня</p>
-        ) : (
-          <div className="space-y-3">
-            {todayMeetings
-              .sort((a, b) => a.startTime.localeCompare(b.startTime))
-              .map((meeting) => {
-                const canSeeDetails = user.role === "admin" || user.role === "moderator" || hasAccessTo(meeting);
-
-                return (
-                  <div key={meeting.id} className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h3 className="font-bold text-gray-800 dark:text-gray-100">
-                          {canSeeDetails ? meeting.title : "Конференция"}
-                        </h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                          {meeting.startTime} - {meeting.endTime}
-                          {canSeeDetails && meeting.room && <> • {meeting.room}</>}
-                          {!canSeeDetails && <> • Место скрыто</>}
-                        </p>
-                        {canSeeDetails && (
-                          <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">
-                            Организатор: {getUserName(meeting.organizerId)}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {meeting.link && (
-                          <a
-                            href={meeting.link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-blue-700 transition-colors"
-                          >
-                            <i className="fas fa-video mr-1"></i>Войти
-                          </a>
-                        )}
-                        <span
-                          className={`px-2 py-1 rounded text-xs font-medium border ${getPriorityColor(meeting.priority)}`}
-                        >
-                          {meeting.priority === "high"
-                            ? "Высокий"
-                            : meeting.priority === "medium"
-                              ? "Средний"
-                              : "Низкий"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">
+            <i className="fas fa-calendar-day text-purple-500 mr-2"></i>
+            Расписание аудиторий{todayMeetings.length > 0 ? ` • сегодня ${todayMeetings.length}` : ""}
+          </h2>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCreateAtNow}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
+            >
+              <i className="fas fa-video mr-2"></i>Создать ВКС
+            </button>
+            <button
+              onClick={() => onNavigate?.("schedule")}
+              className="text-blue-600 dark:text-blue-400 text-sm font-medium hover:underline whitespace-nowrap"
+            >
+              Открыть полный календарь <i className="fas fa-arrow-right ml-1 text-xs"></i>
+            </button>
           </div>
-        )}
+        </div>
+
+        {/* Переключатель вида — как в Outlook */}
+        <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden mb-4 text-sm">
+          {([
+            ["day", "День"],
+            ["workweek", "Рабочая неделя"],
+            ["week", "Неделя"],
+            ["month", "Месяц"],
+          ] as [OutlookView, string][]).map(([v, label]) => (
+            <button
+              key={v}
+              onClick={() => setCalView(v)}
+              className={`px-3 py-1.5 transition-colors ${
+                calView === v
+                  ? "bg-blue-600 text-white font-medium"
+                  : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <OutlookCalendar
+          meetings={expandedMeetings}
+          view={calView}
+          selectedDate={calDate}
+          onSelectedDateChange={setCalDate}
+          onSelectMeeting={(m) => setDetailMeeting(m)}
+          onCreateAt={handleCreateAt}
+          canDragMeeting={canDragMeeting}
+          onRequestMove={handleRequestMove}
+          displayTitle={displayTitle}
+          blockSubtitle={blockSubtitle}
+        />
       </div>
+
+      {/* Карточка встречи (клик по блоку в календаре) */}
+      {detailMeeting &&
+        (() => {
+          const canSee = isAdminOrMod || hasAccessTo(detailMeeting);
+          return (
+            <div
+              className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+              onClick={() => setDetailMeeting(null)}
+            >
+              <div
+                className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full p-6"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100">
+                    {canSee ? detailMeeting.title : "Конференция"}
+                  </h3>
+                  <button
+                    onClick={() => setDetailMeeting(null)}
+                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none"
+                    aria-label="Закрыть"
+                  >
+                    ×
+                  </button>
+                </div>
+                <p className="text-gray-600 dark:text-gray-300 mb-1">
+                  <i className="far fa-clock mr-2 text-blue-500"></i>
+                  {new Date(detailMeeting.date).toLocaleDateString("ru-RU")} • {detailMeeting.startTime}–{detailMeeting.endTime}
+                </p>
+                <p className="text-gray-600 dark:text-gray-300 mb-1">
+                  <i className="fas fa-map-marker-alt mr-2 text-purple-500"></i>
+                  {canSee ? detailMeeting.room || "Онлайн" : "Место скрыто"}
+                </p>
+                {canSee && (
+                  <p className="text-gray-600 dark:text-gray-300 mb-3">
+                    <i className="fas fa-user mr-2 text-emerald-500"></i>
+                    Организатор: {getUserName(detailMeeting.organizerId)}
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-2 mt-4">
+                  {canSee && detailMeeting.link && (
+                    <>
+                      <a
+                        href={detailMeeting.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                      >
+                        <i className="fas fa-video mr-2"></i>Войти в ВКС
+                      </a>
+                      <button
+                        onClick={() => copyLink(detailMeeting.link!)}
+                        className="border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-lg text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                      >
+                        <i className="fas fa-link mr-2"></i>Копировать ссылку
+                      </button>
+                    </>
+                  )}
+                  {canSee && Number(detailMeeting.organizerId) === Number(user.id) && detailMeeting.status !== "cancelled" && (
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm("Отменить эту конференцию?")) return;
+                        await updateMeeting(String(detailMeeting._occurrenceOf ?? detailMeeting.id), { status: "cancelled" });
+                        setMeetings((prev) =>
+                          prev.map((x) =>
+                            String(x.id) === String(detailMeeting._occurrenceOf ?? detailMeeting.id)
+                              ? { ...x, status: "cancelled" as Meeting["status"] }
+                              : x
+                          )
+                        );
+                        setDetailMeeting(null);
+                      }}
+                      className="border border-red-300 text-red-600 px-4 py-2 rounded-lg text-sm hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+                    >
+                      <i className="fas fa-ban mr-2"></i>Отменить
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
       {/* Быстрые действия: экспорт календаря (.ics) */}
       <div className="bg-white dark:bg-slate-800 rounded-xl shadow p-4 flex flex-col justify-between">
