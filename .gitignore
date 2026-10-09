@@ -1,7 +1,5 @@
-# Dependencies
 node_modules/
-
-# Build artifacts
 dist/
-build/node_modules/
-dist/
+.env
+.env.local
+*.tsbuildinfo

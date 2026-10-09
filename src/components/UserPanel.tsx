@@ -37,6 +37,10 @@ interface UserPanelProps {
   initialPrefill?: MeetingPrefill | null;
   /** Вызывается после применения предзаполнения — родитель может его сбросить */
   onPrefillConsumed?: () => void;
+  /** Компактный режим: только форма создания ВКС (используется в модалке на главной) */
+  formOnly?: boolean;
+  /** Вызывается после успешного создания конференции (для закрытия модалки) */
+  onCreated?: () => void;
 }
 
 const PAGE_SIZE = 20;
@@ -53,7 +57,333 @@ const getDefaultReminder = (): number => {
   return 15;
 };
 
-export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillConsumed }: UserPanelProps) {
+interface CreateMeetingFormProps {
+  formData: Meeting;
+  setFormData: React.Dispatch<React.SetStateAction<Meeting>>;
+  /** Каталог переговорных комнат для подсказок в поле «Комната» */
+  roomsCatalog: { name: string; capacity: number; equipment: string[] }[];
+  users: User[];
+  tags: Tag[];
+  conflicts: ScheduleConflict[];
+  editing?: boolean;
+  onCancel: () => void;
+  handleSubmit: (e: React.FormEvent) => void;
+}
+
+/** Форма создания/редактирования конференции — вынесена из UserPanel,
+ *  чтобы открываться и в разделе «Мои конференции», и в модалке на главной. */
+function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, conflicts, editing, onCancel, handleSubmit }: CreateMeetingFormProps) {
+  const toggleParticipant = (userId: string) => {
+    setFormData((f) => {
+      const has = (f.participants ?? []).some((id) => String(id) === String(userId));
+      return {
+        ...f,
+        participants: has
+          ? (f.participants ?? []).filter((id) => String(id) !== String(userId))
+          : [...(f.participants ?? []), userId],
+      };
+    });
+  };
+  return (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {conflicts.length > 0 && (
+              <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 text-sm text-amber-800 dark:text-amber-200">
+                <p className="font-medium mb-1">
+                  <i className="fas fa-exclamation-triangle mr-1"></i>Конфликты расписания ({conflicts.length}):
+                </p>
+                <ul className="list-disc list-inside space-y-0.5">
+                  {conflicts.map((c: ScheduleConflict) => (
+                    <li key={String(c.meeting_id)}>
+                      «{c.title}» {c.start_time}–{c.end_time}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Название *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                  placeholder="Название конференции"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Описание</label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                  rows={2}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Дата *</label>
+                <input
+                  type="date"
+                  required
+                  value={formData.date}
+                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Комната</label>
+                <input
+                  type="text"
+                  list="rooms-catalog"
+                  value={formData.room}
+                  onChange={(e) => setFormData({ ...formData, room: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                  placeholder="Переговорная №1"
+                />
+                <datalist id="rooms-catalog">
+                  {roomsCatalog.map((r) => (
+                    <option
+                      key={r.name}
+                      value={r.name}
+                    >{`${r.capacity} мест${r.equipment.length ? " • " + r.equipment.join(", ") : ""}`}</option>
+                  ))}
+                </datalist>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Начало *</label>
+                <input
+                  type="time"
+                  required
+                  value={formData.startTime}
+                  onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Конец *</label>
+                <input
+                  type="time"
+                  required
+                  value={formData.endTime}
+                  onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Ссылка ВКС
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    inputMode="url"
+                    value={formData.link}
+                    onChange={(e) => setFormData({ ...formData, link: e.target.value })}
+                    className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                    placeholder="https://salutejazz.ru/calls/..."
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, link: generateVksLink() })}
+                    title="Автоматически создать ссылку на ВКС (salutejazz.ru)"
+                    className="px-3 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors whitespace-nowrap font-medium"
+                  >
+                    <i className="fas fa-wand-magic-sparkles mr-1" aria-hidden="true"></i>
+                    Создать ВКС
+                  </button>
+                </div>
+                {isVksLink(formData.link) && (
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
+                    <i className="fas fa-check-circle mr-1" aria-hidden="true"></i>
+                    Ссылка на корпоративную ВКС создана автоматически
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Приоритет</label>
+                <select
+                  value={formData.priority}
+                  onChange={(e) => setFormData({ ...formData, priority: e.target.value as Meeting["priority"] })}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                >
+                  <option value="low">Низкий</option>
+                  <option value="medium">Средний</option>
+                  <option value="high">Высокий</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Повтор</label>
+                <select
+                  value={formData.recurring}
+                  onChange={(e) => setFormData({ ...formData, recurring: e.target.value as Meeting["recurring"] })}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                >
+                  <option value="none">Без повтора</option>
+                  <option value="daily">Ежедневно</option>
+                  <option value="weekly">Еженедельно</option>
+                  <option value="monthly">Ежемесячно</option>
+                  <option value="custom">По правилу (RRULE)…</option>
+                </select>
+              </div>
+              {formData.recurring === "custom" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Правило RRULE
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.rrule ?? ""}
+                    placeholder="FREQ=MONTHLY;BYDAY=FR;BYSETPOS=-1"
+                    onChange={(e) => setFormData({ ...formData, rrule: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500 font-mono text-xs"
+                  />
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {[
+                      ["FREQ=WEEKLY;INTERVAL=2;BYDAY=MO", "кажд. 2 нед. пн"],
+                      ["FREQ=MONTHLY;BYDAY=FR;BYSETPOS=-1", "послед. пятница мес."],
+                      ["FREQ=MONTHLY;BYDAY=MO;BYSETPOS=1", "перв. понедельник мес."],
+                      ["FREQ=DAILY;INTERVAL=3", "каждые 3 дня"],
+                    ].map(([val, label]) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, rrule: val })}
+                        className={`px-2 py-0.5 rounded text-[11px] border ${formData.rrule === val ? "bg-blue-600 text-white border-blue-600" : "border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"}`}
+                        title={val}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {formData.rrule && (
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      <i className="fas fa-sync-alt mr-1"></i>
+                      {describeRRule(formData.rrule)}
+                    </p>
+                  )}
+                </div>
+              )}
+              {formData.recurring !== "none" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Повторять до (опционально)
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.repeatUntil ?? ""}
+                    min={formData.date}
+                    onChange={(e) => setFormData({ ...formData, repeatUntil: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Participants */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Участники ({formData.participants.length} выбрано)
+              </label>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                <i className="fas fa-info-circle mr-1"></i>
+                Выберите зарегистрированных пользователей из списка ниже
+              </p>
+
+              {users.length === 0 ? (
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                  <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                    <i className="fas fa-exclamation-triangle mr-2"></i>В системе нет зарегистрированных
+                    пользователей.
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 max-h-64 overflow-y-auto">
+                  <div className="space-y-2">
+                    {users
+                      .filter((u) => u.isActive)
+                      .map((u) => (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => toggleParticipant(u.id)}
+                          className={`w-full text-left px-3 py-2 rounded-lg border transition-colors flex items-center gap-3 ${
+                            (formData.participants ?? []).some((id) => String(id) === String(u.id))
+                              ? "bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700"
+                              : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600"
+                          }`}
+                        >
+                          <div
+                            className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
+                              (formData.participants ?? []).some((id) => String(id) === String(u.id))
+                                ? "bg-blue-600 border-blue-600"
+                                : "bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-500"
+                            }`}
+                          >
+                            {(formData.participants ?? []).some((id) => String(id) === String(u.id)) && (
+                              <i className="fas fa-check text-white text-xs"></i>
+                            )}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-800 dark:text-gray-100 text-sm">{u.name}</span>
+                              <span
+                                className={`px-2 py-0.5 rounded text-xs ${
+                                  u.role === "admin"
+                                    ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
+                                    : u.role === "moderator"
+                                      ? "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400"
+                                      : "bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-300"
+                                }`}
+                              >
+                                {u.role === "admin"
+                                  ? "Админ"
+                                  : u.role === "moderator"
+                                    ? "Модератор"
+                                    : "Пользователь"}
+                              </span>
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                              @{u.login}
+                              {u.department && <span className="ml-2">• {u.department}</span>}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t dark:border-gray-700">
+              <button
+                type="button"
+                onClick={onCancel}
+                className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+              >
+                Отмена
+              </button>
+              <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
+                {editing ? "Сохранить" : "Создать ВКС"}
+              </button>
+            </div>
+          </form>
+  );
+}
+
+export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillConsumed, formOnly, onCreated }: UserPanelProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -372,6 +702,7 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
     setConflicts([]);
     setConflictChecked(false);
     setForceSave(false);
+    onCreated?.();
   };
 
   const handleEdit = (meeting: Meeting) => {
@@ -413,6 +744,49 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
         </div>
       </div>
     );
+  }
+
+  // Режим формы: только модалка создания ВКС (открывается с главной сразу после выбора времени/зала)
+  if (formOnly) {
+    return showForm ? (
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">
+              {editingMeeting ? "Редактировать конференцию" : "Новая конференция"}
+            </h2>
+            <button
+              onClick={() => {
+                setShowForm(false);
+                setConflicts([]);
+                setConflictChecked(false);
+                setForceSave(false);
+                onCreated?.();
+              }}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <i className="fas fa-times text-xl"></i>
+            </button>
+          </div>
+          <CreateMeetingForm
+            formData={formData}
+            setFormData={setFormData}
+            roomsCatalog={roomsCatalog}
+            users={users}
+            tags={tags}
+            conflicts={conflicts}
+            editing={!!editingMeeting}
+            onCancel={() => {
+              setShowForm(false);
+              setConflicts([]);
+              setConflictChecked(false);
+              setForceSave(false);
+            }}
+            handleSubmit={handleSubmit}
+          />
+        </div>
+      </div>
+    ) : null;
   }
 
   return (

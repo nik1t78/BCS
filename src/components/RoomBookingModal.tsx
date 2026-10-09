@@ -9,6 +9,10 @@ interface RoomBookingModalProps {
   date: string;
   /** Стартовое время предзаполнения (HH:mm) */
   startTime: string;
+  /** Предзаполнить переговорную (например, из виджета свободных залов) */
+  roomName?: string;
+  /** Конец выбранного интервала (HH:mm) — для точного восстановления длительности */
+  endTime?: string;
   /** Закрыть без создания */
   onClose: () => void;
   /** Выбор подтверждён → родитель открывает форму ВКС с предзаполнением */
@@ -36,7 +40,7 @@ const SNAP = 15; // шаг прилипания как в Outlook
  * кнопка «Занять и создать ВКС» отправляет пользователя в форму создания
  * конференции с предзаполненными залом/датой/временем и автогенерацией ссылки.
  */
-export default function RoomBookingModal({ open, date, startTime, onClose, onConfirm }: RoomBookingModalProps) {
+export default function RoomBookingModal({ open, date, startTime, roomName, endTime, onClose, onConfirm }: RoomBookingModalProps) {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [selRoomId, setSelRoomId] = useState<string | null>(null);
   const [availDate, setAvailDate] = useState(date || todayKey());
@@ -48,7 +52,11 @@ export default function RoomBookingModal({ open, date, startTime, onClose, onCon
     const m = hmToMin(startTime || "09:00");
     return Math.round(m / SNAP) * SNAP;
   });
-  const [durMin, setDurMin] = useState(60);
+  const [durMin, setDurMin] = useState(() => {
+    if (!endTime) return 60;
+    const d = hmToMin(endTime) - hmToMin(startTime || "00:00");
+    return d >= SNAP && d <= 24 * 60 ? d : 60;
+  });
   const [nowMin, setNowMin] = useState(() => {
     const n = new Date();
     return n.getHours() * 60 + n.getMinutes();
@@ -63,12 +71,27 @@ export default function RoomBookingModal({ open, date, startTime, onClose, onCon
     return () => clearInterval(t);
   }, [open]);
 
+  // Синхронизация с предзаполнением (дата/время/зал/длительность из виджета или календаря)
+  useEffect(() => {
+    if (!open) return;
+    setAvailDate(date || todayKey());
+    const s = Math.round(hmToMin(startTime || "09:00") / SNAP) * SNAP;
+    setStartMin(s);
+    if (endTime) {
+      const d = hmToMin(endTime) - hmToMin(startTime || "00:00");
+      if (d >= SNAP && d <= 24 * 60) setDurMin(d);
+    }
+    if (roomName && rooms.length) {
+      const hit = rooms.find((r) => r.name === roomName);
+      if (hit) setSelRoomId(String(hit.id));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, date, startTime, endTime, roomName, rooms]);
+
   // Список активных комнат — один раз при открытии
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    setAvailDate(date || todayKey());
-    setStartMin(Math.round(hmToMin(startTime || "09:00") / SNAP) * SNAP);
     (async () => {
       try {
         const res: any = await roomsAPI.list();
@@ -76,7 +99,11 @@ export default function RoomBookingModal({ open, date, startTime, onClose, onCon
         const active = list.filter((r) => r.isActive !== false);
         if (cancelled) return;
         setRooms(active);
-        if (active.length && !active.some((r) => String(r.id) === selRoomId)) {
+        // Выбрать предзаполненный зал, иначе — первый активный
+        const wanted = roomName ? active.find((r) => r.name === roomName) : undefined;
+        if (wanted) {
+          setSelRoomId(String(wanted.id));
+        } else if (active.length && !active.some((r) => String(r.id) === selRoomId)) {
           setSelRoomId(String(active[0].id));
         }
       } catch (e: any) {
@@ -202,6 +229,12 @@ export default function RoomBookingModal({ open, date, startTime, onClose, onCon
                     {d < 60 ? `${d} мин` : d % 60 === 0 ? `${d / 60} ч` : `${Math.floor(d / 60)} ч ${d % 60} мин`}
                   </option>
                 ))}
+                {/* Точная длительность из предзаполнения (например, 20 мин из виджета залов) */}
+                {![15, 30, 45, 60, 90, 120, 180].includes(durMin) && (
+                  <option value={durMin}>
+                    {durMin < 60 ? `${durMin} мин` : `${Math.floor(durMin / 60)} ч ${durMin % 60} мин`}
+                  </option>
+                )}
               </select>
             </div>
             <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-3 text-sm">

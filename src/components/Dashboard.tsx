@@ -5,6 +5,8 @@ import { occursOn, withDate } from "../utils/recurrence";
 import FreeRoomsWidget from "./FreeRoomsWidget";
 import OutlookCalendar, { OutlookView } from "./OutlookCalendar";
 import RoomBookingModal from "./RoomBookingModal";
+import UserPanel from "./UserPanel";
+import type { MeetingPrefill } from "./UserPanel";
 import { toDateKey } from "../utils/dateKey";
 import { icsAPI } from "../api/client";
 
@@ -41,10 +43,13 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
   const [icsLoading, setIcsLoading] = useState(false);
   // Модалка выбора зала (клик по пустому слоту календаря / кнопка «Выбрать зал»)
   const [bookingOpen, setBookingOpen] = useState(false);
-  const [bookingAt, setBookingAt] = useState<{ date: string; startTime: string }>({
+  const [bookingAt, setBookingAt] = useState<{ date: string; startTime: string; endTime?: string; room?: string }>({
     date: toDateKey(new Date()),
     startTime: "09:00",
   });
+  // Панель создания ВКС прямо на главной (после выбора зала)
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createPrefill, setCreatePrefill] = useState<MeetingPrefill | null>(null);
 
   const handleDownloadIcs = async () => {
     setIcsLoading(true);
@@ -181,10 +186,16 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
     setBookingOpen(true);
   };
 
-  // Подтверждение в модалке выбора зала → переход к форме ВКС (бронь + автоссылка)
+  // Подтверждение в модалке выбора зала → панель создания ВКС прямо на главной
   const handleBookingConfirm = (roomName: string, dateKey: string, startTime: string, endTime: string) => {
     setBookingOpen(false);
-    onBookSlot?.(roomName, startTime, endTime, dateKey);
+    if (onBookSlot) {
+      // родительский сценарий (переход в раздел «Мои конференции») — если задан
+      onBookSlot(roomName, startTime, endTime, dateKey);
+      return;
+    }
+    setCreatePrefill({ date: dateKey, startTime, endTime, room: roomName, autoLink: true });
+    setCreateOpen(true);
   };
 
   // Быстрая кнопка «Выбрать зал» — ближайшее 15-минутное время сегодня
@@ -424,15 +435,45 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
         />
       </div>
 
-      {/* Модалка выбора зала: Outlook-шкала дня, клик по свободному времени →
+      {/* Модалка выбора зала: Outlook-шкала дня 00:00–24:00, клик по свободному времени →
           «Занять и создать ВКС» (переход в форму с автогенерацией ссылки) */}
       <RoomBookingModal
         open={bookingOpen}
         date={bookingAt.date}
         startTime={bookingAt.startTime}
+        endTime={bookingAt.endTime}
+        roomName={bookingAt.room}
         onClose={() => setBookingOpen(false)}
         onConfirm={handleBookingConfirm}
       />
+
+      {/* Панель создания ВКС прямо поверх главной — без перехода в другой раздел */}
+      {createOpen && (
+        <div className="fixed inset-0 z-[60] bg-black/50 flex items-start justify-center p-4 overflow-auto" onClick={() => setCreateOpen(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl my-8" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 rounded-t-xl z-10">
+              <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">
+                <i className="fas fa-video text-blue-600 mr-2"></i>Создание ВКС
+              </h3>
+              <button onClick={() => setCreateOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl leading-none" aria-label="Закрыть">×</button>
+            </div>
+            <div className="p-6">
+              <UserPanel
+                user={user}
+                onNavigate={onNavigate}
+                formOnly
+                initialPrefill={createPrefill}
+                onCreated={() => {
+                  setCreateOpen(false);
+                  setCreatePrefill(null);
+                  // обновим список встреч после создания
+                  getMeetings().then(setMeetings).catch(() => {});
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Карточка встречи (клик по блоку в календаре) */}
       {detailMeeting &&
