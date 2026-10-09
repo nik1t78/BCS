@@ -20,6 +20,15 @@ export function minToHm(min: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+/** Длительность в минутах → человекочитаемо: "1 ч", "30 мин", "1 ч 30 мин" */
+export function humanDuration(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h && m) return `${h} ч ${m} мин`;
+  if (h) return `${h} ч`;
+  return `${m} мин`;
+}
+
 export interface FreeSlot {
   startMin: number;
   endMin: number;

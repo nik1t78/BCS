@@ -19,7 +19,7 @@ import MeetingMinutes from "./MeetingMinutes";
 import { SortMode, SORT_OPTIONS, sortMeetings, getMeetingGroup } from "../utils/meetingSort";
 import { exportMeetingToIcs } from "../utils/ics";
 import { getFavoriteIds, toggleFavorite, addFavorites } from "../utils/favorites";
-import { generateVksLink } from "../utils/vksLink";
+import { generateVksLink, isVksLink } from "../utils/vksLink";
 
 /** Предзаполнение формы создания конференции (например, из блока «Свободные залы» на главной) */
 export interface MeetingPrefill {
@@ -712,19 +712,19 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
                         value={formData.link}
                         onChange={(e) => setFormData({ ...formData, link: e.target.value })}
                         className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
-                        placeholder="https://vc.salutejazz.ru/..."
+                        placeholder="https://salutejazz.ru/calls/..."
                       />
                       <button
                         type="button"
                         onClick={() => setFormData({ ...formData, link: generateVksLink() })}
                         title="Автоматически создать ссылку на ВКС (salutejazz.ru)"
-                        className="px-3 py-2 text-sm rounded-lg border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors whitespace-nowrap"
+                        className="px-3 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors whitespace-nowrap font-medium"
                       >
                         <i className="fas fa-wand-magic-sparkles mr-1" aria-hidden="true"></i>
                         Создать ВКС
                       </button>
                     </div>
-                    {formData.link?.startsWith("https://vc.salutejazz.ru/") && (
+                    {isVksLink(formData.link) && (
                       <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
                         <i className="fas fa-check-circle mr-1" aria-hidden="true"></i>
                         Ссылка на корпоративную ВКС создана автоматически

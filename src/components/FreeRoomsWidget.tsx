@@ -1,7 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { Room, RoomAvailability } from "../types";
 import { roomsAPI } from "../api/client";
-import { computeFreeSlots, minToHm, type FreeSlot } from "../utils/freeSlots";
+import {
+  computeFreeSlots,
+  minToHm,
+  humanDuration,
+  WORK_DAY_START_MIN,
+  WORK_DAY_END_MIN,
+  type FreeSlot,
+} from "../utils/freeSlots";
 
 const todayKey = (): string => {
   const d = new Date();
@@ -11,6 +18,7 @@ const todayKey = (): string => {
 interface RoomInfo {
   room: Room;
   slots: FreeSlot[];
+  busy: { startMin: number; endMin: number; title?: string }[];
 }
 
 interface FreeRoomsWidgetProps {
@@ -19,16 +27,30 @@ interface FreeRoomsWidgetProps {
 }
 
 /**
- * Виджет «Свободные залы»: для каждой переговорной комнаты показывает
- * ближайшие свободные интервалы до конца рабочего дня (08:00–19:00).
- * Клик по интервалу автоматически открывает форму создания ВКС с
- * предзаполненными датой, временем и залом (+ автогенерация ссылки ВКС).
+ * Виджет «Свободные залы» в стиле Outlook: горизонтальная шкала времени
+ * (рабочий день 08:00–19:00) с часовой линейкой. Для каждого зала — полоса,
+ * где занятое время показано серыми блоками, а свободные окна — зелёными
+ * сегментами с подписью «HH:MM–HH:MM». Клик по свободному окну открывает
+ * форму создания ВКС с предзаполненными датой, временем и залом.
  */
 export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
   const [date, setDate] = useState<string>(todayKey());
   const [infos, setInfos] = useState<RoomInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [nowMin, setNowMin] = useState(() => {
+    const n = new Date();
+    return n.getHours() * 60 + n.getMinutes();
+  });
+
+  // «Линия текущего времени» как в Outlook — обновляем раз в минуту
+  useEffect(() => {
+    const t = setInterval(() => {
+      const n = new Date();
+      setNowMin(n.getHours() * 60 + n.getMinutes());
+    }, 60000);
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -42,18 +64,31 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
         const results = await Promise.allSettled(active.map((r) => roomsAPI.availability(r.id, { date })));
         if (cancelled) return;
         const now = new Date();
-        const nowMin = now.getHours() * 60 + now.getMinutes();
+        const curMin = now.getHours() * 60 + now.getMinutes();
         const isToday = date === todayKey();
+        const toMin = (s: string): number => {
+          if (/^\d{1,2}:\d{2}$/.test(s)) {
+            const [h, m] = s.split(":").map(Number);
+            return h * 60 + m;
+          }
+          const d = new Date(s);
+          return d.getHours() * 60 + d.getMinutes();
+        };
         const next: RoomInfo[] = [];
         results.forEach((resItem, i) => {
           const room = active[i];
           if (resItem.status !== "fulfilled") {
-            next.push({ room, slots: [] });
+            next.push({ room, slots: [], busy: [] });
             return;
           }
           const avail: RoomAvailability = (resItem.value as any)?.data ?? resItem.value;
-          const slots = computeFreeSlots(avail.busy ?? [], { isToday, nowMin });
-          next.push({ room, slots });
+          const slots = computeFreeSlots(avail.busy ?? [], { isToday, nowMin: curMin });
+          const busy = (avail.busy ?? []).map((b: any) => ({
+            startMin: Math.max(toMin(b.start), WORK_DAY_START_MIN),
+            endMin: Math.min(toMin(b.end), WORK_DAY_END_MIN),
+            title: b.title || b.meetingTitle || "",
+          })).filter((b: any) => b.endMin > b.startMin);
+          next.push({ room, slots, busy });
         });
         // Свободные залы — выше списка; внутри — по ближайшему слоту
         next.sort((a, b) => {
@@ -72,12 +107,20 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
 
+  const daySpan = WORK_DAY_END_MIN - WORK_DAY_START_MIN;
+  const pct = (min: number) => ((min - WORK_DAY_START_MIN) / daySpan) * 100;
+  const hours: number[] = [];
+  for (let m = WORK_DAY_START_MIN; m <= WORK_DAY_END_MIN; m += 60) hours.push(m);
+  const isToday = date === todayKey();
+  const showNowLine = isToday && nowMin >= WORK_DAY_START_MIN && nowMin <= WORK_DAY_END_MIN;
+
   return (
     <div className="bg-white dark:bg-slate-800 rounded-xl shadow p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold text-gray-800 dark:text-gray-100">
           <i className="fas fa-door-open mr-2 text-blue-600" aria-hidden="true"></i>
           Свободные залы
+          <span className="text-xs font-normal text-gray-400 ml-2">рабочий день {minToHm(WORK_DAY_START_MIN)}–{minToHm(WORK_DAY_END_MIN)}</span>
         </h3>
         <input
           type="date"
@@ -98,50 +141,78 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
         <p className="text-sm text-gray-500 dark:text-gray-400">Комнаты не настроены.</p>
       )}
 
-      {!loading && !error && (
-        <ul className="space-y-3">
-          {infos.map(({ room, slots }) => (
-            <li key={room.id} className="border-b border-gray-100 dark:border-slate-700 pb-2 last:border-0">
-              <div className="flex items-center justify-between text-sm mb-1.5">
-                <span className="text-gray-700 dark:text-gray-200 font-medium">
-                  <i className={`fas ${slots.length ? "fa-circle text-emerald-500" : "fa-circle text-red-400"} text-[8px] mr-2`} aria-hidden="true"></i>
-                  {room.name}
-                  <span className="text-xs text-gray-400 ml-2">
-                    {room.capacity} чел.{room.location ? ` • ${room.location}` : ""}
-                  </span>
+      {!loading && !error && infos.length > 0 && (
+        <div className="overflow-x-auto">
+          {/* Часовая линейка как в Outlook */}
+          <div className="flex items-center text-[10px] text-gray-400 dark:text-gray-500 mb-1 min-w-[640px]">
+            <div className="w-36 shrink-0" />
+            <div className="relative flex-1 h-4">
+              {hours.map((m) => (
+                <span key={m} className="absolute -translate-x-1/2" style={{ left: `${pct(m)}%` }}>
+                  {new Date(2000, 0, 1, Math.floor(m / 60)).getHours()}
                 </span>
-                {!slots.length && (
-                  <span className="text-xs text-gray-400 dark:text-gray-500">занят до конца дня</span>
-                )}
-              </div>
-              {slots.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {slots.slice(0, 4).map((s) => {
-                    const startHm = minToHm(s.startMin);
-                    // конец окна: не больше часа по умолчанию, но в пределах слота
-                    const endHm = minToHm(Math.min(s.endMin, s.startMin + 60));
-                    return (
-                      <button
-                        key={`${s.startMin}-${s.endMin}`}
-                        type="button"
-                        onClick={() => onPickSlot?.(room.name, startHm, endHm, date)}
-                        title={`Забронировать ${startHm}–${endHm} и создать ВКС`}
-                        className="text-xs px-2.5 py-1 rounded-lg font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700 dark:hover:bg-emerald-900/50 transition-colors"
-                      >
-                        <i className="fas fa-plus mr-1" aria-hidden="true"></i>
-                        {startHm}–{endHm}
-                        <span className="text-emerald-500/80 ml-1">({Math.round(s.lengthMin / 60 * 10) / 10} ч)</span>
-                      </button>
-                    );
-                  })}
-                  {slots.length > 4 && (
-                    <span className="text-xs text-gray-400 self-center">+{slots.length - 4}</span>
-                  )}
+              ))}
+            </div>
+          </div>
+
+          <ul className="space-y-2 min-w-[640px]">
+            {infos.map(({ room, slots, busy }) => (
+              <li key={room.id}>
+                <div className="flex items-center">
+                  <div className="w-36 shrink-0 pr-2 text-sm text-gray-700 dark:text-gray-200 font-medium truncate" title={`${room.name} • ${room.capacity} чел.${room.location ? ` • ${room.location}` : ""}`}>
+                    <i className={`fas fa-circle ${slots.length ? "text-emerald-500" : "text-red-400"} text-[8px] mr-2`} aria-hidden="true"></i>
+                    {room.name}
+                  </div>
+
+                  {/* Полоса времени зала */}
+                  <div className="relative flex-1 h-9 rounded-md bg-gray-100 dark:bg-slate-700 overflow-hidden">
+                    {/* получасовые деления */}
+                    {hours.slice(1).map((m) => (
+                      <div key={m} className="absolute top-0 bottom-0 w-px bg-gray-200 dark:bg-slate-600" style={{ left: `${pct(m)}%` }} />
+                    ))}
+                    {/* занятые блоки */}
+                    {busy.map((b, i) => (
+                      <div
+                        key={`b${i}`}
+                        className="absolute top-0 bottom-0 bg-gray-300/80 dark:bg-slate-500/70 border-l-2 border-gray-400 dark:border-slate-400"
+                        style={{ left: `${pct(b.startMin)}%`, width: `${pct(b.endMin) - pct(b.startMin)}%` }}
+                        title={`Занято ${minToHm(b.startMin)}–${minToHm(b.endMin)}${b.title ? `: ${b.title}` : ""}`}
+                      />
+                    ))}
+                    {/* свободные окна — кликабельные, с временем как в Outlook */}
+                    {slots.map((s) => {
+                      const bookEnd = Math.min(s.endMin, s.startMin + 60);
+                      return (
+                        <button
+                          key={`${s.startMin}-${s.endMin}`}
+                          type="button"
+                          onClick={() => onPickSlot?.(room.name, minToHm(s.startMin), minToHm(bookEnd), date)}
+                          title={`Забронировать ${minToHm(s.startMin)}–${minToHm(bookEnd)} (${humanDuration(bookEnd - s.startMin)}) и создать ВКС`}
+                          className="absolute top-1 bottom-1 rounded bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/50 dark:hover:bg-emerald-800/60 border border-emerald-300 dark:border-emerald-600 text-emerald-800 dark:text-emerald-200 text-[11px] font-medium px-1 overflow-hidden whitespace-nowrap transition-colors"
+                          style={{ left: `${pct(s.startMin)}%`, width: `${Math.max(pct(s.endMin) - pct(s.startMin), 3)}%` }}
+                        >
+                          <i className="fas fa-plus mr-1 opacity-70" aria-hidden="true"></i>
+                          {minToHm(s.startMin)}–{minToHm(s.endMin)}
+                        </button>
+                      );
+                    })}
+                    {/* линия «сейчас» */}
+                    {showNowLine && (
+                      <div className="absolute top-0 bottom-0 w-[2px] bg-red-500 pointer-events-none" style={{ left: `${pct(nowMin)}%` }} />
+                    )}
+                  </div>
                 </div>
-              )}
-            </li>
-          ))}
-        </ul>
+              </li>
+            ))}
+          </ul>
+
+          {/* Легенда */}
+          <div className="flex flex-wrap gap-4 mt-3 text-[11px] text-gray-500 dark:text-gray-400 min-w-[640px]">
+            <span><span className="inline-block w-3 h-3 rounded bg-emerald-100 border border-emerald-300 align-middle mr-1" />Свободно (клик — создать ВКС)</span>
+            <span><span className="inline-block w-3 h-3 rounded bg-gray-300 align-middle mr-1" />Занято</span>
+            <span><span className="inline-block w-3 h-[2px] bg-red-500 align-middle mr-1" />Текущее время</span>
+          </div>
+        </div>
       )}
     </div>
   );

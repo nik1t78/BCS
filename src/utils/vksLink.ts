@@ -1,12 +1,13 @@
 // Автогенерация ссылки на внутреннюю ВКС-платформу (источник — salutejazz.ru).
-// Формат: https://vc.salutejazz.ru/r/<уникальный код>, где код — 9 случайных
-// символов [a-z0-9] (как в ссылках Google Meet/Яндекс Телемост).
-const ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
+// Формат (по эталону реальной платформы):
+//   https://salutejazz.ru/calls/<код>?psw=<пароль>
+// где <код> — 8 строчных букв/цифр, <пароль> — 16 заглавных букв/цифр.
+const CODE_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
+const PWD_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
-export const VKS_LINK_BASE = "https://vc.salutejazz.ru/r/";
+export const VKS_LINK_BASE = "https://salutejazz.ru/calls/";
 
-/** Сгенерировать случайный путь для комнаты ВКС, напр. "k3f9d2xq1" */
-export function randomVksRoomCode(length = 9): string {
+function randomString(alphabet: string, length: number): string {
   const bytes = new Uint8Array(length);
   if (typeof crypto !== "undefined" && crypto.getRandomValues) {
     crypto.getRandomValues(bytes);
@@ -14,11 +15,26 @@ export function randomVksRoomCode(length = 9): string {
     for (let i = 0; i < length; i++) bytes[i] = Math.floor(Math.random() * 256);
   }
   let out = "";
-  for (let i = 0; i < length; i++) out += ALPHABET[bytes[i] % ALPHABET.length];
+  for (let i = 0; i < length; i++) out += alphabet[bytes[i] % alphabet.length];
   return out;
 }
 
-/** Полная ссылка на ВКС: https://vc.salutejazz.ru/r/<код> */
+/** Сгенерировать случайный код комнаты, напр. "4dtjrrnb" (строчные a-z0-9) */
+export function randomVksRoomCode(length = 8): string {
+  return randomString(CODE_ALPHABET, length);
+}
+
+/** Сгенерировать пароль конференции, напр. "OEEPFQENBhwdUQgD" (заглавные A-Z0-9) */
+export function randomVksPassword(length = 16): string {
+  return randomString(PWD_ALPHABET, length);
+}
+
+/** Полная ссылка на ВКС: https://salutejazz.ru/calls/<код>?psw=<пароль> */
 export function generateVksLink(): string {
-  return VKS_LINK_BASE + randomVksRoomCode();
+  return `${VKS_LINK_BASE}${randomVksRoomCode()}?psw=${randomVksPassword()}`;
+}
+
+/** Проверка: ссылка ли это на нашу ВКС-платформу */
+export function isVksLink(link?: string | null): boolean {
+  return !!link && link.startsWith("https://salutejazz.ru/calls/");
 }
