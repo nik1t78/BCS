@@ -1663,7 +1663,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
           <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
             <h3 className="font-bold text-gray-800 dark:text-gray-100">
-              <i className="fas fa-trash-restore text-red-500 mr-2"></i>Корзина удалённых конференций ({trashed.length})
+              <i className="fas fa-trash-restore text-red-500 mr-2"></i>Корзина удалённых конференций
+              {trashed.length > 0 && <span className="ml-1 text-gray-400">({trashed.length})</span>}
             </h3>
             <button
               onClick={loadTrashed}

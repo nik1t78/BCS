@@ -232,7 +232,9 @@ export default function Stats({ user }: StatsProps) {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-white/80 text-sm">{card.label}</p>
-                <p className="text-3xl font-bold mt-1">{card.value}</p>
+                <p className={`text-3xl font-bold mt-1 ${Number(card.value) === 0 ? "opacity-40" : ""}`}>
+                  {Number(card.value) === 0 ? "—" : card.value}
+                </p>
               </div>
               <div className="bg-white/20 rounded-lg p-3">
                 <i className={`fas ${card.icon} text-2xl`}></i>
