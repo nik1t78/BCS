@@ -48,8 +48,9 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
     startTime: "09:00",
   });
   // Панель создания ВКС прямо на главной (после выбора зала)
-  const [createOpen, setCreateOpen] = useState(false);
+  // Панель создания ВКС открыта, когда есть предзаполнение (после выбора времени/зала)
   const [createPrefill, setCreatePrefill] = useState<MeetingPrefill | null>(null);
+  const createOpen = createPrefill !== null;
 
   const handleDownloadIcs = async () => {
     setIcsLoading(true);
@@ -195,7 +196,6 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
       return;
     }
     setCreatePrefill({ date: dateKey, startTime, endTime, room: roomName, autoLink: true });
-    setCreateOpen(true);
   };
 
   // Быстрая кнопка «Выбрать зал» — ближайшее 15-минутное время сегодня
@@ -449,13 +449,13 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
 
       {/* Панель создания ВКС прямо поверх главной — без перехода в другой раздел */}
       {createOpen && (
-        <div className="fixed inset-0 z-[60] bg-black/50 flex items-start justify-center p-4 overflow-auto" onClick={() => setCreateOpen(false)}>
+        <div className="fixed inset-0 z-[60] bg-black/50 flex items-start justify-center p-4 overflow-auto" onClick={() => setCreatePrefill(null)}>
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl my-8" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 rounded-t-xl z-10">
               <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">
                 <i className="fas fa-video text-blue-600 mr-2"></i>Создание ВКС
               </h3>
-              <button onClick={() => setCreateOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl leading-none" aria-label="Закрыть">×</button>
+              <button onClick={() => setCreatePrefill(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl leading-none" aria-label="Закрыть">×</button>
             </div>
             <div className="p-6">
               <UserPanel
@@ -464,7 +464,7 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
                 formOnly
                 initialPrefill={createPrefill}
                 onCreated={() => {
-                  setCreateOpen(false);
+                  setCreatePrefill(null);
                   setCreatePrefill(null);
                   // обновим список встреч после создания
                   getMeetings().then(setMeetings).catch(() => {});
