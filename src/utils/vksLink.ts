@@ -34,6 +34,21 @@ export function generateVksLink(): string {
   return `${VKS_LINK_BASE}${randomVksRoomCode()}?psw=${randomVksPassword()}`;
 }
 
+/**
+ * Проверка и «починка» ссылки до канонического вида платформы.
+ * Если пользователь ввёл ссылку вручную без пароля (например, просто открыл
+ * страницу комнаты на salutejazz.ru), добавляем ?psw=<случайный пароль>,
+ * чтобы встреча всегда создавалась с защищённым доступом.
+ */
+export function normalizeVksLink(link: string): string {
+  if (!isVksLink(link)) return link;
+  const url = new URL(link);
+  if (!url.searchParams.get("psw")) {
+    url.searchParams.set("psw", randomVksPassword());
+  }
+  return url.toString();
+}
+
 /** Проверка: ссылка ли это на нашу ВКС-платформу */
 export function isVksLink(link?: string | null): boolean {
   return !!link && link.startsWith("https://salutejazz.ru/calls/");

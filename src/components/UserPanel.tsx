@@ -19,7 +19,7 @@ import MeetingMinutes from "./MeetingMinutes";
 import { SortMode, SORT_OPTIONS, sortMeetings, getMeetingGroup } from "../utils/meetingSort";
 import { exportMeetingToIcs } from "../utils/ics";
 import { getFavoriteIds, toggleFavorite, addFavorites } from "../utils/favorites";
-import { generateVksLink, isVksLink } from "../utils/vksLink";
+import { generateVksLink, normalizeVksLink, isVksLink } from "../utils/vksLink";
 
 /** Предзаполнение формы создания конференции (например, из блока «Свободные залы» на главной) */
 export interface MeetingPrefill {
@@ -28,6 +28,8 @@ export interface MeetingPrefill {
   endTime?: string; // HH:mm
   room?: string; // название переговорной
   autoLink?: boolean; // сразу сгенерировать ссылку ВКС
+  /** Готовая ссылка ВКС (например, созданная на этапе выбора зала) */
+  link?: string;
 }
 
 interface UserPanelProps {
@@ -461,7 +463,7 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
       startTime: p.startTime ?? emptyMeeting.startTime,
       endTime: p.endTime ?? emptyMeeting.endTime,
       room: p.room || emptyMeeting.room,
-      link: p.autoLink ? generateVksLink() : "",
+      link: p.link || (p.autoLink ? generateVksLink() : ""),
     });
     setShowForm(true);
     onPrefillConsumed?.();
@@ -686,6 +688,11 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
       alert("Дата окончания повтора не может быть раньше даты встречи");
       return;
     }
+    // ВКС: если встреча с залом/без ссылки или со ссылкой без пароля —
+    // ссылка на salutejazz.ru создаётся автоматически при сохранении.
+    if (!payload.link) payload.link = generateVksLink();
+    else payload.link = normalizeVksLink(payload.link);
+
     const saved = editingMeeting ? await updateMeeting(editingMeeting.id, payload) : await createMeeting(payload);
 
     if (!saved) {

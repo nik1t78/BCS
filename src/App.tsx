@@ -105,8 +105,8 @@ function App() {
   // открылась форма «Мои конференции» с предзаполненными датой/временем/залом
   // и автоматически созданной ссылкой на ВКС salutejazz.ru.
   const [meetingPrefill, setMeetingPrefill] = useState<MeetingPrefill | null>(null);
-  const handleBookSlot = (roomName: string, startTime: string, endTime: string, date: string) => {
-    setMeetingPrefill({ date, startTime, endTime, room: roomName, autoLink: true });
+  const handleBookSlot = (roomName: string, startTime: string, endTime: string, date: string, link?: string) => {
+    setMeetingPrefill({ date, startTime, endTime, room: roomName, autoLink: true, link });
     setCurrentPage("meetings");
   };
 

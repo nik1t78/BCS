@@ -7,6 +7,7 @@ import OutlookCalendar, { OutlookView } from "./OutlookCalendar";
 import RoomBookingModal from "./RoomBookingModal";
 import UserPanel from "./UserPanel";
 import type { MeetingPrefill } from "./UserPanel";
+import { generateVksLink } from "../utils/vksLink";
 import { toDateKey } from "../utils/dateKey";
 import { icsAPI } from "../api/client";
 
@@ -14,7 +15,7 @@ interface DashboardProps {
   user: User;
   onNavigate: (page: string) => void;
   /** Клик по свободному слоту в виджете «Свободные залы» → переход к созданию ВКС */
-  onBookSlot?: (roomName: string, startTime: string, endTime: string, date: string) => void;
+  onBookSlot?: (roomName: string, startTime: string, endTime: string, date: string, link?: string) => void;
 }
 
 /** Диапазон дат видимых дней календаря (для разворачивания повторов) */
@@ -51,6 +52,13 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
   // Панель создания ВКС открыта, когда есть предзаполнение (после выбора времени/зала)
   const [createPrefill, setCreatePrefill] = useState<MeetingPrefill | null>(null);
   const createOpen = createPrefill !== null;
+
+  // Единая точка: при любом предзаполнении формы ВКС ссылка на salutejazz.ru
+  // создаётся автоматически (если ещё не готова). Зал фактически «занят» самой
+  // конференцией при сохранении — отдельного API бронирования не требуется.
+  const openCreatePanel = (p: MeetingPrefill) => {
+    setCreatePrefill({ ...p, link: p.link || generateVksLink() });
+  };
 
   const handleDownloadIcs = async () => {
     setIcsLoading(true);
@@ -187,15 +195,17 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
     setBookingOpen(true);
   };
 
-  // Подтверждение в модалке выбора зала → панель создания ВКС прямо на главной
+  // Подтверждение в модалке выбора зала → панель создания ВКС прямо на главной.
+  // Если задан родительский сценарий (переход в раздел «Мои конференции») —
+  // передаём ему готовую ссылку ВКС; иначе открываем панель здесь же.
   const handleBookingConfirm = (roomName: string, dateKey: string, startTime: string, endTime: string) => {
     setBookingOpen(false);
+    const link = generateVksLink();
     if (onBookSlot) {
-      // родительский сценарий (переход в раздел «Мои конференции») — если задан
-      onBookSlot(roomName, startTime, endTime, dateKey);
+      onBookSlot(roomName, startTime, endTime, dateKey, link);
       return;
     }
-    setCreatePrefill({ date: dateKey, startTime, endTime, room: roomName, autoLink: true });
+    openCreatePanel({ date: dateKey, startTime, endTime, room: roomName, autoLink: true, link });
   };
 
   // Быстрая кнопка «Выбрать зал» — ближайшее 15-минутное время сегодня
@@ -240,7 +250,15 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
       </div>
 
       {/* Свободные залы — в самом верху, сразу под приветствием */}
-      <FreeRoomsWidget onPickSlot={onBookSlot} />
+      <FreeRoomsWidget
+        onPickSlot={(roomName, startTime, endTime, date) => {
+          if (onBookSlot) {
+            onBookSlot(roomName, startTime, endTime, date, generateVksLink());
+          } else {
+            openCreatePanel({ date, startTime, endTime, room: roomName, autoLink: true });
+          }
+        }}
+      />
 
       {/* Stats — нули показываем прочерком, чтобы не мозолили глаза */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
