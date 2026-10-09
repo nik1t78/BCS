@@ -135,26 +135,30 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
         </p>
       </div>
 
-      {/* Stats */}
+      {/* Stats — нули показываем прочерком, чтобы не мозолили глаза */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
           <p className="text-sm text-gray-500 dark:text-gray-400">Сегодня</p>
-          <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{todayMeetings.length}</p>
+          <p className={`text-2xl font-bold ${todayMeetings.length ? "text-gray-800 dark:text-gray-100" : "text-gray-300 dark:text-gray-600"}`}>
+            {todayMeetings.length || "—"}
+          </p>
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
           <p className="text-sm text-gray-500 dark:text-gray-400">Всего</p>
-          <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{visibleMeetings.length}</p>
+          <p className={`text-2xl font-bold ${visibleMeetings.length ? "text-gray-800 dark:text-gray-100" : "text-gray-300 dark:text-gray-600"}`}>
+            {visibleMeetings.length || "—"}
+          </p>
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
           <p className="text-sm text-gray-500 dark:text-gray-400">Организовано</p>
-          <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">
-            {visibleMeetings.filter((m) => Number(m.organizerId) === Number(user.id)).length}
+          <p className={`text-2xl font-bold ${visibleMeetings.filter((m) => Number(m.organizerId) === Number(user.id)).length ? "text-gray-800 dark:text-gray-100" : "text-gray-300 dark:text-gray-600"}`}>
+            {visibleMeetings.filter((m) => Number(m.organizerId) === Number(user.id)).length || "—"}
           </p>
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
           <p className="text-sm text-gray-500 dark:text-gray-400">Высокий приоритет</p>
-          <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">
-            {visibleMeetings.filter((m) => m.priority === "high").length}
+          <p className={`text-2xl font-bold ${visibleMeetings.filter((m) => m.priority === "high").length ? "text-gray-800 dark:text-gray-100" : "text-gray-300 dark:text-gray-600"}`}>
+            {visibleMeetings.filter((m) => m.priority === "high").length || "—"}
           </p>
         </div>
       </div>
@@ -268,7 +272,7 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
         <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4">
           <i className="fas fa-calendar-day text-purple-500 mr-2"></i>
-          Сегодня ({todayMeetings.length})
+          Сегодня{todayMeetings.length > 0 ? ` (${todayMeetings.length})` : ""}
         </h2>
         {todayMeetings.length === 0 ? (
           <p className="text-center text-gray-400 py-8">Нет конференций на сегодня</p>
