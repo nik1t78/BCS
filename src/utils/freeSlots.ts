@@ -56,7 +56,7 @@ export function computeFreeSlots(
     .sort((a, b) => a.s - b.s);
 
   let from = WORK_DAY_START_MIN;
-  let to = WORK_DAY_END_MIN;
+  const to = WORK_DAY_END_MIN;
   if (opts.isToday) {
     // старт не раньше «сейчас», округлённого вверх до 5 минут
     from = Math.max(from, Math.ceil(opts.nowMin / 5) * 5);

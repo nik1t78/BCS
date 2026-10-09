@@ -1,10 +1,7 @@
-# Dependency directories
+# Dependencies
 node_modules/
 
-# Build artifacts and caches (common for Vite/React projects)
+# Build artifacts
 dist/
-build/
-.cache/
-.parcel-cache/
-.eslintcache
-*.tsbuildinfo
+build/node_modules/
+dist/

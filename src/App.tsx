@@ -19,13 +19,22 @@ import type { MeetingPrefill } from "./components/UserPanel";
 import { getUnreadNotificationsCount, markNotificationRead } from "./store-api";
 
 // Code splitting: тяжёлые страницы грузятся лениво (Suspense ниже),
-// это уменьшает стартовый chunk (recharts/framer-motion/exceljs уходят в отдельные бандлы).
+// это уменьшает стартовый chunk. Экспорт Excel (exceljs, ~1 МБ) грузится
+// динамически только в момент нажатия «Скачать Excel».
 const Dashboard = lazy(() => import("./components/Dashboard"));
 const UserPanel = lazy(() => import("./components/UserPanel"));
 const AdminPanel = lazy(() => import("./components/AdminPanel"));
 const Stats = lazy(() => import("./components/Stats"));
 const Templates = lazy(() => import("./components/Templates"));
 const TagsManager = lazy(() => import("./components/TagsManager"));
+
+// Очистка «наследства» старых версий приложения: раньше демо-данные и копии
+// конференций/пользователей бесконечно накапливались в localStorage одного
+// браузера (несколько МБ), из-за чего он подвисал при загрузке. Удаляем эти
+// ключи один раз; актуальные данные теперь живут только на сервере (Laravel API).
+["vks_meetings", "vks_users", "vks_notifications", "vks_tags", "vks_templates", "vks_current_user"].forEach((k) =>
+  localStorage.removeItem(k)
+);
 
 type Page =
   "dashboard" | "schedule" | "meetings" | "templates" | "tags" | "stats" | "notifications" | "profile" | "admin";

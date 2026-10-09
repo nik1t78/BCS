@@ -1,4 +1,3 @@
-import ExcelJS from "exceljs";
 import { Meeting } from "../types";
 import { expandOccurrences } from "./recurrence";
 
@@ -60,8 +59,11 @@ const saveBlob = (blob: Blob, filename: string): void => {
 };
 
 // Экспорт расписания в файл Excel (.xlsx): одна строка на каждый день встречи,
-// повторяющиеся встречи разворачиваются на 3 месяца вперёд
+// повторяющиеся встречи разворачиваются на 3 месяца вперёд.
+// ExcelJS (~1 МБ) грузится динамически — библиотека не попадает в стартовый
+// бандл страницы «Админка», а подгружается только при нажатии «Скачать Excel».
 export async function exportToExcel(meetings: Meeting[], username: string): Promise<void> {
+  const ExcelJS = (await import("exceljs")).default;
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "ВКС Расписание";
   workbook.created = new Date();
