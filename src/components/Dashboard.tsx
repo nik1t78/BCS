@@ -4,6 +4,7 @@ import { getMeetings, getUsersForDisplay, updateMeeting } from "../store-api";
 import { occursOn, withDate } from "../utils/recurrence";
 import FreeRoomsWidget from "./FreeRoomsWidget";
 import OutlookCalendar, { OutlookView } from "./OutlookCalendar";
+import RoomBookingModal from "./RoomBookingModal";
 import { toDateKey } from "../utils/dateKey";
 import { icsAPI } from "../api/client";
 
@@ -38,6 +39,12 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
   const [countdown, setCountdown] = useState("");
   // Экспорт «Мой календарь ВКС» в .ics
   const [icsLoading, setIcsLoading] = useState(false);
+  // Модалка выбора зала (клик по пустому слоту календаря / кнопка «Выбрать зал»)
+  const [bookingOpen, setBookingOpen] = useState(false);
+  const [bookingAt, setBookingAt] = useState<{ date: string; startTime: string }>({
+    date: toDateKey(new Date()),
+    startTime: "09:00",
+  });
 
   const handleDownloadIcs = async () => {
     setIcsLoading(true);
@@ -168,20 +175,25 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
   const blockSubtitle = (m: Meeting) =>
     isAdminOrMod || hasAccessTo(m) ? m.room || undefined : undefined;
 
-  // Клик по пустому слоту → создание ВКС с предзаполненными датой/временем
+  // Клик по пустому слоту → открыть выбор зала с предзаполненными датой/временем
   const handleCreateAt = (dateKey: string, startTime: string) => {
-    const startMin = Number(startTime.slice(0, 2)) * 60 + Number(startTime.slice(3, 5));
-    const endMin = Math.min(startMin + 60, 24 * 60 - 15);
-    const endTime = `${String(Math.floor(endMin / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
-    onBookSlot?.("", startTime, endTime, dateKey);
+    setBookingAt({ date: dateKey, startTime });
+    setBookingOpen(true);
   };
 
-  // Кнопка «Создать ВКС» — ближайший свободный 15-минутный слот сегодня
-  const handleCreateAtNow = () => {
+  // Подтверждение в модалке выбора зала → переход к форме ВКС (бронь + автоссылка)
+  const handleBookingConfirm = (roomName: string, dateKey: string, startTime: string, endTime: string) => {
+    setBookingOpen(false);
+    onBookSlot?.(roomName, startTime, endTime, dateKey);
+  };
+
+  // Быстрая кнопка «Выбрать зал» — ближайшее 15-минутное время сегодня
+  const openBookingNow = () => {
     const rounded = Math.ceil((currentTime.getHours() * 60 + currentTime.getMinutes()) / 15) * 15;
     const clamped = Math.min(rounded, 23 * 60 + 45);
     const fmt = (mins: number) => `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
-    onBookSlot?.("", fmt(clamped), fmt(Math.min(clamped + 60, 23 * 60 + 45)), toDateKey(currentTime));
+    setBookingAt({ date: toDateKey(currentTime), startTime: fmt(clamped) });
+    setBookingOpen(true);
   };
 
   // Перенос встречи drag&drop — только свои (или все для админа)
@@ -362,10 +374,10 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
           </h2>
           <div className="flex items-center gap-2">
             <button
-              onClick={handleCreateAtNow}
+              onClick={openBookingNow}
               className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
             >
-              <i className="fas fa-video mr-2"></i>Создать ВКС
+              <i className="fas fa-door-open mr-2"></i>Выбрать зал · Создать ВКС
             </button>
             <button
               onClick={() => onNavigate?.("schedule")}
@@ -411,6 +423,16 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
           blockSubtitle={blockSubtitle}
         />
       </div>
+
+      {/* Модалка выбора зала: Outlook-шкала дня, клик по свободному времени →
+          «Занять и создать ВКС» (переход в форму с автогенерацией ссылки) */}
+      <RoomBookingModal
+        open={bookingOpen}
+        date={bookingAt.date}
+        startTime={bookingAt.startTime}
+        onClose={() => setBookingOpen(false)}
+        onConfirm={handleBookingConfirm}
+      />
 
       {/* Карточка встречи (клик по блоку в календаре) */}
       {detailMeeting &&
