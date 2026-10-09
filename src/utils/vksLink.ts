@@ -34,12 +34,7 @@ export function generateVksLink(): string {
   return `${VKS_LINK_BASE}${randomVksRoomCode()}?psw=${randomVksPassword()}`;
 }
 
-/**
- * Проверка и «починка» ссылки до канонического вида платформы.
- * Если пользователь ввёл ссылку вручную без пароля (например, просто открыл
- * страницу комнаты на salutejazz.ru), добавляем ?psw=<случайный пароль>,
- * чтобы встреча всегда создавалась с защищённым доступом.
- */
+/** Проверка и «починка» ссылки до канонического вида платформы. */
 export function normalizeVksLink(link: string): string {
   if (!isVksLink(link)) return link;
   const url = new URL(link);
@@ -52,4 +47,41 @@ export function normalizeVksLink(link: string): string {
 /** Проверка: ссылка ли это на нашу ВКС-платформу */
 export function isVksLink(link?: string | null): boolean {
   return !!link && link.startsWith("https://salutejazz.ru/calls/");
+}
+
+/** Код комнаты из готовой ссылки (для отображения в интерфейсе) */
+export function vksRoomCodeFromLink(link?: string | null): string | null {
+  if (!isVksLink(link)) return null;
+  try {
+    const path = new URL(link as string).pathname; // /calls/<код>
+    const code = path.split("/").filter(Boolean).pop();
+    return code || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Пароль (?psw=...) из готовой ссылки */
+export function vksPasswordFromLink(link?: string | null): string | null {
+  if (!isVksLink(link)) return null;
+  try {
+    return new URL(link as string).searchParams.get("psw");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Попытка создать комнату через API платформы SaluteJazz.
+ * ВАЖНО: публичного API создания комнат у SaluteJazz нет (проверено: страница
+ * SPA, эндпоинты скрыты за авторизацией SSO). Если организация получит
+ * корпоративный токен, здесь подключается реальный вызов. Пока возвращаем
+ * null — ссылка генерируется локально по формату платформы, комната
+ * создаётся автоматически при первом входе организатора по ссылке.
+ */
+export async function createRoomViaPlatformApi(
+  _token?: string,
+): Promise<{ link: string } | null> {
+  void _token;
+  return null;
 }
