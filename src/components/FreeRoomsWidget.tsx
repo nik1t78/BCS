@@ -149,7 +149,7 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
             <div className="relative flex-1 h-4">
               {hours.map((m) => (
                 <span key={m} className="absolute -translate-x-1/2" style={{ left: `${pct(m)}%` }}>
-                  {new Date(2000, 0, 1, Math.floor(m / 60)).getHours()}
+                  {minToHm(m)}
                 </span>
               ))}
             </div>
