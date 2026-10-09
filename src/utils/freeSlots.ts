@@ -3,8 +3,8 @@
 // строится timeline занятости, вырезаются уже прошедшие отрезки (для
 // сегодняшнего дня) и возвращаются ближайшие свободные окна.
 
-export const WORK_DAY_START_MIN = 8 * 60; // 08:00
-export const WORK_DAY_END_MIN = 19 * 60; // 19:00
+export const WORK_DAY_START_MIN = 0; // 00:00 — полный суточный диапазон (24 часа)
+export const WORK_DAY_END_MIN = 24 * 60; // 24:00
 export const MIN_SLOT_MIN = 30; // окна короче 30 минут не показываем
 
 /** "HH:MM" → минуты с полуночи */
