@@ -8,12 +8,14 @@ import { icsAPI } from "../api/client";
 interface DashboardProps {
   user: User;
   onNavigate: (page: string) => void;
+  /** Клик по свободному слоту в виджете «Свободные залы» → переход к созданию ВКС */
+  onBookSlot?: (roomName: string, startTime: string, endTime: string, date: string) => void;
 }
 
 const toDateKey = (d: Date): string =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-export default function Dashboard({ user, onNavigate }: DashboardProps) {
+export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -127,7 +129,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
     <div className="space-y-6">
       {/* Welcome */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-6 text-white">
-        <h2 className="text-2xl font-bold">Добро пожаловать, {user.name.split(" ")[0]}!</h2>
+        <h2 className="text-2xl font-bold">Добро пожаловать, {user.name}!</h2>
         <p className="text-blue-100 mt-1">
           {currentTime.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
         </p>
@@ -326,7 +328,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
 
       {/* Быстрые действия: экспорт календаря (.ics) и виджет свободных комнат */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-        <FreeRoomsWidget />
+        <FreeRoomsWidget onPickSlot={onBookSlot} />
         <div className="bg-white dark:bg-slate-800 rounded-xl shadow p-4 flex flex-col justify-between">
           <div>
             <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-2">

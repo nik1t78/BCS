@@ -1,16 +1,32 @@
 import React, { useEffect, useState } from "react";
 import { Room, RoomAvailability } from "../types";
 import { roomsAPI } from "../api/client";
+import { computeFreeSlots, minToHm, type FreeSlot } from "../utils/freeSlots";
+
+const todayKey = (): string => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+interface RoomInfo {
+  room: Room;
+  slots: FreeSlot[];
+}
+
+interface FreeRoomsWidgetProps {
+  /** Клик по свободному слоту → родитель переходит к созданию ВКС с предзаполнением */
+  onPickSlot?: (roomName: string, startTime: string, endTime: string, date: string) => void;
+}
 
 /**
- * Виджет «Свободные комнаты»: показывает переговорные комнаты на выбранный
- * день со статусом занятости в текущий момент времени. Доступен всем ролям.
+ * Виджет «Свободные залы»: для каждой переговорной комнаты показывает
+ * ближайшие свободные интервалы до конца рабочего дня (08:00–19:00).
+ * Клик по интервалу автоматически открывает форму создания ВКС с
+ * предзаполненными датой, временем и залом (+ автогенерация ссылки ВКС).
  */
-export default function FreeRoomsWidget() {
-  const [date, setDate] = useState<string>(new Date().toISOString().slice(0, 10));
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [busyMap, setBusyMap] = useState<Record<string, number>>({}); // roomId -> длительность занятости сегодня (мин)
-  const [nowStatus, setNowStatus] = useState<Record<string, boolean>>({}); // roomId -> свободна прямо сейчас
+export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
+  const [date, setDate] = useState<string>(todayKey());
+  const [infos, setInfos] = useState<RoomInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,35 +39,28 @@ export default function FreeRoomsWidget() {
         const res: any = await roomsAPI.list();
         const rooms: Room[] = Array.isArray(res) ? res : res?.data ?? [];
         const active = rooms.filter((r) => r.isActive !== false);
-        const results = await Promise.allSettled(
-          active.map((r) => roomsAPI.availability(r.id, { date }))
-        );
+        const results = await Promise.allSettled(active.map((r) => roomsAPI.availability(r.id, { date })));
         if (cancelled) return;
-        const nextBusy: Record<string, number> = {};
-        const nextNow: Record<string, boolean> = {};
-        const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
-        const isToday = date === new Date().toISOString().slice(0, 10);
+        const now = new Date();
+        const nowMin = now.getHours() * 60 + now.getMinutes();
+        const isToday = date === todayKey();
+        const next: RoomInfo[] = [];
         results.forEach((resItem, i) => {
           const room = active[i];
-          if (resItem.status !== "fulfilled") return;
-          const avail: RoomAvailability = resItem.value?.data ?? resItem.value;
-          const busy = avail.busy ?? [];
-          nextBusy[room.id] = busy.reduce((acc, b) => {
-            const s = new Date(b.start).getHours() * 60 + new Date(b.start).getMinutes();
-            const e = new Date(b.end).getHours() * 60 + new Date(b.end).getMinutes();
-            return acc + Math.max(0, e - s);
-          }, 0);
-          nextNow[room.id] = isToday
-            ? !busy.some((b) => {
-                const s = new Date(b.start).getHours() * 60 + new Date(b.start).getMinutes();
-                const e = new Date(b.end).getHours() * 60 + new Date(b.end).getMinutes();
-                return nowMin >= s && nowMin < e;
-              })
-            : true;
+          if (resItem.status !== "fulfilled") {
+            next.push({ room, slots: [] });
+            return;
+          }
+          const avail: RoomAvailability = (resItem.value as any)?.data ?? resItem.value;
+          const slots = computeFreeSlots(avail.busy ?? [], { isToday, nowMin });
+          next.push({ room, slots });
         });
-        setBusyMap(nextBusy);
-        setNowStatus(nextNow);
-        setRooms(active);
+        // Свободные залы — выше списка; внутри — по ближайшему слоту
+        next.sort((a, b) => {
+          if (a.slots.length !== b.slots.length) return b.slots.length - a.slots.length;
+          return (a.slots[0]?.startMin ?? 1e9) - (b.slots[0]?.startMin ?? 1e9);
+        });
+        setInfos(next);
       } catch (e: any) {
         if (!cancelled) setError(e?.message || "Не удалось загрузить комнаты");
       } finally {
@@ -68,7 +77,7 @@ export default function FreeRoomsWidget() {
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold text-gray-800 dark:text-gray-100">
           <i className="fas fa-door-open mr-2 text-blue-600" aria-hidden="true"></i>
-          Свободные комнаты
+          Свободные залы
         </h3>
         <input
           type="date"
@@ -85,40 +94,53 @@ export default function FreeRoomsWidget() {
         </p>
       )}
       {error && <p className="text-sm text-red-500">{error}</p>}
-      {!loading && !error && rooms.length === 0 && (
+      {!loading && !error && infos.length === 0 && (
         <p className="text-sm text-gray-500 dark:text-gray-400">Комнаты не настроены.</p>
       )}
 
       {!loading && !error && (
-        <ul className="space-y-2">
-          {[...rooms]
-            .sort((a, b) => (busyMap[a.id] ?? 0) - (busyMap[b.id] ?? 0))
-            .map((room) => {
-              const freeNow = nowStatus[room.id] !== false;
-              const busyMin = busyMap[room.id] ?? 0;
-              return (
-                <li
-                  key={room.id}
-                  className="flex items-center justify-between text-sm border-b border-gray-100 dark:border-slate-700 pb-2 last:border-0"
-                >
-                  <span className="text-gray-700 dark:text-gray-200">
-                    {room.name}
-                    <span className="text-xs text-gray-400 ml-2">
-                      {room.capacity} чел.{room.location ? ` • ${room.location}` : ""}
-                    </span>
+        <ul className="space-y-3">
+          {infos.map(({ room, slots }) => (
+            <li key={room.id} className="border-b border-gray-100 dark:border-slate-700 pb-2 last:border-0">
+              <div className="flex items-center justify-between text-sm mb-1.5">
+                <span className="text-gray-700 dark:text-gray-200 font-medium">
+                  <i className={`fas ${slots.length ? "fa-circle text-emerald-500" : "fa-circle text-red-400"} text-[8px] mr-2`} aria-hidden="true"></i>
+                  {room.name}
+                  <span className="text-xs text-gray-400 ml-2">
+                    {room.capacity} чел.{room.location ? ` • ${room.location}` : ""}
                   </span>
-                  <span
-                    className={
-                      freeNow
-                        ? "text-emerald-600 dark:text-emerald-400 font-medium"
-                        : "text-amber-600 dark:text-amber-400 font-medium"
-                    }
-                  >
-                    {freeNow ? "свободна" : `занята • ${Math.round(busyMin / 60 * 10) / 10} ч сегодня`}
-                  </span>
-                </li>
-              );
-            })}
+                </span>
+                {!slots.length && (
+                  <span className="text-xs text-gray-400 dark:text-gray-500">занят до конца дня</span>
+                )}
+              </div>
+              {slots.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {slots.slice(0, 4).map((s) => {
+                    const startHm = minToHm(s.startMin);
+                    // конец окна: не больше часа по умолчанию, но в пределах слота
+                    const endHm = minToHm(Math.min(s.endMin, s.startMin + 60));
+                    return (
+                      <button
+                        key={`${s.startMin}-${s.endMin}`}
+                        type="button"
+                        onClick={() => onPickSlot?.(room.name, startHm, endHm, date)}
+                        title={`Забронировать ${startHm}–${endHm} и создать ВКС`}
+                        className="text-xs px-2.5 py-1 rounded-lg font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700 dark:hover:bg-emerald-900/50 transition-colors"
+                      >
+                        <i className="fas fa-plus mr-1" aria-hidden="true"></i>
+                        {startHm}–{endHm}
+                        <span className="text-emerald-500/80 ml-1">({Math.round(s.lengthMin / 60 * 10) / 10} ч)</span>
+                      </button>
+                    );
+                  })}
+                  {slots.length > 4 && (
+                    <span className="text-xs text-gray-400 self-center">+{slots.length - 4}</span>
+                  )}
+                </div>
+              )}
+            </li>
+          ))}
         </ul>
       )}
     </div>

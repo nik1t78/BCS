@@ -19,10 +19,24 @@ import MeetingMinutes from "./MeetingMinutes";
 import { SortMode, SORT_OPTIONS, sortMeetings, getMeetingGroup } from "../utils/meetingSort";
 import { exportMeetingToIcs } from "../utils/ics";
 import { getFavoriteIds, toggleFavorite, addFavorites } from "../utils/favorites";
+import { generateVksLink } from "../utils/vksLink";
+
+/** Предзаполнение формы создания конференции (например, из блока «Свободные залы» на главной) */
+export interface MeetingPrefill {
+  date?: string; // YYYY-MM-DD
+  startTime?: string; // HH:mm
+  endTime?: string; // HH:mm
+  room?: string; // название переговорной
+  autoLink?: boolean; // сразу сгенерировать ссылку ВКС
+}
 
 interface UserPanelProps {
   user: User;
   onNavigate: (page: string) => void;
+  /** Передаётся при переходе с главной («Свободные залы» → создание ВКС) */
+  initialPrefill?: MeetingPrefill | null;
+  /** Вызывается после применения предзаполнения — родитель может его сбросить */
+  onPrefillConsumed?: () => void;
 }
 
 const PAGE_SIZE = 20;
@@ -39,7 +53,7 @@ const getDefaultReminder = (): number => {
   return 15;
 };
 
-export default function UserPanel({ user, onNavigate }: UserPanelProps) {
+export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillConsumed }: UserPanelProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -104,6 +118,25 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
   };
 
   const [formData, setFormData] = useState<Meeting>(emptyMeeting);
+
+  // Предзаполнение из виджета «Свободные залы» на главной: открываем форму
+  // создания ВКС с датой/временем/залом и сразу сгенерированной ссылкой.
+  useEffect(() => {
+    if (!initialPrefill) return;
+    const p = initialPrefill;
+    setEditingMeeting(null);
+    setFormData({
+      ...emptyMeeting,
+      date: p.date ?? emptyMeeting.date,
+      startTime: p.startTime ?? emptyMeeting.startTime,
+      endTime: p.endTime ?? emptyMeeting.endTime,
+      room: p.room ?? emptyMeeting.room,
+      link: p.autoLink ? generateVksLink() : "",
+    });
+    setShowForm(true);
+    onPrefillConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPrefill]);
 
   useEffect(() => {
     loadData();
@@ -672,13 +705,31 @@ export default function UserPanel({ user, onNavigate }: UserPanelProps) {
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Ссылка ВКС
                     </label>
-                    <input
-                      type="url"
-                      value={formData.link}
-                      onChange={(e) => setFormData({ ...formData, link: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
-                      placeholder="https://zoom.us/..."
-                    />
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        inputMode="url"
+                        value={formData.link}
+                        onChange={(e) => setFormData({ ...formData, link: e.target.value })}
+                        className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                        placeholder="https://vc.salutejazz.ru/..."
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, link: generateVksLink() })}
+                        title="Автоматически создать ссылку на ВКС (salutejazz.ru)"
+                        className="px-3 py-2 text-sm rounded-lg border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors whitespace-nowrap"
+                      >
+                        <i className="fas fa-wand-magic-sparkles mr-1" aria-hidden="true"></i>
+                        Создать ВКС
+                      </button>
+                    </div>
+                    {formData.link?.startsWith("https://vc.salutejazz.ru/") && (
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
+                        <i className="fas fa-check-circle mr-1" aria-hidden="true"></i>
+                        Ссылка на корпоративную ВКС создана автоматически
+                      </p>
+                    )}
                   </div>
 
                   <div>

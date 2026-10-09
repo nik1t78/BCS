@@ -6,11 +6,17 @@ import ForcePasswordChange from "./components/ForcePasswordChange";
 import { getTheme } from "./store";
 import AuthPage from "./components/AuthPage";
 import Schedule from "./components/Schedule";
-import Notifications, { useNewNotificationToasts, NotificationToasts } from "./components/Notifications";
+import Notifications, {
+  useNewNotificationToasts,
+  NotificationToasts,
+  subscribeToNotifications,
+} from "./components/Notifications";
 import Profile from "./components/Profile";
 import GlobalSearch from "./components/GlobalSearch";
 import ThemeToggle from "./components/ThemeToggle";
 import ResetData from "./components/ResetData";
+import type { MeetingPrefill } from "./components/UserPanel";
+import { getUnreadNotificationsCount, markNotificationRead } from "./store-api";
 
 // Code splitting: тяжёлые страницы грузятся лениво (Suspense ниже),
 // это уменьшает стартовый chunk (recharts/framer-motion/exceljs уходят в отдельные бандлы).
@@ -60,6 +66,40 @@ function App() {
 
   // Toast-уведомления о новых уведомлениях — всплывают на любом экране.
   const { toasts: newToasts, dismiss: dismissToast } = useNewNotificationToasts(!!user);
+
+  // Бейдж непрочитанных уведомлений в сайдбаре + мгновенное обновление счётчика
+  // по SSE (раньше счётчик вообще нигде не переспрашивался после загрузки).
+  const [unreadCount, setUnreadCount] = useState(0);
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    const refresh = () => getUnreadNotificationsCount().then((c: number) => !cancelled && setUnreadCount(c || 0));
+    refresh();
+    const unsubscribe = subscribeToNotifications((n) => {
+      if (cancelled) return;
+      setUnreadCount((c) => c + 1);
+      // событие «read» от других вкладок/устройств — уменьшаем счётчик
+      if ((n as any).type === "read" || (n as any).event === "read") setUnreadCount((c) => Math.max(0, c - 1));
+    });
+    const timer = setInterval(refresh, 60000); // запасной поллинг раз в минуту
+    const onReadEvent = () => refresh();
+    window.addEventListener("vks-notification-read", onReadEvent);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      if (unsubscribe) unsubscribe();
+      window.removeEventListener("vks-notification-read", onReadEvent);
+    };
+  }, [user]);
+
+  // Переход «Свободные залы» (главная) → создание ВКС: кликнули время —
+  // открылась форма «Мои конференции» с предзаполненными датой/временем/залом
+  // и автоматически созданной ссылкой на ВКС salutejazz.ru.
+  const [meetingPrefill, setMeetingPrefill] = useState<MeetingPrefill | null>(null);
+  const handleBookSlot = (roomName: string, startTime: string, endTime: string, date: string) => {
+    setMeetingPrefill({ date, startTime, endTime, room: roomName, autoLink: true });
+    setCurrentPage("meetings");
+  };
 
   if (!user) {
     return <AuthPage onLogin={handleLogin} />;
@@ -148,8 +188,20 @@ function App() {
                   : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
               }`}
             >
-              <i className={`fas ${item.icon} w-5 text-center`}></i>
-              <span className={`text-sm font-medium ${sidebarOpen ? "" : "hidden md:inline"}`}>{item.label}</span>
+              <span className="relative shrink-0">
+                <i className={`fas ${item.icon} w-5 text-center`}></i>
+                {item.id === "notifications" && unreadCount > 0 && (
+                  <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-4 text-center">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </span>
+              <span className={`text-sm font-medium flex-1 ${sidebarOpen ? "" : "hidden md:inline"}`}>
+                {item.label}
+              </span>
+              {item.id === "notifications" && unreadCount > 0 && !sidebarOpen && (
+                <span className="md:hidden text-[10px] text-red-500 font-bold">{unreadCount}</span>
+              )}
             </button>
           ))}
         </nav>
@@ -211,13 +263,22 @@ function App() {
             }
           >
             {currentPage === "dashboard" && (
-              <Dashboard user={user} onNavigate={(page: string) => setCurrentPage(page as Page)} />
+              <Dashboard
+                user={user}
+                onNavigate={(page: string) => setCurrentPage(page as Page)}
+                onBookSlot={handleBookSlot}
+              />
             )}
             {currentPage === "schedule" && (
               <Schedule user={user} onNavigate={(page: string) => setCurrentPage(page as Page)} />
             )}
             {currentPage === "meetings" && (
-              <UserPanel user={user} onNavigate={(page: string) => setCurrentPage(page as Page)} />
+              <UserPanel
+                user={user}
+                onNavigate={(page: string) => setCurrentPage(page as Page)}
+                initialPrefill={meetingPrefill}
+                onPrefillConsumed={() => setMeetingPrefill(null)}
+              />
             )}
             {currentPage === "templates" && <Templates userId={user.id} />}
             {currentPage === "tags" && <TagsManager userId={user.id} />}

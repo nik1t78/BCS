@@ -1,21 +1,19 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { User, Meeting } from "../types";
 import { getMeetings, getUsersForDisplay, rescheduleMeeting, checkRescheduleConflicts, updateMeeting } from "../store-api";
 import { roomsAPI } from "../api/client";
-import { occursOn, withDate } from "../utils/recurrence";
+import { occursOn } from "../utils/recurrence";
+import OutlookCalendar, { OutlookView } from "./OutlookCalendar";
 
 interface ScheduleProps {
   user: User;
   onNavigate: (page: string) => void;
 }
 
-const toDateKey = (d: Date): string =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-
 export default function Schedule({ user, onNavigate }: ScheduleProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
-  const [view, setView] = useState<"day" | "week" | "month">("week");
+  const [view, setView] = useState<OutlookView>("week");
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [filter, setFilter] = useState<"all" | "my" | "today" | "upcoming">("all");
   // Справочник всех переговорных комнат (включая созданные пользователями)
@@ -23,9 +21,6 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
   const [rooms, setRooms] = useState<any[]>([]);
   const [roomFilter, setRoomFilter] = useState("");
   const [loading, setLoading] = useState(true);
-  // drag&drop переноса встреч между днями календаря
-  const [dragMeetingId, setDragMeetingId] = useState<string | null>(null);
-  const [dragOverDate, setDragOverDate] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
   // Детальная карточка ВКС (просмотр описания/комнаты по клику) и режим редактирования
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
@@ -83,6 +78,8 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
   const hasAccessTo = (m: Meeting) =>
     Number(m.organizerId) === Number(user.id) || (m.participants ?? []).some((p) => Number(p) === Number(user.id));
 
+  const isAdminLike = user.role === "admin" || user.role === "moderator";
+
   const loadData = async () => {
     setLoading(true);
     const [allMeetings, users] = await Promise.all([getMeetings(), getUsersForDisplay(user.role)]);
@@ -92,42 +89,14 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
     // Приватная встреча без участия скрыта; у приватных с участием название
     // остаётся закрытым («Конференция») — см. canSeeDetails ниже.
     const visibleMeetings =
-      user.role === "admin" || user.role === "moderator"
-        ? allMeetings
-        : allMeetings.filter(
-            (m) => m.isPrivate !== true || hasAccessTo(m),
-          );
+      isAdminLike ? allMeetings : allMeetings.filter((m) => m.isPrivate !== true || hasAccessTo(m));
 
     setMeetings(visibleMeetings);
     setAllUsers(users);
     setLoading(false);
   };
 
-  const getWeekDates = (date: Date): Date[] => {
-    const start = new Date(date);
-    const day = start.getDay();
-    const diff = start.getDate() - day + (day === 0 ? -6 : 1);
-    start.setDate(diff);
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
-      return d;
-    });
-  };
-
-  const getMonthDates = (date: Date): Date[] => {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const dates: Date[] = [];
-    for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
-      dates.push(new Date(d));
-    }
-    return dates;
-  };
-
-  const visibleMeetings = meetings.filter((m) => {
+  const calendarMeetings = meetings.filter((m) => {
     if (roomFilter && m.room !== roomFilter) return false;
     if (filter === "my") return hasAccessTo(m);
     if (filter === "today") return occursOn(m, new Date());
@@ -135,60 +104,47 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
     return true;
   });
 
-  // Разворачиваем повторы (daily/weekly/monthly) в конкретные дни,
-  // чтобы повторяющиеся встречи были видны в календаре на всех датах
-  const getMeetingsForDate = (date: Date) => {
-    return visibleMeetings
-      .filter((m) => occursOn(m, date))
-      .map((m) => (m.date === toDateKey(date) ? m : withDate(m, date)));
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "high":
-        return "border-l-red-500";
-      case "medium":
-        return "border-l-yellow-500";
-      case "low":
-        return "border-l-green-500";
-      default:
-        return "border-l-gray-300";
-    }
-  };
-
   const getUserName = (id: string) => allUsers.find((u) => Number(u.id) === Number(id))?.name || "—";
 
   // Можно ли перетаскивать встречу (только организатор или админ — как на бэкенде)
   const canDrag = (m: Meeting) =>
     m.status !== "cancelled" &&
     m.status !== "completed" &&
-    (Number(m.organizerId) === Number(user.id) || user.role === "admin" || user.role === "moderator" || hasAccessTo(m));
+    (Number(m.organizerId) === Number(user.id) || isAdminLike || hasAccessTo(m));
 
-  // Перенос встречи на другой день календаря (drag&drop)
-  const handleDropOnDate = async (dateKey: string) => {
-    setDragOverDate(null);
-    const id = dragMeetingId;
-    setDragMeetingId(null);
-    if (!id) return;
-    const m = meetings.find((x) => String(x.id) === id);
-    if (!m) return;
-    if (m.date === dateKey) return; // бросок на тот же день — ничего не делаем
+  // Для повторяющихся встреч occurrence-копия имеет id родителя — переносим оригинал
+  const originalOf = (m: Meeting): Meeting => meetings.find((x) => String(x.id) === String(m._occurrenceOf ?? m.id)) ?? m;
+
+  // Перенос встречи drag&drop в сетке Outlook (день + время с шагом 15 минут)
+  const handleRequestMove = async (occ: Meeting, dateKey: string, startTime: string) => {
+    const m = originalOf(occ);
     if (!canDrag(m)) return;
-    if (
-      !confirm(
-        `Перенести «${m.title}» на ${new Date(dateKey).toLocaleDateString("ru-RU")}? Участники получат уведомление.`
-      )
-    )
-      return;
+    const sameDay = m.date === dateKey && m.startTime === startTime;
+    if (sameDay) return;
+
+    const durationMin = Math.max(
+      (() => {
+        const [sh, sm] = m.startTime.split(":").map(Number);
+        const [eh, em] = m.endTime.split(":").map(Number);
+        return eh * 60 + em - (sh * 60 + sm);
+      })(),
+      15
+    );
+    const [nh, nm] = startTime.split(":").map(Number);
+    const endTotal = Math.min(nh * 60 + nm + durationMin, 23 * 60 + 45);
+    const endTime = `${String(Math.floor(endTotal / 60)).padStart(2, "0")}:${String(endTotal % 60).padStart(2, "0")}`;
+
+    const when = new Date(dateKey + "T00:00:00").toLocaleDateString("ru-RU");
+    if (!confirm(`Перенести «${m.title}» на ${when}, ${startTime}? Участники получат уведомление.`)) return;
 
     // Проверка конфликтов расписания у участников на новой дате
     try {
-      const found = await checkRescheduleConflicts(m, dateKey);
+      const found = await checkRescheduleConflicts({ ...m, startTime, endTime }, dateKey);
       if (found.length > 0) {
         const names = found.map((c) => `«${c.title}» ${c.start_time}–${c.end_time}`).join("\n");
         if (
           !confirm(
-            `⚠️ Конфликты при переносе на ${new Date(dateKey).toLocaleDateString("ru-RU")}:\n${names}\n\nПеренести всё равно?`
+            `⚠️ Конфликты при переносе на ${when}:\n${names}\n\nПеренести всё равно?`
           )
         ) {
           return;
@@ -199,10 +155,10 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
     }
 
     setMoving(true);
-    const saved = await rescheduleMeeting(id, {
+    const saved = await rescheduleMeeting(String(m.id), {
       date: dateKey,
-      startTime: m.startTime,
-      endTime: m.endTime,
+      startTime,
+      endTime,
       force: true,
     });
     setMoving(false);
@@ -210,65 +166,9 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
     else alert("Не удалось перенести встречу");
   };
 
-  const dragHandlers = (m: Meeting) =>
-    canDrag(m)
-      ? {
-          draggable: true,
-          onDragStart: (e: React.DragEvent) => {
-            setDragMeetingId(String(m.id));
-            e.dataTransfer.effectAllowed = "move";
-            e.dataTransfer.setData("text/plain", String(m.id));
-          },
-          onDragEnd: () => {
-            setDragMeetingId(null);
-            setDragOverDate(null);
-          },
-        }
-      : {};
-
-  // Клик по встрече в календаре — открывает карточку с описанием и комнатой.
-  // suppressClick используется, чтобы не открывать модалку сразу после drag&drop.
-  let suppressClickUntil = 0;
-  const clickProps = (m: Meeting) => ({
-    onClick: () => {
-      if (Date.now() < suppressClickUntil) return;
-      openMeeting(m);
-    },
-    onDoubleClick: () => {
-      if (canDrag(m)) suppressClickUntil = Date.now() + 600;
-    },
-    title: "Подробнее о конференции",
-  });
-
-  const dropTargetProps = (date: Date) => ({
-    onDragOver: (e: React.DragEvent) => {
-      if (!dragMeetingId) return;
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "move";
-      setDragOverDate(toDateKey(date));
-    },
-    onDragLeave: () => setDragOverDate((cur) => (cur === toDateKey(date) ? null : cur)),
-    onDrop: (e: React.DragEvent) => {
-      e.preventDefault();
-      handleDropOnDate(toDateKey(date));
-    },
-  });
-
-  const weekDays = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-  const months = [
-    "Январь",
-    "Февраль",
-    "Март",
-    "Апрель",
-    "Май",
-    "Июнь",
-    "Июль",
-    "Август",
-    "Сентябрь",
-    "Октябрь",
-    "Ноябрь",
-    "Декабрь",
-  ];
+  // Приватные встречи для посторонних показываем как «Конференция» (без деталей)
+  const displayTitle = (m: Meeting) =>
+    isAdminLike || hasAccessTo(m) ? m.title : m.isPrivate ? "Конференция" : m.title;
 
   if (loading) {
     return (
@@ -287,57 +187,42 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                const d = new Date(selectedDate);
-                if (view === "week") d.setDate(d.getDate() - 7);
-                else if (view === "month") d.setMonth(d.getMonth() - 1);
-                else d.setDate(d.getDate() - 1);
-                setSelectedDate(d);
-              }}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-            >
-              <i className="fas fa-chevron-left text-gray-600 dark:text-gray-300"></i>
-            </button>
-            <button
-              onClick={() => setSelectedDate(new Date())}
-              className="px-3 py-1 text-sm bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-800"
-            >
-              Сегодня
-            </button>
-            <button
-              onClick={() => {
-                const d = new Date(selectedDate);
-                if (view === "week") d.setDate(d.getDate() + 7);
-                else if (view === "month") d.setMonth(d.getMonth() + 1);
-                else d.setDate(d.getDate() + 1);
-                setSelectedDate(d);
-              }}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-            >
-              <i className="fas fa-chevron-right text-gray-600 dark:text-gray-300"></i>
-            </button>
-            <span className="text-lg font-semibold text-gray-700 dark:text-gray-100 ml-2">
-              {view === "month"
-                ? `${months[selectedDate.getMonth()]} ${selectedDate.getFullYear()}`
-                : view === "week"
-                  ? `Неделя ${selectedDate.toLocaleDateString("ru-RU")}`
-                  : selectedDate.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })}
+            <span className="text-lg font-semibold text-gray-700 dark:text-gray-100">
+              <i className="fas fa-calendar-alt text-blue-600 mr-2"></i>
+              Расписание
             </span>
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Переключатель видов — как в Outlook: День / Рабочая неделя / Неделя / Месяц */}
             <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
-              {(["day", "week", "month"] as const).map((v) => (
+              {(
+                [
+                  ["day", "День"],
+                  ["workweek", "Рабочая неделя"],
+                  ["week", "Неделя"],
+                  ["month", "Месяц"],
+                ] as [OutlookView, string][]
+              ).map(([v, label]) => (
                 <button
                   key={v}
                   onClick={() => setView(v)}
-                  className={`px-3 py-1 text-sm rounded-md transition-colors ${view === v ? "bg-white dark:bg-gray-600 shadow text-blue-600 dark:text-blue-400 font-medium" : "text-gray-600 dark:text-gray-300"}`}
+                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                    view === v
+                      ? "bg-white dark:bg-gray-600 shadow text-blue-600 dark:text-blue-400 font-medium"
+                      : "text-gray-600 dark:text-gray-300"
+                  }`}
                 >
-                  {v === "day" ? "День" : v === "week" ? "Неделя" : "Месяц"}
+                  {label}
                 </button>
               ))}
             </div>
+            <button
+              onClick={() => onNavigate("meetings")}
+              className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+              <i className="fas fa-video mr-1"></i>Мои конференции
+            </button>
           </div>
         </div>
 
@@ -383,74 +268,17 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
         )}
       </div>
 
-      {/* Schedule View */}
-      {view === "day" && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
-          <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4">
-            {selectedDate.toLocaleDateString("ru-RU", {
-              weekday: "long",
-              day: "numeric",
-              month: "long",
-              year: "numeric",
-            })}
-          </h3>
-          <div className="space-y-3">
-            {getMeetingsForDate(selectedDate)
-              .sort((a, b) => a.startTime.localeCompare(b.startTime))
-              .map((meeting) => {
-                const canSeeDetails = user.role === "admin" || user.role === "moderator" || hasAccessTo(meeting);
-
-                return (
-                  <div
-                    key={meeting.id}
-                    {...dragHandlers(meeting)}
-                    {...clickProps(meeting)}
-                    className={`border-l-4 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded-r-lg p-4 cursor-pointer hover:ring-2 hover:ring-blue-300 ${canDrag(meeting) ? "cursor-grab active:cursor-grabbing" : ""}`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold text-gray-800 dark:text-gray-100">
-                          {canSeeDetails ? meeting.title : "Конференция"}
-                          {meeting.recurring !== "none" && (
-                            <i className="fas fa-sync-alt text-blue-500 ml-2 text-xs" title="Повторяющаяся встреча"></i>
-                          )}
-                        </p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                          <i className="fas fa-clock mr-1"></i>
-                          {meeting.startTime} - {meeting.endTime}
-                          {canSeeDetails && meeting.room && (
-                            <span className="ml-3">
-                              <i className="fas fa-map-marker-alt mr-1"></i>
-                              {meeting.room}
-                            </span>
-                          )}
-                        </p>
-                        {canSeeDetails && (
-                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                            Организатор: {getUserName(meeting.organizerId)}
-                          </p>
-                        )}
-                      </div>
-                      {meeting.link && (
-                        <a
-                          href={meeting.link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
-                        >
-                          <i className="fas fa-video mr-1"></i>Войти
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            {getMeetingsForDate(selectedDate).length === 0 && (
-              <p className="text-center text-gray-400 dark:text-gray-500 py-8">Нет конференций</p>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Календарь в стиле Outlook: сетка времени, линия «сейчас», drag&drop переноса */}
+      <OutlookCalendar
+        meetings={calendarMeetings}
+        view={view}
+        selectedDate={selectedDate}
+        onSelectedDateChange={setSelectedDate}
+        onSelectMeeting={openMeeting}
+        canDragMeeting={canDrag}
+        onRequestMove={handleRequestMove}
+        displayTitle={displayTitle}
+      />
 
       {moving && (
         <div className="fixed bottom-4 right-4 z-50 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
@@ -458,177 +286,130 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
         </div>
       )}
 
-      {view === "week" && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
-          <div className="grid grid-cols-7 border-b border-gray-200 dark:border-gray-700">
-            {weekDays.map((day, i) => (
-              <div key={i} className="p-3 text-center border-r border-gray-100 dark:border-gray-700 last:border-r-0">
-                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase">{day}</p>
-                <p
-                  className={`text-lg font-bold ${toDateKey(getWeekDates(selectedDate)[i]) === toDateKey(new Date()) ? "text-blue-600 dark:text-blue-400" : "text-gray-800 dark:text-gray-100"}`}
-                >
-                  {getWeekDates(selectedDate)[i].getDate()}
-                </p>
-              </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7">
-            {getWeekDates(selectedDate).map((date, i) => {
-              const dayMeetings = getMeetingsForDate(date);
-              return (
-                <div
-                  key={i}
-                  {...dropTargetProps(date)}
-                  className={`min-h-[180px] p-2 border-r border-gray-100 dark:border-gray-700 last:border-r-0 border-b border-gray-100 dark:border-gray-700 transition-colors ${dragOverDate === toDateKey(date) ? "bg-blue-100 dark:bg-blue-900/40 ring-2 ring-inset ring-blue-400" : ""}`}
-                >
-                  {dayMeetings
-                    .sort((a, b) => a.startTime.localeCompare(b.startTime))
-                    .map((meeting) => {
-                      const canSeeDetails = user.role === "admin" || user.role === "moderator" || hasAccessTo(meeting);
-
-                      return (
-                        <div
-                          key={meeting.id}
-                          {...dragHandlers(meeting)}
-                    {...clickProps(meeting)}
-                          className={`border-l-2 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded p-1.5 mb-1 text-xs cursor-pointer hover:ring-1 hover:ring-blue-300 ${canDrag(meeting) ? "cursor-grab active:cursor-grabbing opacity-100" : ""} ${dragMeetingId === String(meeting.id) ? "opacity-40" : ""}`}
-                        >
-                          <p className="font-medium text-gray-800 dark:text-gray-100 truncate">
-                            {meeting.recurring !== "none" && <i className="fas fa-sync-alt text-blue-500 mr-1"></i>}
-                            {canSeeDetails ? meeting.title : "Конференция"}
-                          </p>
-                          <p className="text-gray-500 dark:text-gray-400">{meeting.startTime}</p>
-                        </div>
-                      );
-                    })}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {view === "month" && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
-          <div className="grid grid-cols-7 border-b border-gray-200 dark:border-gray-700">
-            {weekDays.map((day, i) => (
-              <div key={i} className="p-2 text-center text-xs text-gray-500 dark:text-gray-400 uppercase font-medium">
-                {day}
-              </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7">
-            {getMonthDates(selectedDate).map((date, i) => {
-              const dayMeetings = getMeetingsForDate(date);
-              const isToday = toDateKey(date) === toDateKey(new Date());
-              return (
-                <div
-                  key={i}
-                  {...dropTargetProps(date)}
-                  className={`min-h-[90px] p-1.5 border-r border-gray-100 dark:border-gray-700 last:border-r-0 border-b border-gray-100 dark:border-gray-700 transition-colors ${isToday ? "bg-blue-50 dark:bg-blue-900/20" : ""} ${dragOverDate === toDateKey(date) ? "bg-blue-100 dark:bg-blue-900/40 ring-2 ring-inset ring-blue-400" : ""}`}
-                >
-                  <p
-                    className={`text-sm font-medium mb-1 ${isToday ? "text-blue-600 dark:text-blue-400" : "text-gray-700 dark:text-gray-300"}`}
-                  >
-                    {date.getDate()}
-                  </p>
-                  {dayMeetings.slice(0, 3).map((meeting) => {
-                    const canSeeDetails = user.role === "admin" || user.role === "moderator" || hasAccessTo(meeting);
-
-                    return (
-                      <div
-                        key={meeting.id}
-                        {...dragHandlers(meeting)}
-                    {...clickProps(meeting)}
-                        className={`border-l-2 ${getPriorityColor(meeting.priority)} bg-gray-50 dark:bg-gray-700 rounded px-1 py-0.5 mb-0.5 text-xs cursor-pointer hover:ring-2 hover:ring-blue-300 ${canDrag(meeting) ? "cursor-grab active:cursor-grabbing" : ""} ${dragMeetingId === String(meeting.id) ? "opacity-40" : ""}`}
-                      >
-                        <p className="truncate text-gray-700 dark:text-gray-300">
-                          {meeting.startTime} {canSeeDetails ? meeting.title : "Конференция"}
-                        </p>
-                      </div>
-                    );
-                  })}
-                  {dayMeetings.length > 3 && (
-                    <p className="text-xs text-gray-400 dark:text-gray-500">+{dayMeetings.length - 3}</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
       {/* Детальная карточка ВКС: описание, комната, время; редактирование названия/времени */}
-      {selectedMeeting && (() => {
-        const canSee = user.role === "admin" || user.role === "moderator" || hasAccessTo(selectedMeeting);
-        const canEdit = canSee && selectedMeeting.status !== "cancelled" && selectedMeeting.status !== "completed";
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setSelectedMeeting(null)}>
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-lg w-full p-6" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-start justify-between mb-4">
-                <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100">
-                  {canSee ? selectedMeeting.title : "Конференция"}
-                </h3>
-                <button onClick={() => setSelectedMeeting(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none" aria-label="Закрыть">&times;</button>
-              </div>
-
-              {editing ? (
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Название</label>
-                    <input value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                      className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Начало</label>
-                      <input type="time" value={editForm.startTime} onChange={(e) => setEditForm({ ...editForm, startTime: e.target.value })}
-                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Окончание</label>
-                      <input type="time" value={editForm.endTime} onChange={(e) => setEditForm({ ...editForm, endTime: e.target.value })}
-                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                    </div>
-                  </div>
-                  {saveError && <p className="text-sm text-red-500">{saveError}</p>}
-                  <div className="flex gap-2 justify-end pt-2">
-                    <button onClick={() => setEditing(false)} className="px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">Отмена</button>
-                    <button onClick={saveEdit} disabled={saving} className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
-                      {saving ? "Сохранение..." : "Сохранить"}
-                    </button>
-                  </div>
+      {selectedMeeting &&
+        (() => {
+          const canSee = isAdminLike || hasAccessTo(selectedMeeting);
+          const canEdit = canSee && selectedMeeting.status !== "cancelled" && selectedMeeting.status !== "completed";
+          return (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+              onClick={() => setSelectedMeeting(null)}
+            >
+              <div
+                className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-lg w-full p-6"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100">
+                    {canSee ? selectedMeeting.title : "Конференция"}
+                  </h3>
+                  <button
+                    onClick={() => setSelectedMeeting(null)}
+                    className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+                    aria-label="Закрыть"
+                  >
+                    &times;
+                  </button>
                 </div>
-              ) : (
-                <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
-                  <p><i className="fas fa-calendar mr-2 text-blue-500"></i>{selectedMeeting.date}, {selectedMeeting.startTime} – {selectedMeeting.endTime}</p>
-                  <p><i className="fas fa-map-marker-alt mr-2 text-red-500"></i>{canSee ? (selectedMeeting.room || "Комната не указана") : "Место скрыто"}</p>
-                  <p><i className="fas fa-user mr-2 text-green-500"></i>Организатор: {canSee ? getUserName(selectedMeeting.organizerId) : "—"}</p>
-                  {canSee && selectedMeeting.description && (
-                    <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-                      <p className="font-medium text-gray-800 dark:text-gray-100 mb-1">Описание:</p>
-                      <p className="text-gray-600 dark:text-gray-400 whitespace-pre-line">{selectedMeeting.description}</p>
+
+                {editing ? (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Название</label>
+                      <input
+                        value={editForm.title}
+                        onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100"
+                      />
                     </div>
-                  )}
-                  {canSee && selectedMeeting.link && (
-                    <a href={selectedMeeting.link} target="_blank" rel="noopener noreferrer"
-                      className="inline-block mt-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-                      <i className="fas fa-video mr-1"></i>Войти в ВКС
-                    </a>
-                  )}
-                  {!canSee && <p className="text-gray-400 italic pt-2">Детали скрыты: вы не участник этой приватной конференции.</p>}
-                  {canEdit && (
-                    <div className="pt-3 border-t border-gray-200 dark:border-gray-700 flex justify-end">
-                      <button onClick={() => startEdit(selectedMeeting)} className="px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200">
-                        <i className="fas fa-pen mr-1"></i>Редактировать название и время
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Начало</label>
+                        <input
+                          type="time"
+                          value={editForm.startTime}
+                          onChange={(e) => setEditForm({ ...editForm, startTime: e.target.value })}
+                          className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Окончание</label>
+                        <input
+                          type="time"
+                          value={editForm.endTime}
+                          onChange={(e) => setEditForm({ ...editForm, endTime: e.target.value })}
+                          className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100"
+                        />
+                      </div>
+                    </div>
+                    {saveError && <p className="text-sm text-red-500">{saveError}</p>}
+                    <div className="flex gap-2 justify-end pt-2">
+                      <button
+                        onClick={() => setEditing(false)}
+                        className="px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200"
+                      >
+                        Отмена
+                      </button>
+                      <button
+                        onClick={saveEdit}
+                        disabled={saving}
+                        className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {saving ? "Сохранение..." : "Сохранить"}
                       </button>
                     </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                ) : (
+                  <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
+                    <p>
+                      <i className="fas fa-calendar mr-2 text-blue-500"></i>
+                      {new Date(`${selectedMeeting.date}T00:00:00`).toLocaleDateString("ru-RU")}, {selectedMeeting.startTime} –{" "}
+                      {selectedMeeting.endTime}
+                    </p>
+                    <p>
+                      <i className="fas fa-map-marker-alt mr-2 text-red-500"></i>
+                      {canSee ? selectedMeeting.room || "Комната не указана" : "Место скрыто"}
+                    </p>
+                    <p>
+                      <i className="fas fa-user mr-2 text-green-500"></i>Организатор:{" "}
+                      {canSee ? getUserName(selectedMeeting.organizerId) : "—"}
+                    </p>
+                    {canSee && selectedMeeting.description && (
+                      <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                        <p className="font-medium text-gray-800 dark:text-gray-100 mb-1">Описание:</p>
+                        <p className="text-gray-600 dark:text-gray-400 whitespace-pre-line">{selectedMeeting.description}</p>
+                      </div>
+                    )}
+                    {canSee && selectedMeeting.link && (
+                      <a
+                        href={selectedMeeting.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block mt-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                      >
+                        <i className="fas fa-video mr-1"></i>Войти в ВКС
+                      </a>
+                    )}
+                    {!canSee && (
+                      <p className="text-gray-400 italic pt-2">Детали скрыты: вы не участник этой приватной конференции.</p>
+                    )}
+                    {canEdit && (
+                      <div className="pt-3 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+                        <button
+                          onClick={() => startEdit(selectedMeeting)}
+                          className="px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200"
+                        >
+                          <i className="fas fa-pen mr-1"></i>Редактировать название и время
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
     </div>
   );
 }

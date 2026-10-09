@@ -4,7 +4,9 @@ import { authAPI, downloadBlob, adminLoadAPI, roomsAPI } from "../api/client";
 import { unwrapList, mapMeeting } from "../store-api";
 import { exportToExcel } from "../utils/export";
 import { SortMode, SORT_OPTIONS, sortMeetings } from "../utils/meetingSort";
+import { rescheduleMeeting, checkRescheduleConflicts } from "../store-api";
 import RoomsManager from "./RoomsManager";
+import OutlookCalendar, { OutlookView } from "./OutlookCalendar";
 import {
   getUsers,
   getMeetings,
@@ -346,6 +348,11 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [userStatusFilter, setUserStatusFilter] = useState<"all" | "active" | "blocked">("all");
   // Сортировка конференций в админке (по умолчанию — «умная»: сначала сегодняшние)
   const [meetingSortMode, setMeetingSortMode] = useState<SortMode>("smart");
+  // Режим вкладки «Конференции»: таблица или календарь в стиле Outlook (как у пользователя)
+  const [meetingsViewMode, setMeetingsViewMode] = useState<"table" | "calendar">("calendar");
+  const [calView, setCalView] = useState<OutlookView>("week");
+  const [calDate, setCalDate] = useState(new Date());
+  const [rescheduling, setRescheduling] = useState(false);
   const [showUserForm, setShowUserForm] = useState(false);
   const [showMeetingForm, setShowMeetingForm] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -688,6 +695,44 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   };
 
   const getUserName = (id: string) => users.find((u) => Number(u.id) === Number(id))?.name || "—";
+
+  // Перенос встречи drag&drop в Outlook-календаре админки: меняем дату и время
+  // с сохранением длительности, с проверкой конфликтов (как в «Расписании»).
+  const handleAdminMoveMeeting = async (m: Meeting, dateKey: string, startTime: string) => {
+    if (m.date === dateKey && m.startTime === startTime) return;
+    const [sh, sm] = m.startTime.split(":").map(Number);
+    const [eh, em] = m.endTime.split(":").map(Number);
+    const durationMin = Math.max(eh * 60 + em - (sh * 60 + sm), 15);
+    const [nh, nm] = startTime.split(":").map(Number);
+    const endTotal = Math.min(nh * 60 + nm + durationMin, 23 * 60 + 45);
+    const endTime = `${String(Math.floor(endTotal / 60)).padStart(2, "0")}:${String(endTotal % 60).padStart(2, "0")}`;
+    const when = new Date(`${dateKey}T00:00:00`).toLocaleDateString("ru-RU");
+    if (!confirm(`Перенести «${m.title}» на ${when}, ${startTime}?`)) return;
+
+    try {
+      const found = await checkRescheduleConflicts({ ...m, startTime, endTime }, dateKey);
+      if (found.length > 0) {
+        const names = found.map((c) => `«${c.title}» ${c.start_time}–${c.end_time}`).join("\n");
+        if (!confirm(`⚠️ Возможные конфликты у участников на ${when}:\n${names}\n\nПеренести всё равно?`)) return;
+      }
+    } catch {
+      /* если проверка недоступна — продолжаем без неё */
+    }
+
+    setRescheduling(true);
+    const saved = await rescheduleMeeting(String(m._occurrenceOf ?? m.id), {
+      date: dateKey,
+      startTime,
+      endTime,
+      force: true,
+    });
+    setRescheduling(false);
+    if (saved) {
+      setMeetings(await getAllMeetingsForAdmin().catch(() => getMeetings()));
+    } else {
+      alert("Не удалось перенести встречу");
+    }
+  };
 
   const filteredUsers = users.filter((u) => {
     if (!(
@@ -1075,24 +1120,50 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       {/* Meetings Tab */}
       {activeTab === "meetings" && (
         <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <p className="text-sm text-gray-500 dark:text-gray-400">Всего: {filteredMeetings.length} конференций</p>
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-600 dark:text-gray-400">
-                <i className="fas fa-sort mr-1"></i>Сортировка:
-              </label>
-              <select
-                value={meetingSortMode}
-                onChange={(e) => setMeetingSortMode(e.target.value as SortMode)}
-                className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
-              >
-                {SORT_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
+          <div className="flex flex-wrap justify-between items-center gap-3">
+            <div className="flex items-center gap-3">
+              {/* Режим отображения — как в Outlook: календарь-сетка или список */}
+              <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+                {(
+                  [
+                    ["calendar", "fa-calendar-alt", "Календарь"],
+                    ["table", "fa-list", "Список"],
+                  ] as ["calendar" | "table", string, string][]
+                ).map(([mode, icon, label]) => (
+                  <button
+                    key={mode}
+                    onClick={() => setMeetingsViewMode(mode)}
+                    className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                      meetingsViewMode === mode
+                        ? "bg-white dark:bg-gray-600 shadow text-blue-600 dark:text-blue-400 font-medium"
+                        : "text-gray-600 dark:text-gray-300"
+                    }`}
+                  >
+                    <i className={`fas ${icon} mr-1`}></i>
+                    {label}
+                  </button>
                 ))}
-              </select>
+              </div>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Всего: {filteredMeetings.length} конференций</p>
             </div>
+            {meetingsViewMode === "table" && (
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600 dark:text-gray-400">
+                  <i className="fas fa-sort mr-1"></i>Сортировка:
+                </label>
+                <select
+                  value={meetingSortMode}
+                  onChange={(e) => setMeetingSortMode(e.target.value as SortMode)}
+                  className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
+                >
+                  {SORT_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <button
                 onClick={() => exportToExcel(filteredMeetings, user.login || user.name)}
@@ -1334,7 +1405,65 @@ export default function AdminPanel({ user }: AdminPanelProps) {
               );
             })()}
 
+          {/* Outlook-календарь всех конференций (как в пользовательском «Расписании») */}
+          {meetingsViewMode === "calendar" && (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex bg-white dark:bg-gray-800 rounded-lg shadow-sm p-1">
+                  {(
+                    [
+                      ["day", "День"],
+                      ["workweek", "Рабочая неделя"],
+                      ["week", "Неделя"],
+                      ["month", "Месяц"],
+                    ] as [OutlookView, string][]
+                  ).map(([v, label]) => (
+                    <button
+                      key={v}
+                      onClick={() => setCalView(v)}
+                      className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                        calView === v
+                          ? "bg-blue-600 text-white font-medium"
+                          : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <OutlookCalendar
+                meetings={filteredMeetings}
+                view={calView}
+                selectedDate={calDate}
+                onSelectedDateChange={setCalDate}
+                onSelectMeeting={(m) => setViewMeeting(m)}
+                canDragMeeting={(m) => m.status !== "cancelled" && m.status !== "completed"}
+                onRequestMove={handleAdminMoveMeeting}
+                onCreateAt={(dateKey, startTime) => {
+                  setShowMeetingForm(true);
+                  setEditingMeeting(null);
+                  const [sh, sm] = startTime.split(":").map(Number);
+                  const endTotal = Math.min(sh * 60 + sm + 60, 23 * 60 + 45);
+                  setMeetingForm({
+                    ...emptyMeeting,
+                    date: dateKey,
+                    startTime,
+                    endTime: `${String(Math.floor(endTotal / 60)).padStart(2, "0")}:${String(endTotal % 60).padStart(2, "0")}`,
+                  });
+                }}
+                blockSubtitle={(m) => getUserName(m.organizerId)}
+              />
+              {rescheduling && (
+                <div className="fixed bottom-4 right-4 z-50 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
+                  <i className="fas fa-spinner fa-spin"></i> Перенос встречи...
+                </div>
+              )}
+            </>
+          )}
+
           {/* Meetings Table */}
+          {meetingsViewMode === "table" && (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -1452,6 +1581,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
               </table>
             </div>
           </div>
+          )}
         </div>
       )}
 
