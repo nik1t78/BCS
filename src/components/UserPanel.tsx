@@ -20,6 +20,7 @@ import { SortMode, SORT_OPTIONS, sortMeetings, getMeetingGroup } from "../utils/
 import { exportMeetingToIcs } from "../utils/ics";
 import { getFavoriteIds, toggleFavorite, addFavorites } from "../utils/favorites";
 import { generateVksLink, normalizeVksLink, isVksLink } from "../utils/vksLink";
+import { createVksViaBot } from "../utils/vksBot";
 
 /** Предзаполнение формы создания конференции (например, из блока «Свободные залы» на главной) */
 export interface MeetingPrefill {
@@ -68,13 +69,15 @@ interface CreateMeetingFormProps {
   tags: Tag[];
   conflicts: ScheduleConflict[];
   editing?: boolean;
+  /** Текст-индикатор («Создаём ссылку ВКС…») — показывается над кнопками */
+  savingNote?: string | null;
   onCancel: () => void;
   handleSubmit: (e: React.FormEvent) => void;
 }
 
 /** Форма создания/редактирования конференции — вынесена из UserPanel,
  *  чтобы открываться и в разделе «Мои конференции», и в модалке на главной. */
-function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, conflicts, editing, onCancel, handleSubmit }: CreateMeetingFormProps) {
+function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, conflicts, editing, savingNote, onCancel, handleSubmit }: CreateMeetingFormProps) {
   const toggleParticipant = (userId: string) => {
     setFormData((f) => {
       const has = (f.participants ?? []).some((id) => String(id) === String(userId));
@@ -378,7 +381,16 @@ function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, c
                 Отмена
               </button>
               <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
-                {editing ? "Сохранить" : "Создать ВКС"}
+                {savingNote ? (
+                  <span className="flex items-center gap-2">
+                    <i className="fas fa-spinner fa-spin"></i>
+                    {savingNote}
+                  </span>
+                ) : editing ? (
+                  "Сохранить"
+                ) : (
+                  "Создать ВКС"
+                )}
               </button>
             </div>
           </form>
@@ -450,6 +462,8 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
   };
 
   const [formData, setFormData] = useState<Meeting>(emptyMeeting);
+  // Индикатор: «Создаём ссылку ВКС…» (пока Selenium-бот работает на salutejazz.ru)
+  const [savingNote, setSavingNote] = useState<string | null>(null);
 
   // Предзаполнение из виджета «Свободные залы» на главной: открываем форму
   // создания ВКС с датой/временем/залом и сразу сгенерированной ссылкой.
@@ -688,10 +702,21 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
       alert("Дата окончания повтора не может быть раньше даты встречи");
       return;
     }
-    // ВКС: если встреча с залом/без ссылки или со ссылкой без пароля —
-    // ссылка на salutejazz.ru создаётся автоматически при сохранении.
-    if (!payload.link) payload.link = generateVksLink();
-    else payload.link = normalizeVksLink(payload.link);
+    // ВКС: ссылка создаётся автоматически. Сначала пробуем Selenium-бота,
+    // который реально заходит на https://salutejazz.ru/calls/create, вводит
+    // название встречи и имя организатора и возвращает живую ссылку.
+    // Если бот недоступен — генерируем ссылку локально в том же формате.
+    if (!payload.link) {
+      setSavingNote("Создаём ссылку ВКС на salutejazz.ru…");
+      try {
+        const botRes = await createVksViaBot(payload.title || "Встреча", user.name);
+        payload.link = botRes.link;
+      } finally {
+        setSavingNote(null);
+      }
+    } else {
+      payload.link = normalizeVksLink(payload.link);
+    }
 
     const saved = editingMeeting ? await updateMeeting(editingMeeting.id, payload) : await createMeeting(payload);
 
@@ -783,6 +808,7 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
             tags={tags}
             conflicts={conflicts}
             editing={!!editingMeeting}
+            savingNote={savingNote}
             onCancel={() => {
               setShowForm(false);
               setConflicts([]);

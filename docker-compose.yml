@@ -286,6 +286,32 @@ services:
     networks:
       - vks-network
 
+  # VKS-бот (Selenium): автоматически создаёт встречи на salutejazz.ru.
+  # Фронт обращается к нему через nginx: /vks-bot/ -> http://vks-bot:8090/
+  vks-bot:
+    build:
+      context: ./vks-bot
+      dockerfile: Dockerfile
+    container_name: vks-bot
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    environment:
+      BOT_HEADLESS: "1"
+      BOT_PORT: "8090"
+      # Секрет для вызова бота (заголовок X-Bot-Token). Задайте свой в .env!
+      BOT_TOKENS: "${BOT_TOKENS:-}"
+    networks:
+      - vks-network
+
 networks:
   vks-network:
     driver: bridge
