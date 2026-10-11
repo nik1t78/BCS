@@ -7,6 +7,7 @@ import { SortMode, SORT_OPTIONS, sortMeetings } from "../utils/meetingSort";
 import { rescheduleMeeting, checkRescheduleConflicts } from "../store-api";
 import RoomsManager from "./RoomsManager";
 import OutlookCalendar, { OutlookView } from "./OutlookCalendar";
+import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import {
   getUsers,
   getMeetings,
@@ -1411,7 +1412,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         </button>
                         {vm.link && (
                           <a
-                            href={vm.link}
+                            href={buildJoinUrl(vm.link, vm.meetingPassword ?? extractPswFromAny(vm.link))}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
@@ -1564,7 +1565,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                           </button>
                           {m.link && (
                             <a
-                              href={m.link}
+                              href={buildJoinUrl(m.link, m.meetingPassword ?? extractPswFromAny(m.link))}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-gray-600 rounded"

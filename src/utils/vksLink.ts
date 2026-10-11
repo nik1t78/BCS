@@ -49,6 +49,35 @@ export function isVksLink(link?: string | null): boolean {
   return !!link && link.startsWith("https://salutejazz.ru/calls/");
 }
 
+/**
+ * Собрать «правильную» ссылку для перехода в конференцию.
+ * Платформа SaluteJazz принимает вход только по полному адресу:
+ *   https://salutejazz.ru/calls/<код>?psw=<пароль>
+ * Если пароль (psw) потерян (например, бот вернул ссылку без него или его
+ * обрезал автоклиппер) — подставляем пароль конференции из карточки встречи,
+ * иначе платформа показывает экран «Представьтесь / Введите правильный пароль».
+ */
+export function buildJoinUrl(link?: string | null, meetingPassword?: string | null): string {
+  if (!link) return "";
+  try {
+    const url = new URL(link);
+    if (url.hostname === "salutejazz.ru" && !url.searchParams.get("psw")) {
+      const psw = (meetingPassword || "").trim();
+      if (psw) url.searchParams.set("psw", psw);
+    }
+    return url.toString();
+  } catch {
+    return link;
+  }
+}
+
+/** Пароль конференции из поля формы (если пользователь задаёт его отдельно) */
+export function extractPswFromAny(value?: string | null): string | null {
+  if (!value) return null;
+  const m = /[?&]psw=([^&\s]+)/.exec(value);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
 /** Код комнаты из готовой ссылки (для отображения в интерфейсе) */
 export function vksRoomCodeFromLink(link?: string | null): string | null {
   if (!isVksLink(link)) return null;

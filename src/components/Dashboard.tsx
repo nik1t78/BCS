@@ -7,7 +7,7 @@ import OutlookCalendar, { OutlookView } from "./OutlookCalendar";
 import RoomBookingModal from "./RoomBookingModal";
 import UserPanel from "./UserPanel";
 import type { MeetingPrefill } from "./UserPanel";
-import { generateVksLink } from "../utils/vksLink";
+import { generateVksLink, buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { toDateKey } from "../utils/dateKey";
 import { icsAPI } from "../api/client";
 
@@ -53,11 +53,13 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
   const [createPrefill, setCreatePrefill] = useState<MeetingPrefill | null>(null);
   const createOpen = createPrefill !== null;
 
-  // Единая точка: при любом предзаполнении формы ВКС ссылка на salutejazz.ru
-  // создаётся автоматически (если ещё не готова). Зал фактически «занят» самой
-  // конференцией при сохранении — отдельного API бронирования не требуется.
+  // Единая точка: при любом предзаполнении форма ВКС открывается сразу.
+  // Ссылка salutejazz.ru создаётся автоматически при сохранении
+  // (Selenium-бот делает реальную комнату, фолбэк — локальная генерация).
+  // Зал фактически «занят» самой конференцией при сохранении — отдельного
+  // API бронирования не требуется.
   const openCreatePanel = (p: MeetingPrefill) => {
-    setCreatePrefill({ ...p, link: p.link || generateVksLink() });
+    setCreatePrefill(p.autoLink ? p : { ...p, link: p.link || generateVksLink() });
   };
 
   const handleDownloadIcs = async () => {
@@ -200,10 +202,9 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
   // передаём ему готовую ссылку ВКС; иначе открываем панель здесь же.
   const handleBookingConfirm = (roomName: string, dateKey: string, startTime: string, endTime: string) => {
     setBookingOpen(false);
-    // Ссылка salutejazz.ru генерируется автоматически, панель создания ВКС
-    // открывается прямо на главной — без перехода в другой раздел.
-    const link = generateVksLink();
-    openCreatePanel({ date: dateKey, startTime, endTime, room: roomName, autoLink: true, link });
+    // Панель создания ВКС открывается прямо на главной — без перехода в другой
+    // раздел. autoLink: ссылка salutejazz.ru будет создана ботом при сохранении.
+    openCreatePanel({ date: dateKey, startTime, endTime, room: roomName, autoLink: true });
   };
 
   // Быстрая кнопка «Выбрать зал» — ближайшее 15-минутное время сегодня
@@ -532,7 +533,7 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
                   {canSee && detailMeeting.link && (
                     <>
                       <a
-                        href={detailMeeting.link}
+                        href={buildJoinUrl(detailMeeting.link, detailMeeting.meetingPassword ?? extractPswFromAny(detailMeeting.link))}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"

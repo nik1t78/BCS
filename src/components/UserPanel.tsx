@@ -19,7 +19,7 @@ import MeetingMinutes from "./MeetingMinutes";
 import { SortMode, SORT_OPTIONS, sortMeetings, getMeetingGroup } from "../utils/meetingSort";
 import { exportMeetingToIcs } from "../utils/ics";
 import { getFavoriteIds, toggleFavorite, addFavorites } from "../utils/favorites";
-import { generateVksLink, normalizeVksLink, isVksLink } from "../utils/vksLink";
+import { generateVksLink, normalizeVksLink, isVksLink, buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { createVksViaBot, openVksCreatePage } from "../utils/vksBot";
 
 /** Предзаполнение формы создания конференции (например, из блока «Свободные залы» на главной) */
@@ -1532,7 +1532,7 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
                     )}
                     {vm.link && (
                       <a
-                        href={vm.link}
+                        href={buildJoinUrl(vm.link, vm.meetingPassword ?? extractPswFromAny(vm.link))}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
@@ -1862,7 +1862,7 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
                         </button>
                         {meeting.link && (
                           <a
-                            href={meeting.link}
+                            href={buildJoinUrl(meeting.link, meeting.meetingPassword ?? extractPswFromAny(meeting.link))}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-blue-700 transition-colors"

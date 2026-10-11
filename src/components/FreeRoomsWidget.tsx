@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Room, RoomAvailability } from "../types";
-import { roomsAPI } from "../api/client";
+import { roomsAPI, meetingsAPI } from "../api/client";
 import {
   computeFreeSlots,
   minToHm,
@@ -58,10 +58,40 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
       setLoading(true);
       setError(null);
       try {
-        const res: any = await roomsAPI.list();
-        const rooms: Room[] = Array.isArray(res) ? res : res?.data ?? [];
-        const active = rooms.filter((r) => r.isActive !== false);
-        const results = await Promise.allSettled(active.map((r) => roomsAPI.availability(r.id, { date })));
+        let active: Room[] = [];
+        try {
+          const res: any = await roomsAPI.list();
+          const rooms: Room[] = Array.isArray(res) ? res : res?.data ?? [];
+          active = rooms.filter((r) => r.isActive !== false);
+        } catch (e: any) {
+          // 403 — у роли «user» нет доступа к справочнику комнат:
+          // получим список залов из доступности встреч /meetings/rooms-availability
+          if (e?.status === 403 || /недостаточно прав|forbidden/i.test(e?.message || "")) {
+            const av: any = await meetingsAPI.roomsAvailability({ date });
+            const list: any[] = av?.data ?? av ?? [];
+            active = list.map((r, i) => ({
+              id: String(r.id ?? `room-${i}`),
+              name: r.name,
+              capacity: Number(r.capacity ?? 0),
+              isActive: true,
+            })) as unknown as Room[];
+          } else {
+            throw e;
+          }
+        }
+        const results = await Promise.allSettled(
+          active.map(async (r) => {
+            try {
+              return await roomsAPI.availability(r.id, { date });
+            } catch {
+              // fallback для не-админов: занятость из агрегированного эндпоинта
+              const av: any = await meetingsAPI.roomsAvailability({ date });
+              const list: any[] = av?.data ?? av ?? [];
+              const hit = list.find((x) => String(x.id) === String(r.id) || x.name === r.name);
+              return { busy: hit?.busy ?? [] };
+            }
+          })
+        );
         if (cancelled) return;
         const now = new Date();
         const curMin = now.getHours() * 60 + now.getMinutes();

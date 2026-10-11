@@ -233,6 +233,13 @@ export const meetingsAPI = {
 
   getStats: () => apiRequest("/meetings-stats"),
 
+  // Агрегированная доступность всех залов на дату (доступно всем авторизованным,
+  // включая роль «user», без прав на справочник комнат)
+  roomsAvailability: (params?: { date?: string }) => {
+    const queryString = params ? "?" + new URLSearchParams(params as any).toString() : "";
+    return apiRequest(`/meetings/rooms-availability${queryString}`);
+  },
+
   // Проверка конфликтов расписания: пересекающиеся встречи у тех же людей
   checkConflicts: (params: {
     date: string;

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Meeting } from "../types";
+import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 
 interface JoinMeetingModalProps {
   meeting: Meeting;
@@ -19,8 +20,9 @@ export default function JoinMeetingModal({ meeting, onClose }: JoinMeetingModalP
 
   const joinMeeting = () => {
     if (meeting.link) {
-      // Открываем ссылку, которую предоставил пользователь
-      window.open(meeting.link, "_blank", "noopener,noreferrer");
+      // Ссылка пользователя/бота + автоподстановка пароля конференции (psw),
+      // иначе salutejazz.ru показывает экран «Введите правильный пароль»
+      window.open(buildJoinUrl(meeting.link, meeting.meetingPassword ?? extractPswFromAny(meeting.link)), "_blank", "noopener,noreferrer");
     }
   };
 

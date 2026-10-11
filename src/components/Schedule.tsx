@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { User, Meeting } from "../types";
 import { getMeetings, getUsersForDisplay, rescheduleMeeting, checkRescheduleConflicts, updateMeeting } from "../store-api";
 import { roomsAPI } from "../api/client";
+import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { occursOn } from "../utils/recurrence";
 import OutlookCalendar, { OutlookView } from "./OutlookCalendar";
 
@@ -383,7 +384,7 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
                     )}
                     {canSee && selectedMeeting.link && (
                       <a
-                        href={selectedMeeting.link}
+                        href={buildJoinUrl(selectedMeeting.link, selectedMeeting.meetingPassword ?? extractPswFromAny(selectedMeeting.link))}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-block mt-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"

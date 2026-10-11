@@ -41,6 +41,8 @@ export interface Meeting {
   repeatUntil?: string; // дата окончания повтора YYYY-MM-DD (для recurring != 'none')
   /** Служебное: id родительской встречи у occurrence-копии из utils/recurrence */
   _occurrenceOf?: string;
+  /** Пароль конференции (psw) — подставляется в ссылку входа, если он потерян в URL */
+  meetingPassword?: string;
 }
 
 export interface MeetingTemplate {
