@@ -94,6 +94,76 @@ class RoomController extends Controller
     }
 
     /**
+     * Агрегированная доступность ВСЕХ активных залов на дату за один запрос.
+     * Доступно всем авторизованным (включая роль «user», у которой нет прав
+     * на справочник GET /rooms) — используется виджетом «Свободные залы».
+     * GET /meetings/rooms-availability?date=YYYY-MM-DD
+     */
+    public function allAvailability(Request $request)
+    {
+        $validated = $request->validate([
+            'date' => 'required|date',
+        ]);
+
+        $day = \Carbon\CarbonImmutable::parse($validated['date']);
+
+        $rooms = Room::where('is_active', true)->orderBy('name')->get(['id', 'name', 'capacity']);
+
+        // Все встречи на день (точные + потенциальные occurrence повторяющихся серий)
+        $bookings = Meeting::query()
+            ->where(function ($w) use ($day) {
+                $w->whereDate('date', $day->toDateString())
+                  ->orWhere(function ($r) use ($day) {
+                      $r->where('recurring', '!=', 'none')
+                        ->whereNotNull('recurring')
+                        ->whereDate('date', '<=', $day->toDateString())
+                        ->whereDate('date', '>=', $day->copy()->subDays(\App\Services\RecurrenceService::HORIZON_DAYS)->toDateString());
+                  });
+            })
+            ->whereIn('status', ['scheduled', 'in-progress'])
+            ->whereNotNull('room')
+            ->orderBy('start_time')
+            ->get(['id', 'title', 'room', 'date', 'start_time', 'end_time', 'recurring', 'repeat_until', 'rrule', 'status'])
+            ->filter(fn (Meeting $m) => $m->date->toDateString() === $day->toDateString()
+                || \App\Services\RecurrenceService::occursOn($m, $day));
+
+        $result = $rooms->map(function (Room $room) use ($bookings) {
+            $busy = $bookings
+                ->where('room', $room->name)
+                ->map(fn ($m) => [
+                    'meeting_id' => $m->id,
+                    'title' => $m->title,
+                    'start' => substr((string) $m->start_time, 0, 5),
+                    'end' => substr((string) $m->end_time, 0, 5),
+                ])->values();
+
+            $free = [];
+            $cursor = '08:00';
+            foreach ($busy as $b) {
+                if ($b['start'] > $cursor) {
+                    $free[] = ['start' => $cursor, 'end' => $b['start']];
+                }
+                if ($b['end'] > $cursor) {
+                    $cursor = $b['end'];
+                }
+            }
+            if ($cursor < '20:00') {
+                $free[] = ['start' => $cursor, 'end' => '20:00'];
+            }
+
+            return [
+                'id' => $room->id,
+                'name' => $room->name,
+                'capacity' => $room->capacity,
+                'busy' => $busy,
+                'free' => $free,
+            ];
+        })->values();
+
+        return response()->json(['data' => $result, 'date' => $day->toDateString()]);
+    }
+
+    /**
      * CRUD комнат — только администратор/модератор (роут обёрнут в can:admin-or-moderator).
      */
     public function store(Request $request)

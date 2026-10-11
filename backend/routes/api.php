@@ -119,6 +119,9 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/meetings/{meeting}/rsvp', [\App\Http\Controllers\Api\MeetingRsvpController::class, 'index']);
     Route::post('/meetings/{meeting}/rsvp', [\App\Http\Controllers\Api\MeetingRsvpController::class, 'store']);
 
+    // Агрегированная доступность всех залов на дату — доступна всем авторизованным
+    Route::get('/meetings/rooms-availability', [\App\Http\Controllers\Api\RoomController::class, 'allAvailability']);
+
     // Переговорные комнаты: справочник и доступность (бронирование через поле room встречи)
     Route::get('/rooms', [\App\Http\Controllers\Api\RoomController::class, 'index']);
     Route::get('/rooms/{room}/availability', [\App\Http\Controllers\Api\RoomController::class, 'availability']);
