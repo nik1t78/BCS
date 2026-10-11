@@ -160,6 +160,14 @@ services:
         source: ./backend/public
         target: /var/www/backend/public
         read_only: true
+      # Опциональная Basic-защита /vks-bot/create: создайте файл
+      # docker/nginx/htpasswd (команда — в комментарии default.conf) и
+      # включите auth_basic там же. Пока файла нет — строку не раскомментируйте,
+      # иначе compose упадёт с "bind source path does not exist".
+      # - type: bind
+      #   source: ./docker/nginx/htpasswd
+      #   target: /etc/nginx/.htpasswd
+      #   read_only: true
     depends_on:
       - frontend
       - backend
