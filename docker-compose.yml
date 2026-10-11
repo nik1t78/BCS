@@ -25,7 +25,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: vks-frontend-builder
-    restart: "no"
+    restart: "no"   # одноразовый: собрал dist -> volume -> завершился, RAM не держит
     deploy:
       resources:
         limits:
@@ -119,7 +119,16 @@ services:
         # образ php-fpm-alpine по умолчанию слушает UNIX-сокет -> 502 refused.
         if ! grep -qs 'listen = 0.0.0.0:9000' /usr/local/etc/php-fpm.d/zz-listen.conf; then
           echo '[vks] чиню php-fpm listen -> 0.0.0.0:9000'
-          { echo '[www]'; echo 'listen = 0.0.0.0:9000'; echo 'clear_env = no'; } > /usr/local/etc/php-fpm.d/zz-listen.conf
+          { echo '[www]'
+            echo 'listen = 0.0.0.0:9000'
+            echo 'clear_env = no'
+            echo 'pm = dynamic'
+            echo 'pm.max_children = 6'
+            echo 'pm.start_servers = 2'
+            echo 'pm.min_spare_servers = 1'
+            echo 'pm.max_spare_servers = 3'
+            echo 'pm.max_requests = 200'
+            echo 'php_admin_value[memory_limit] = 128M'; } > /usr/local/etc/php-fpm.d/zz-listen.conf
         fi
         exec php-fpm
     depends_on:
@@ -180,6 +189,7 @@ services:
     image: mysql:8.0
     container_name: vks-mysql
     restart: unless-stopped
+    shm_size: 64mb
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-vks_2026_root}
       MYSQL_DATABASE: ${DB_DATABASE:-vks_schedule}
@@ -197,9 +207,15 @@ services:
     # ports:
     #   - "127.0.0.1:3306:3306"
     command:
-      - --innodb-buffer-pool-size=128M
+      - --innodb-buffer-pool-size=64M
       - --performance-schema=OFF
-      - --max-connections=200
+      - --key-buffer-size=8M
+      - --table-definition-cache=400
+      - --table-open-cache=400
+      - --max-connections=80
+      - --tmp-table-size=8M
+      - --max-heap-table-size=16M
+      - --innodb-log-buffer-size=8M
     networks:
       - vks-network
 
@@ -211,7 +227,13 @@ services:
     restart: unless-stopped
     # Только внутренняя сеть, лимит памяти и выгрузка старых ключей —
     # redis не съест оперативку; пароль обязателен.
-    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-vks_2026_redis}
+    # Лимиты жёсткие: maxmemory 96mb — redis физически не сможет съесть больше;
+    # allkeys-lru выгружает старые ключи; save '' отключает форк-копирование
+    # при записи RDB (экономия памяти); aof только при наличии volume.
+    command: >-
+      redis-server --maxmemory 96mb --maxmemory-policy allkeys-lru
+      --requirepass ${REDIS_PASSWORD:-vks_2026_redis}
+      --save "" --appendonly no --proto-max-bulk-len 1mb
     networks:
       - vks-network
 

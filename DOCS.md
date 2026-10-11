@@ -796,11 +796,30 @@ BCS/
 │   ├── database/migrations|seeders # схема БД, VksDatabaseSeeder
 │   └── routes/api.php              # все маршруты (throttle:api, роли, can:admin)
 ├── docker/                  # конфиги nginx, скелет laravel12, данные
-├── docker-compose.yml       # nginx, php-fpm, mysql, redis, queue, scheduler, frontend-build
+├── docker-compose.yml       # nginx, php-fpm, mysql, redis, queue, scheduler, frontend-build, vks-bot
+│                            # (все сервисы с лимитами RAM/CPU; см. README «Оптимизация Docker»)
+├── docker-compose.override.example.yml  # шаблон жёстких лимитов под конкретный сервер
+├── scripts/docker-prune.sh  # еженедельная чистка старых образов/кеша builder
+├── vks-bot/                 # Python+Selenium бот автосоздания ссылок salutejazz.ru
 ├── setup-project.ps1|.sh    # подготовка каркаса Laravel + .env + APP_KEY
 ├── .github/workflows/ci.yml # CI: lint → format → typecheck → build (+ backend tests)
 └── DOCS.md                  # эта документация
 ```
+
+### Оптимизация ресурсов Docker (память/диск)
+
+Каждый контейнер ограничен в `docker-compose.yml` (`deploy.resources.limits`,
+логи json-file 3×10 МБ, `no-new-privileges`). MySQL ужат до buffer-pool 64M и
+80 соединений, Redis — maxmemory 96mb без RDB/AOF (кэш/очередь, источник
+истины — MySQL), PHP-FPM — динамический пул до 6 детей по 128M, одноразовый
+frontend-builder освобождает RAM сразу после сборки. Суммарный потолок ≈ 2.4 ГБ.
+
+Раз в неделю выполняйте `./scripts/docker-prune.sh` (или cron-задачу) — он
+удаляет stopped-контейнеры, `<none>`-образы, неиспользуемые сети и кеш
+builder сверх 2 ГБ. Данные MySQL (bind `./docker/mysql/data`) скрипт не трогает.
+Индивидуальные лимиты — через `docker-compose.override.yml` (шаблон:
+`docker-compose.override.example.yml`). Контроль: `docker stats --no-stream`,
+`docker system df`.
 
 ### Полезные команды
 

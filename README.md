@@ -8,9 +8,11 @@
 
 | Слой           | Технологии                                                                         |
 | -------------- | ---------------------------------------------------------------------------------- |
-| Frontend       | React 18 + TypeScript, Vite 6, Tailwind CSS 4, dnd-kit, Recharts, Framer Motion    |
+| Frontend       | React 18 + TypeScript, Vite 6, Tailwind CSS 4 (PWA; ExcelJS — ленивая загрузка)    |
 | Backend        | PHP 8.2 / Laravel, Sanctum (Bearer-токены + refresh), MySQL 8, Redis (queue/cache) |
-| Инфраструктура | Docker Compose: nginx, php-fpm, mysql, redis, queue-worker, scheduler              |
+| VKS-бот        | Python 3.12 + Selenium (headless Chromium) — автосоздание ссылок на salutejazz.ru   |
+| Инфраструктура | Docker Compose: nginx, php-fpm, mysql, redis, queue-worker, scheduler, vks-bot      |
+| Языки проекта  | **TypeScript** (фронт), **PHP** (бэк), **Python** (vks-bot), YAML/shell (конфиги). Других языков нет. |
 | Качество       | ESLint + Prettier, `tsc --noEmit`, GitHub Actions CI                               |
 
 ## Архитектура
@@ -145,6 +147,41 @@ php artisan db:backup --keep=14        # резервная копия БД (в 
 php artisan schedule:run               # ручной запуск планировщика (напоминания, бэкап)
 php artisan migrate                    # применить миграции (включая новые таблицы)
 ```
+
+## Оптимизация Docker: память и диск
+
+Все контейнеры ограничены по RAM/CPU прямо в `docker-compose.yml`
+(`deploy.resources.limits` + лимит логов json-file 3×10 МБ + `no-new-privileges`).
+Суммарный потолок ≈ 2.4 ГБ RAM; при нехватке контейнер будет остановлен (OOM),
+а не выжмет весь компьютер. Дополнительно:
+
+- **MySQL** ужат: `innodb-buffer-pool-size=64M`, `performance-schema=OFF`,
+  `max-connections=80`, tmp/heap-таблицы 8–16 МБ, `shm_size: 64mb`;
+- **Redis**: жёсткий `--maxmemory 96mb --maxmemory-policy allkeys-lru`,
+  RDB/AOF отключены (`--save "" --appendonly no`) — redis используется только
+  как кэш/очередь, данные не теряются (источник истины — MySQL);
+- **PHP-FPM**: динамический пул `pm.max_children=6`, memory_limit 128M —
+  backend физически не разрастётся выше своего лимита;
+- **frontend-builder** одноразовый: собрал `dist` → смонтировал в volume → завершился,
+  оперативку после сборки не держит;
+- **vks-bot** (Chromium) — до 768 МБ только на время создания ссылки.
+
+### Автоматическая чистка места на диске
+
+Пересборки образов копят старые слои и кеш builder. Раз в неделю (или cron) запускайте:
+
+```bash
+./scripts/docker-prune.sh        # безопасная чистка: stopped-контейнеры, <none>-образы, сети, кеш builder (остаток ≤2 ГБ)
+```
+
+Пример cron (Linux): `0 4 * * 0 cd /opt/BCS-main && ./scripts/docker-prune.sh >> /var/log/vks-prune.log 2>&1`
+Windows (планировщик задач): действие `powershell -Command "docker system prune -f"` раз в неделю.
+
+Жёсткие лимиты под конкретный сервер можно переопределить без правки основного файла:
+`cp docker-compose.override.example.yml docker-compose.override.yml` и отредактировать —
+Docker Compose автоматически применит его поверх `docker-compose.yml`.
+
+Мониторинг потребления: `docker stats --no-stream` и `docker system df`.
 
 ## Переменные окружения (backend/.env)
 
