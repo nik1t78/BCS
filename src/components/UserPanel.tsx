@@ -20,7 +20,7 @@ import { SortMode, SORT_OPTIONS, sortMeetings, getMeetingGroup } from "../utils/
 import { exportMeetingToIcs } from "../utils/ics";
 import { getFavoriteIds, toggleFavorite, addFavorites } from "../utils/favorites";
 import { generateVksLink, normalizeVksLink, isVksLink } from "../utils/vksLink";
-import { createVksViaBot } from "../utils/vksBot";
+import { createVksViaBot, openVksCreatePage } from "../utils/vksBot";
 
 /** Предзаполнение формы создания конференции (например, из блока «Свободные залы» на главной) */
 export interface MeetingPrefill {
@@ -187,14 +187,22 @@ function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, c
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Ссылка ВКС
                 </label>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <input
                     type="text"
                     inputMode="url"
                     value={formData.link}
                     onChange={(e) => setFormData({ ...formData, link: e.target.value })}
-                    className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
-                    placeholder="https://salutejazz.ru/calls/..."
+                    onPaste={(e) => {
+                      // разрешаем вставку любой ссылки (в т.ч. вручную созданной на salutejazz.ru)
+                      const t = e.clipboardData.getData("text");
+                      if (t) {
+                        e.preventDefault();
+                        setFormData({ ...formData, link: t.trim() });
+                      }
+                    }}
+                    className="flex-1 min-w-[180px] px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                    placeholder="https://salutejazz.ru/calls/... или вставьте свою ссылку"
                   />
                   <button
                     type="button"
@@ -205,11 +213,31 @@ function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, c
                     <i className="fas fa-wand-magic-sparkles mr-1" aria-hidden="true"></i>
                     Создать ВКС
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!openVksCreatePage()) {
+                        setFormData({ ...formData, link: "https://salutejazz.ru/calls/create" });
+                        alert(
+                          "Браузер заблокировал новую вкладку. Скопирована ссылка на страницу создания — откройте её вручную, создайте встречу и вставьте готовую ссылку в это поле."
+                        );
+                      }
+                    }}
+                    title="Открыть salutejazz.ru/calls/create, создать комнату вручную и вставить ссылку сюда"
+                    className="px-3 py-2 text-sm rounded-lg border border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400 hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors whitespace-nowrap font-medium"
+                  >
+                    <i className="fas fa-hand-pointer mr-1" aria-hidden="true"></i>
+                    Создать вручную
+                  </button>
                 </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Можно вставить свою ссылку: откройте «Создать вручную», создайте встречу на
+                  salutejazz.ru и скопируйте полученную ссылку в поле — она сохранится как есть.
+                </p>
                 {isVksLink(formData.link) && (
                   <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
                     <i className="fas fa-check-circle mr-1" aria-hidden="true"></i>
-                    Ссылка на корпоративную ВКС создана автоматически
+                    Ссылка на корпоративную ВКС
                   </p>
                 )}
               </div>
@@ -1115,14 +1143,21 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Ссылка ВКС
                     </label>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                       <input
                         type="text"
                         inputMode="url"
                         value={formData.link}
                         onChange={(e) => setFormData({ ...formData, link: e.target.value })}
-                        className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
-                        placeholder="https://salutejazz.ru/calls/..."
+                        onPaste={(e) => {
+                          const t = e.clipboardData.getData("text");
+                          if (t) {
+                            e.preventDefault();
+                            setFormData({ ...formData, link: t.trim() });
+                          }
+                        }}
+                        className="flex-1 min-w-[180px] px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                        placeholder="https://salutejazz.ru/calls/... или вставьте свою ссылку"
                       />
                       <button
                         type="button"
@@ -1133,11 +1168,31 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
                         <i className="fas fa-wand-magic-sparkles mr-1" aria-hidden="true"></i>
                         Создать ВКС
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!openVksCreatePage()) {
+                            setFormData({ ...formData, link: "https://salutejazz.ru/calls/create" });
+                            alert(
+                              "Браузер заблокировал новую вкладку. Скопирована ссылка на страницу создания — откройте её вручную, создайте встречу и вставьте готовую ссылку в это поле."
+                            );
+                          }
+                        }}
+                        title="Открыть salutejazz.ru/calls/create, создать комнату вручную и вставить ссылку сюда"
+                        className="px-3 py-2 text-sm rounded-lg border border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400 hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors whitespace-nowrap font-medium"
+                      >
+                        <i className="fas fa-hand-pointer mr-1" aria-hidden="true"></i>
+                        Создать вручную
+                      </button>
                     </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Можно вставить свою ссылку: создайте встречу на salutejazz.ru и скопируйте
+                      полученную ссылку в поле — она сохранится как есть.
+                    </p>
                     {isVksLink(formData.link) && (
                       <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
                         <i className="fas fa-check-circle mr-1" aria-hidden="true"></i>
-                        Ссылка на корпоративную ВКС создана автоматически
+                        Ссылка на корпоративную ВКС
                       </p>
                     )}
                   </div>

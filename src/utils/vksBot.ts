@@ -56,6 +56,17 @@ export async function createVksViaBot(
   }
 }
 
+/**
+ * Открыть страницу https://salutejazz.ru/calls/create в новой вкладке,
+ * чтобы пользователь мог создать комнату вручную и вставить ссылку в форму.
+ * Возвращает false, если браузер заблокировал popup — вызывающий код должен
+ * показать ссылку для ручного перехода.
+ */
+export function openVksCreatePage(): boolean {
+  const w = window.open("https://salutejazz.ru/calls/create", "_blank", "noopener");
+  return !!w;
+}
+
 /** Быстрая проверка живости бота (для индикатора в форме создания). */
 export async function vksBotAlive(): Promise<boolean> {
   try {

@@ -1292,13 +1292,34 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         Ссылка ВКС
                       </label>
-                      <input
-                        type="url"
-                        value={meetingForm.link || ""}
-                        onChange={(e) => setMeetingForm({ ...meetingForm, link: e.target.value })}
-                        placeholder="https://..."
-                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
-                      />
+                      <div className="flex gap-2 flex-wrap">
+                        <input
+                          type="text"
+                          value={meetingForm.link || ""}
+                          onChange={(e) => setMeetingForm({ ...meetingForm, link: e.target.value })}
+                          onPaste={(e) => {
+                            const t = e.clipboardData.getData("text");
+                            if (t) {
+                              e.preventDefault();
+                              setMeetingForm({ ...meetingForm, link: t.trim() });
+                            }
+                          }}
+                          placeholder="https://salutejazz.ru/calls/... или вставьте свою ссылку"
+                          className="flex-1 min-w-[180px] px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => window.open("https://salutejazz.ru/calls/create", "_blank", "noopener")}
+                          title="Открыть salutejazz.ru/calls/create и создать комнату вручную"
+                          className="px-3 py-2 text-sm rounded-lg border border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400 hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors whitespace-nowrap font-medium"
+                        >
+                          <i className="fas fa-hand-pointer mr-1" aria-hidden="true"></i>
+                          Создать вручную
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Можно вставить любую ссылку — она сохранится как есть.
+                      </p>
                     </div>
                     <div className="flex justify-end gap-3 pt-4 border-t dark:border-gray-600">
                       <button
