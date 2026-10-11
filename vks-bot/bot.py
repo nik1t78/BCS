@@ -52,7 +52,32 @@ def _chrome_options(headless: bool = True) -> Options:
             "profile.default_content_setting_values.notifications": 2,
         },
     )
+    # авто-отклонение permission-диалогов (иначе «Allow» перекрывает форму)
+    opts.add_experimental_option(
+        "excludeSwitches", ["enable-automation", "enable-logging"]
+    )
+    opts.add_argument("--use-fake-ui-for-media-stream")  # no prompt for camera/mic
+    opts.add_argument("--use-fake-device-for-media-stream")
+    opts.add_argument("--autoplay-policy=no-user-gesture-required")
     return opts
+
+
+def _dismiss_overlays(driver):
+    """Закрыть всплывающие окна (разрешения, лицензии), перекрывающие форму."""
+    closed = True
+    while closed:
+        closed = False
+        try:
+            for btn in driver.find_elements(By.TAG_NAME, "button"):
+                t = (btn.text or "").strip().lower()
+                if t in ("later", "позже", "not now", "закрыть", "close", "deny", "отклонить"):
+                    driver.execute_script("arguments[0].click();", btn)
+                    log.info("Закрыт оверлей кнопкой %r", btn.text[:30])
+                    closed = True
+                    time.sleep(0.7)
+                    break
+        except Exception:
+            pass
 
 
 class VkxBot:
@@ -82,12 +107,24 @@ class VkxBot:
         return None, None
 
     @staticmethod
-    def _type(el, text: str):
-        el.click()
-        el.send_keys("\ue00c" * 40)  # Ctrl+A + Delete — очистить поле
-        for ch in text:
-            el.send_keys(ch)
-            time.sleep(random.uniform(0.02, 0.06))  # печатаем «по-человечески»
+    def _set_value(driver, el, text: str):
+        """Надёжный ввод в React-поле: нативный setter + событие input.
+        Не требует клика (страница SaluteJazz перекрывает поля оверлеями)."""
+        driver.execute_script(
+            """
+            const el = arguments[0], text = arguments[1];
+            const proto = el.tagName === 'TEXTAREA'
+                ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+            const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+            el.focus();
+            setter.call(el, '');
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            setter.call(el, text);
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            """,
+            el, text,
+        )
 
     def create_call(self, title: str, name: str, timeout: int = 60) -> dict:
         """Создать встречу на SaluteJazz и вернуть ссылку.
@@ -109,61 +146,88 @@ class VkxBot:
                     lambda d: d.find_elements(By.CSS_SELECTOR, "input, textarea, button")
                 )
                 time.sleep(1.5)  # догреваем React-форму
+                _dismiss_overlays(driver)
 
+                # Реальные селекторы страницы https://salutejazz.ru/calls/create
+                # (проверено живым прогоном Selenium 11.10.2026):
+                #   input[name='conferenceName'] — название встречи
+                #   input[name='userName']       — имя участника
+                #   button «Create and join»     — создать и войти
                 # 1) Название встречи
                 el, sel = self._find_input(driver, [
+                    "input[name='conferenceName']",
                     "input[name='title']", "input[placeholder*='азван' i]",
                     "input[placeholder*='тема' i]", "input[placeholder*='meet' i]",
                     "textarea", "input[type='text']",
                 ])
                 if el is None:
                     raise RuntimeError("Не найдено поле названия встречи")
-                self._type(el, title)
+                self._set_value(driver, el, title)
                 log.info("Введено название (%s), значение: %r", sel, el.get_attribute("value"))
 
                 # 2) Имя участника/организатора
                 el2, sel2 = self._find_input(driver, [
+                    "input[name='userName']",
                     "input[name='name']", "input[placeholder*='имя' i]",
                     "input[placeholder*='как вас' i]", "input[placeholder*='представ' i]",
-                    "input[type='text']:not([name='title'])",
+                    "input[type='text']:not([name='conferenceName']):not([name='title'])",
                 ])
                 if el2 is not None and el2 is not el:
-                    self._type(el2, name)
+                    self._set_value(driver, el2, name)
                     log.info("Введено имя (%s)", sel2)
                 else:
                     log.warning("Поле имени не найдено — жмём создание сразу")
 
-                # 3) Кнопка входа/создания
+                # 3) Кнопка входа/создания. Основной способ — data-testid='createConf'
+                # (подтверждено живым прогоном). Запасной — поиск по тексту через JS,
+                # т.к. XPath translate() не работает с кириллицей (разные длины алфавитов).
                 clicked = False
-                for label in ("Присоединиться", "Войти", "Создать", "Join", "Start"):
+                btns = driver.find_elements(By.CSS_SELECTOR, "button[data-testid='createConf']")
+                if not btns:
                     btns = driver.find_elements(
                         By.XPATH,
-                        f"//button[contains(translate(text(),'АБВГДЕЖЗИКЛМНОПРСТУФХЦЧШЩЭЮЯ',"
-                        f"'абвгдежзиклмнопрстухцчшщэюя',''), '{label.lower()}')]",
+                        "//*[self::button or self::a][contains("
+                        "translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', "
+                        "'abcdefghijklmnopqrstuvwxyz'), 'join')]",
                     )
-                    if btns:
-                        driver.execute_script("arguments[0].scrollIntoView(true);", btns[0])
+                if not btns:
+                    labels = ("присоединиться", "войти", "создать", "start")
+                    btns = [el for el in driver.find_elements(By.TAG_NAME, "button")
+                            if any(lb in (el.text or "").lower() for lb in labels)]
+                if btns:
+                    driver.execute_script("arguments[0].scrollIntoView(true);", btns[0])
+                    try:
                         btns[0].click()
-                        clicked = True
-                        log.info("Нажата кнопка: %s", label)
-                        break
+                    except Exception:
+                        driver.execute_script("arguments[0].click();", btns[0])
+                    clicked = True
+                    log.info("Нажата кнопка создания: %r", btns[0].text[:40])
                 if not clicked:
                     raise RuntimeError("Не найдена кнопка создания/входа во встречу")
 
-                # 4) Ждём ссылку вида https://salutejazz.ru/calls/<код>?psw=<пароль>
+                # 4) Ждём ссылку вида https://salutejazz.ru/calls/<код>?psw=<пароль>.
+                # Важно: страница /calls/create сама матчится на LINK_RE — игнорируем
+                # URL с «create» и ждём реального кода комнаты.
                 deadline = time.time() + timeout
                 link = None
+
+                def _valid(candidate: str | None) -> bool:
+                    if not candidate:
+                        return False
+                    room_part = candidate.split("/calls/")[1].split("?")[0]
+                    return room_part.lower() != "create"
+
                 while time.time() < deadline:
                     url = driver.current_url
                     m = LINK_RE.search(url)
-                    if m:
+                    if m and _valid(m.group(0)):
                         link = m.group(0)
                         break
                     # иногда ссылка появляется в поле invite / input readonly
                     for inp in driver.find_elements(By.CSS_SELECTOR, "input"):
                         v = (inp.get_attribute("value") or "")
                         m = LINK_RE.search(v)
-                        if m:
+                        if m and _valid(m.group(0)) and m.group(0) != url:
                             link = m.group(0)
                             break
                     if link:
@@ -171,7 +235,7 @@ class VkxBot:
                     # copy-to-clipboard кнопки часто содержат полный URL в data-атрибутах
                     body_html = driver.page_source
                     m = LINK_RE.search(body_html)
-                    if m and "create" not in m.group(0):
+                    if m and _valid(m.group(0)):
                         link = m.group(0)
                         break
                     time.sleep(1)
