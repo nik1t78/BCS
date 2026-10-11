@@ -200,11 +200,9 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
   // передаём ему готовую ссылку ВКС; иначе открываем панель здесь же.
   const handleBookingConfirm = (roomName: string, dateKey: string, startTime: string, endTime: string) => {
     setBookingOpen(false);
+    // Ссылка salutejazz.ru генерируется автоматически, панель создания ВКС
+    // открывается прямо на главной — без перехода в другой раздел.
     const link = generateVksLink();
-    if (onBookSlot) {
-      onBookSlot(roomName, startTime, endTime, dateKey, link);
-      return;
-    }
     openCreatePanel({ date: dateKey, startTime, endTime, room: roomName, autoLink: true, link });
   };
 
@@ -249,14 +247,12 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
         </p>
       </div>
 
-      {/* Свободные залы — в самом верху, сразу под приветствием */}
+      {/* Свободные залы — в самом верху, сразу под приветствием.
+          Клик по свободному времени → панель создания ВКС прямо на главной,
+          ссылка salutejazz.ru генерируется автоматически. */}
       <FreeRoomsWidget
         onPickSlot={(roomName, startTime, endTime, date) => {
-          if (onBookSlot) {
-            onBookSlot(roomName, startTime, endTime, date, generateVksLink());
-          } else {
-            openCreatePanel({ date, startTime, endTime, room: roomName, autoLink: true });
-          }
+          openCreatePanel({ date, startTime, endTime, room: roomName, autoLink: true });
         }}
       />
 
@@ -481,8 +477,8 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
                 onNavigate={onNavigate}
                 formOnly
                 initialPrefill={createPrefill}
+                onPrefillConsumed={() => setCreatePrefill(null)}
                 onCreated={() => {
-                  setCreatePrefill(null);
                   setCreatePrefill(null);
                   // обновим список встреч после создания
                   getMeetings().then(setMeetings).catch(() => {});
