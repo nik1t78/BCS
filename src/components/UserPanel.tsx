@@ -477,7 +477,10 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
       startTime: p.startTime ?? emptyMeeting.startTime,
       endTime: p.endTime ?? emptyMeeting.endTime,
       room: p.room || emptyMeeting.room,
-      link: p.link || (p.autoLink ? generateVksLink() : ""),
+      // autoLink всегда приоритетнее: при авто-сценариях (слот календаря /
+      // выбор зала) ссылка создаётся Selenium-ботом на salutejazz.ru при
+      // сохранении; локальная заглушка из prefill не должна её блокировать.
+      link: p.autoLink ? "" : p.link || "",
     });
     setShowForm(true);
     onPrefillConsumed?.();
