@@ -8,6 +8,7 @@ import { rescheduleMeeting, checkRescheduleConflicts } from "../store-api";
 import RoomsManager from "./RoomsManager";
 import OutlookCalendar, { OutlookView } from "./OutlookCalendar";
 import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
+import { openVksCreatePage } from "../utils/vksBot";
 import {
   getUsers,
   getMeetings,
@@ -1310,7 +1311,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         />
                         <button
                           type="button"
-                          onClick={() => window.open("https://salutejazz.ru/calls/create", "_blank", "noopener")}
+                          onClick={() => openVksCreatePage()}
                           title="Открыть salutejazz.ru/calls/create и создать комнату вручную"
                           className="px-3 py-2 text-sm rounded-lg border border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400 hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors whitespace-nowrap font-medium"
                         >

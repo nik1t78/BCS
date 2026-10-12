@@ -13,9 +13,16 @@ class RoomController extends Controller
      * Список комнат (для справочника/селекта).
      * GET /rooms
      */
-    public function index()
+    public function index(Request $request)
     {
-        $rooms = Room::orderBy('name')->get();
+        // Справочник комнат доступен всем авторизованным (модалка выбора зала
+        // и виджет «Свободные залы» нужны в т.ч. обычной роли «user»).
+        // Для совместимости с фронтендом отдаём оба поля статуса.
+        $rooms = Room::orderBy('name')->get()->map(function (Room $room) {
+            $room->setAttribute('is_active', (bool) $room->is_active);
+            $room->setAttribute('isActive', (bool) $room->is_active);
+            return $room;
+        });
 
         return response()->json(['data' => $rooms]);
     }

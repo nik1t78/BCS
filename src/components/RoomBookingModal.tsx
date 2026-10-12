@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Room, RoomAvailability } from "../types";
-import { roomsAPI } from "../api/client";
+import { roomsAPI, meetingsAPI } from "../api/client";
 import { computeFreeSlots, minToHm, hmToMin, WORK_DAY_START_MIN, WORK_DAY_END_MIN } from "../utils/freeSlots";
 
 interface RoomBookingModalProps {
@@ -94,9 +94,30 @@ export default function RoomBookingModal({ open, date, startTime, roomName, endT
     let cancelled = false;
     (async () => {
       try {
-        const res: any = await roomsAPI.list();
-        const list: Room[] = Array.isArray(res) ? res : res?.data ?? [];
-        const active = list.filter((r) => r.isActive !== false);
+        let active: Room[] = [];
+        try {
+          const res: any = await roomsAPI.list();
+          const list: Room[] = Array.isArray(res) ? res : res?.data ?? [];
+          active = list.filter((r) => r.isActive !== false);
+        } catch { /* noop */ }
+        if (!active.length) {
+          // Пусто или 403/404 для роли «user» (нет доступа к справочнику
+          // GET /rooms, либо на сервере устаревший код маршрутов): получаем
+          // список залов из агрегированного /meetings/rooms-availability.
+          // id берём РЕАЛЬНЫЕ числовые из ответа — тогда занятость выбранного
+          // зала корректно матчится и через /rooms/{id}/availability, и через
+          // fallback по имени в агрегированном эндпоинте.
+          try {
+            const av: any = await meetingsAPI.roomsAvailability({ date: availDate });
+            const list: any[] = av?.data ?? av ?? [];
+            active = list.map((r, i) => ({
+              id: String(r.id ?? `room-${i}`),
+              name: r.name,
+              capacity: Number(r.capacity ?? 0),
+              isActive: true,
+            })) as unknown as Room[];
+          } catch { /* список остаётся пустым — покажем понятную ошибку ниже */ }
+        }
         if (cancelled) return;
         setRooms(active);
         // Выбрать предзаполненный зал, иначе — первый активный
@@ -122,13 +143,42 @@ export default function RoomBookingModal({ open, date, startTime, roomName, endT
     setError(null);
     (async () => {
       try {
-        const res: any = await roomsAPI.availability(selRoomId, { date: availDate });
-        const avail: RoomAvailability = res?.data ?? res;
+        let avail: RoomAvailability;
+        try {
+          const res: any = await roomsAPI.availability(selRoomId, { date: availDate });
+          avail = res?.data ?? res;
+        } catch {
+          // 403/404 для роли «user» — берём занятость из агрегированного
+          // /meetings/rooms-availability (доступен всем авторизованным).
+          // Матчинг: сначала по числовому id комнаты, затем по имени зала.
+          const av: any = await meetingsAPI.roomsAvailability({ date: availDate });
+          const list: any[] = av?.data ?? av ?? [];
+          const sel = rooms.find((r) => String(r.id) === String(selRoomId));
+          const hit =
+            list.find((x) => String(x.id) === String(selRoomId)) ??
+            (sel ? list.find((x) => x.name === sel.name) : undefined);
+          avail = { busy: hit?.busy ?? [], free: hit?.free ?? [] } as unknown as RoomAvailability;
+          if (cancelled) return;
+          const b0 = (avail.busy ?? [])
+            .map((x) => ({
+              startMin: toMin(x.start),
+              endMin: toMin(x.end),
+              title: x.title || "занято",
+            }))
+            .filter((x) => x.endMin > x.startMin);
+          setBusy(b0);
+          setFree(
+            computeFreeSlots(avail.busy ?? [], { isToday: availDate === todayKey(), nowMin }).map(
+              (s) => ({ startMin: s.startMin, endMin: s.endMin })
+            )
+          );
+          return;
+        }
         if (cancelled) return;
         const b = (avail.busy ?? [])
           .map((x) => ({
-            startMin: Math.max(toMin(x.start), WORK_DAY_START_MIN),
-            endMin: Math.min(toMin(x.end), WORK_DAY_END_MIN),
+            startMin: toMin(x.start),
+            endMin: toMin(x.end),
             title: x.title || "занято",
           }))
           .filter((x) => x.endMin > x.startMin);
@@ -266,7 +316,7 @@ export default function RoomBookingModal({ open, date, startTime, roomName, endT
           {/* Правая колонка: суточная шкала как в Outlook */}
           <div>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-              Шкала дня 00:00–24:00 — кликните свободное место, чтобы выбрать время начала.
+              Рабочий день {minToHm(WORK_DAY_START_MIN)}–{minToHm(WORK_DAY_END_MIN)} — кликните свободное место, чтобы выбрать время начала.
               Зелёные окна — свободно, серые — занято.
             </p>
             {error && <p className="text-sm text-red-500 mb-2">{error}</p>}
@@ -277,8 +327,11 @@ export default function RoomBookingModal({ open, date, startTime, roomName, endT
                 </div>
               ) : (
                 <div className="absolute inset-0 cursor-pointer" onClick={handleScaleClick}>
-                  {/* Часовые линии и подписи */}
-                  {Array.from({ length: 25 }, (_, i) => i * 60).map((m) => (
+                  {/* Часовые линии и подписи (в пределах рабочего дня) */}
+                  {Array.from(
+                    { length: WORK_DAY_END_MIN / 60 - WORK_DAY_START_MIN / 60 + 1 },
+                    (_, i) => WORK_DAY_START_MIN + i * 60
+                  ).map((m) => (
                     <div
                       key={m}
                       className={`absolute left-0 right-0 border-t ${m % 120 === 0 ? "border-gray-200 dark:border-slate-600" : "border-dashed border-gray-100 dark:border-slate-700"}`}
