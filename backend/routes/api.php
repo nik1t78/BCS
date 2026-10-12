@@ -44,12 +44,20 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // доступен любому авторизованному, права админа не требуются
     Route::get('/users', [UserController::class, 'publicList']);
 
-    // Meetings
-    Route::apiResource('meetings', MeetingController::class);
-    Route::get('/meetings-stats', [MeetingController::class, 'getStats']);
+    // ВНИМАНИЕ: статические маршруты /meetings/... должны быть объявлены ДО
+    // apiResource('meetings'), иначе Laravel матчит их как /meetings/{meeting}
+    // с route-model-binding (implicit bind) и падает с ModelNotFoundException
+    // ("No query results for model [App\Models\Meeting] check-conflicts").
 
     // Проверка конфликтов расписания (пересечения по времени у одних и тех же людей)
     Route::get('/meetings/check-conflicts', [\App\Http\Controllers\Api\ScheduleConflictController::class, 'check']);
+
+    // Агрегированная доступность всех залов на дату — доступна всем авторизованным
+    Route::get('/meetings/rooms-availability', [\App\Http\Controllers\Api\RoomController::class, 'allAvailability']);
+
+    // Meetings
+    Route::apiResource('meetings', MeetingController::class);
+    Route::get('/meetings-stats', [MeetingController::class, 'getStats']);
 
     // Корзина мягко удалённых встреч
     Route::get('/trash', [\App\Http\Controllers\Api\MeetingTrashController::class, 'index']);
@@ -118,9 +126,6 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // RSVP: подтверждение присутствия участником + сводка для организатора
     Route::get('/meetings/{meeting}/rsvp', [\App\Http\Controllers\Api\MeetingRsvpController::class, 'index']);
     Route::post('/meetings/{meeting}/rsvp', [\App\Http\Controllers\Api\MeetingRsvpController::class, 'store']);
-
-    // Агрегированная доступность всех залов на дату — доступна всем авторизованным
-    Route::get('/meetings/rooms-availability', [\App\Http\Controllers\Api\RoomController::class, 'allAvailability']);
 
     // Переговорные комнаты: справочник и доступность (бронирование через поле room встречи)
     Route::get('/rooms', [\App\Http\Controllers\Api\RoomController::class, 'index']);
