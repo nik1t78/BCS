@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -23,22 +24,36 @@ class NotificationStreamController extends Controller
 {
     public function stream(Request $request): StreamedResponse
     {
-        // Defensive-guard: у EventSource нет способа отправить заголовок
-        // Authorization, токен идёт в query (?token=...). Если Sanctum по
-        // какой-то причине не подставил пользователя, $request->user() == null
-        // и обращение ->id бросало fatal «Call to a member function ... on
-        // null» УЖЕ после отправки HTTP-заголовков 200 — браузер/консоль
-        // видели это как 500 на /api/notifications/stream. Лучше отдать
-        // штатный «unavailable»: фронт в этом случае живёт на поллинге
-        // unread-count (обычно же маршрутизатор сам отдаст 401 раньше).
+        // Маршрут объявлен ВНЕ группы auth:sanctum (EventSource не умеет слать
+        // заголовок Authorization, токен только в query ?token=ID|HASH). Поэтому
+        // пользователя резолвим здесь сами — двумя способами на случай разных
+        // версий Sanctum:
+        //   1) если гарда всё-таки подставила юзера ($request->user());
+        //   2) по query-токену напрямую через PersonalAccessToken::findToken.
+        // Любой сбой (битый/просроченный токен, нет DB) — штатное событие
+        // "unavailable" вместо 500: фронт живёт на поллинге unread-count.
+        $user = null;
         try {
             $user = $request->user();
         } catch (\Throwable $e) {
-            // Sanctum может бросить исключение на битом/просроченном токене
-            // до того, как маршрутизатор успеет отдать 401.
             report($e);
-            return $this->unavailableResponse('invalid_token');
         }
+
+        if (!$user) {
+            $rawToken = (string) $request->query('token', '');
+            if ($rawToken === '' || substr_count($rawToken, '|') !== 1) {
+                return $this->unavailableResponse('invalid_token');
+            }
+            [$id, $tokenPart] = explode('|', $rawToken, 2);
+            try {
+                $pat = PersonalAccessToken::findToken($tokenPart, $id);
+                $user = $pat?->tokenable;
+            } catch (\Throwable $e) {
+                report($e);
+                return $this->unavailableResponse('invalid_token');
+            }
+        }
+
         if (!$user) {
             \Illuminate\Support\Facades\Log::info('SSE stream: user not resolved from token', [
                 'ip' => $request->ip(),
