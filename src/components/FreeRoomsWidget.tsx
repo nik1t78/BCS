@@ -58,52 +58,61 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
       setLoading(true);
       setError(null);
       try {
+        // Агрегированный эндпоинт доступен всем авторизованным ролям и
+        // возвращает сразу и список активных залов, и их занятость на дату
+        // (один запрос вместо N+1). Используем его как ОСНОВНОЙ источник —
+        // так виджет работает одинаково у admin/moderator/user и не зависит
+        // от прав на справочник GET /rooms.
+        const fetchAggregated = async (): Promise<{ active: Room[]; busyById: Record<string, any[]> }> => {
+          const av: any = await meetingsAPI.roomsAvailability({ date });
+          const list: any[] = av?.data ?? av ?? [];
+          const active: Room[] = list.map((r, i) => ({
+            id: String(r.id ?? `room-${i}`),
+            name: r.name,
+            capacity: Number(r.capacity ?? 0),
+            isActive: true,
+          })) as unknown as Room[];
+          const busyById: Record<string, any[]> = {};
+          list.forEach((r, i) => {
+            busyById[String(r.id ?? `room-${i}`)] = r.busy ?? [];
+            if (r.name) busyById[`name::${r.name}`] = r.busy ?? [];
+          });
+          return { active, busyById };
+        };
+
         let active: Room[] = [];
+        let busyById: Record<string, any[]> = {};
         try {
-          const res: any = await roomsAPI.list();
-          const roomsList: Room[] = Array.isArray(res) ? res : res?.data ?? [];
-          active = roomsList.filter((r) => r.isActive !== false);
-        } catch (e: any) {
-          // 403 — у роли «user» нет доступа к справочнику комнат:
-          // получим список залов из доступности встреч /meetings/rooms-availability
-          if (e?.status === 403 || /недостаточно прав|forbidden/i.test(e?.message || "")) {
-            const av: any = await meetingsAPI.roomsAvailability({ date });
-            const list: any[] = av?.data ?? av ?? [];
-            active = list.map((r, i) => ({
-              id: String(r.id ?? `room-${i}`),
-              name: r.name,
-              capacity: Number(r.capacity ?? 0),
-              isActive: true,
-            })) as unknown as Room[];
-          } else {
-            throw e;
-          }
-        }
-        // Fallback и для 404/ошибки сети (например, на сервере ещё работает
-        // СТАРЫЙ бэкенд, где /meetings/rooms-availability отдаёт 404):
-        // если список пустой — берём залы из агрегированной доступности.
-        if (!active.length) {
+          const agg = await fetchAggregated();
+          active = agg.active;
+          busyById = agg.busyById;
+        } catch {
+          // Старый/необновленный бэкенд без /meetings/rooms-availability (404):
+          // fallback на справочник GET /rooms (доступен админу/модератору).
           try {
-            const av: any = await meetingsAPI.roomsAvailability({ date });
-            const list: any[] = av?.data ?? av ?? [];
-            active = list.map((r, i) => ({
-              id: String(r.id ?? `room-${i}`),
-              name: r.name,
-              capacity: Number(r.capacity ?? 0),
-              isActive: true,
-            })) as unknown as Room[];
-          } catch { /* остаётся пустым — покажем «Комнаты не настроены» */ }
+            const res: any = await roomsAPI.list();
+            const roomsList: Room[] = Array.isArray(res) ? res : res?.data ?? [];
+            active = roomsList.filter((r) => r.isActive !== false);
+          } catch (e2: any) {
+            if (e2?.status === 401) throw new Error("Сессия истекла — обновите страницу");
+            setError(null); // не показываем сырую ошибку — ниже выведем подсказку
+            setInfos([]);
+            setLoading(false);
+            return;
+          }
         }
         const results = await Promise.allSettled(
           active.map(async (r) => {
+            // Занятость уже получена из агрегированного ответа — не дёргаем
+            // /rooms/{id}/availability (у роли «user» он может быть закрыт).
+            const byId = busyById[String(r.id)];
+            if (byId) return { busy: byId };
+            const byName = busyById[`name::${r.name}`];
+            if (byName) return { busy: byName };
             try {
               return await roomsAPI.availability(r.id, { date });
             } catch {
-              // fallback для не-админов: занятость из агрегированного эндпоинта
-              const av: any = await meetingsAPI.roomsAvailability({ date });
-              const list: any[] = av?.data ?? av ?? [];
-              const hit = list.find((x) => String(x.id) === String(r.id) || x.name === r.name);
-              return { busy: hit?.busy ?? [] };
+              return { busy: [] };
             }
           })
         );
@@ -183,7 +192,9 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
       )}
       {error && <p className="text-sm text-red-500">{error}</p>}
       {!loading && !error && infos.length === 0 && (
-        <p className="text-sm text-gray-500 dark:text-gray-400">Комнаты не настроены.</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Переговорные залы не настроены. Добавьте их в разделе «Управление залами» (админка) — после этого здесь появится расписание занятости.
+        </p>
       )}
 
       {!loading && !error && infos.length > 0 && (

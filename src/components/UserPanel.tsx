@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { User, Meeting, Tag, ScheduleConflict } from "../types";
-import { roomsAPI } from "../api/client";
+import { roomsAPI, meetingsAPI } from "../api/client";
 import {
   getMeetings,
   createMeeting,
@@ -541,18 +541,32 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
   // ===== Фильтры: статус / комната / тег / поиск по названию, описанию, участникам =====
   const nowIso = () => new Date().toISOString().slice(0, 16);
   useEffect(() => {
+    const mapRoom = (r: any) => ({
+      name: r.name,
+      capacity: r.capacity ?? 0,
+      equipment: r.equipment ?? [],
+    });
     roomsAPI
       .list()
       .then((res: any) => {
-        setRoomsCatalog(
-          (res?.data ?? []).map((r: any) => ({
-            name: r.name,
-            capacity: r.capacity ?? 0,
-            equipment: r.equipment ?? [],
-          }))
-        );
+        const list = (res?.data ?? []).map(mapRoom);
+        if (list.length) {
+          setRoomsCatalog(list);
+          return;
+        }
+        throw new Error("empty");
       })
-      .catch(() => {});
+      .catch(() => {
+        // 403/404 на справочнике GET /rooms (роль «user» или старый бэкенд):
+        // каталог залов берём из агрегированного /meetings/rooms-availability.
+        meetingsAPI
+          .roomsAvailability({ date: new Date().toISOString().slice(0, 10) })
+          .then((av: any) => {
+            const list: any[] = av?.data ?? av ?? [];
+            setRoomsCatalog(list.map(mapRoom));
+          })
+          .catch(() => {});
+      });
   }, []);
 
   const rooms = Array.from(
