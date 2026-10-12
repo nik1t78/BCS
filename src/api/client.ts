@@ -86,7 +86,12 @@ const apiRequest = async (endpoint: string, options: RequestInit = {}, _retried 
           message = firstMessages.join("; ");
         }
       }
-      throw new Error(message || "Ошибка запроса");
+      const err: any = new Error(message || "Ошибка запроса");
+      // Пробрасываем HTTP-статус: компоненты должны различать 401/403/404/5xx
+      // и корректно включать fallback-сценарии (например, список залов через
+      // /meetings/rooms-availability при 403 на GET /rooms).
+      err.status = response.status;
+      throw err;
     }
 
     return await response.json();

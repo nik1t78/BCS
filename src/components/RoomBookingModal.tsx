@@ -88,36 +88,24 @@ export default function RoomBookingModal({ open, date, startTime, roomName, endT
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, date, startTime, endTime, roomName, rooms]);
 
-  // Список активных комнат — один раз при открытии
+  // Список активных комнат + карта занятости — один запрос при открытии.
+  // Основной источник — агрегированный /meetings/rooms-availability: он
+  // доступен ВСЕМ авторизованным ролям (у «user» нет прав на GET /rooms)
+  // и возвращает сразу залы + их занятость на выбранную дату.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     (async () => {
+      const d = availDate || todayKey();
       try {
-        let active: Room[] = [];
-        try {
-          const res: any = await roomsAPI.list();
-          const list: Room[] = Array.isArray(res) ? res : res?.data ?? [];
-          active = list.filter((r) => r.isActive !== false);
-        } catch { /* noop */ }
-        if (!active.length) {
-          // Пусто или 403/404 для роли «user» (нет доступа к справочнику
-          // GET /rooms, либо на сервере устаревший код маршрутов): получаем
-          // список залов из агрегированного /meetings/rooms-availability.
-          // id берём РЕАЛЬНЫЕ числовые из ответа — тогда занятость выбранного
-          // зала корректно матчится и через /rooms/{id}/availability, и через
-          // fallback по имени в агрегированном эндпоинте.
-          try {
-            const av: any = await meetingsAPI.roomsAvailability({ date: availDate });
-            const list: any[] = av?.data ?? av ?? [];
-            active = list.map((r, i) => ({
-              id: String(r.id ?? `room-${i}`),
-              name: r.name,
-              capacity: Number(r.capacity ?? 0),
-              isActive: true,
-            })) as unknown as Room[];
-          } catch { /* список остаётся пустым — покажем понятную ошибку ниже */ }
-        }
+        const av: any = await meetingsAPI.roomsAvailability({ date: d });
+        const list: any[] = av?.data ?? av ?? [];
+        const active: Room[] = list.map((r, i) => ({
+          id: String(r.id ?? `room-${i}`),
+          name: r.name,
+          capacity: Number(r.capacity ?? 0),
+          isActive: true,
+        })) as unknown as Room[];
         if (cancelled) return;
         setRooms(active);
         // Выбрать предзаполненный зал, иначе — первый активный
@@ -127,8 +115,21 @@ export default function RoomBookingModal({ open, date, startTime, roomName, endT
         } else if (active.length && !active.some((r) => String(r.id) === selRoomId)) {
           setSelRoomId(String(active[0].id));
         }
-      } catch (e: any) {
-        if (!cancelled) setError(e?.message || "Не удалось загрузить комнаты");
+      } catch {
+        // Старый бэкенд без агрегированного эндпоинта (404): fallback на
+        // справочник GET /rooms (работает для admin/moderator).
+        try {
+          const res: any = await roomsAPI.list();
+          const l: Room[] = Array.isArray(res) ? res : res?.data ?? [];
+          const active = l.filter((r) => r.isActive !== false);
+          if (cancelled) return;
+          setRooms(active);
+          const wanted = roomName ? active.find((r) => r.name === roomName) : undefined;
+          if (wanted) setSelRoomId(String(wanted.id));
+          else if (active.length) setSelRoomId(String(active[0].id));
+        } catch (e2: any) {
+          if (!cancelled) setError(e2?.message || "Не удалось загрузить список залов");
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -145,12 +146,6 @@ export default function RoomBookingModal({ open, date, startTime, roomName, endT
       try {
         let avail: RoomAvailability;
         try {
-          const res: any = await roomsAPI.availability(selRoomId, { date: availDate });
-          avail = res?.data ?? res;
-        } catch {
-          // 403/404 для роли «user» — берём занятость из агрегированного
-          // /meetings/rooms-availability (доступен всем авторизованным).
-          // Матчинг: сначала по числовому id комнаты, затем по имени зала.
           const av: any = await meetingsAPI.roomsAvailability({ date: availDate });
           const list: any[] = av?.data ?? av ?? [];
           const sel = rooms.find((r) => String(r.id) === String(selRoomId));
@@ -158,21 +153,10 @@ export default function RoomBookingModal({ open, date, startTime, roomName, endT
             list.find((x) => String(x.id) === String(selRoomId)) ??
             (sel ? list.find((x) => x.name === sel.name) : undefined);
           avail = { busy: hit?.busy ?? [], free: hit?.free ?? [] } as unknown as RoomAvailability;
-          if (cancelled) return;
-          const b0 = (avail.busy ?? [])
-            .map((x) => ({
-              startMin: toMin(x.start),
-              endMin: toMin(x.end),
-              title: x.title || "занято",
-            }))
-            .filter((x) => x.endMin > x.startMin);
-          setBusy(b0);
-          setFree(
-            computeFreeSlots(avail.busy ?? [], { isToday: availDate === todayKey(), nowMin }).map(
-              (s) => ({ startMin: s.startMin, endMin: s.endMin })
-            )
-          );
-          return;
+        } catch {
+          // Агрегированный эндпоинт недоступен — пробуем per-room (админ/модератор)
+          const res: any = await roomsAPI.availability(selRoomId, { date: availDate });
+          avail = res?.data ?? res;
         }
         if (cancelled) return;
         const b = (avail.busy ?? [])
