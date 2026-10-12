@@ -31,8 +31,19 @@ class NotificationStreamController extends Controller
         // видели это как 500 на /api/notifications/stream. Лучше отдать
         // штатный «unavailable»: фронт в этом случае живёт на поллинге
         // unread-count (обычно же маршрутизатор сам отдаст 401 раньше).
-        $user = $request->user();
+        try {
+            $user = $request->user();
+        } catch (\Throwable $e) {
+            // Sanctum может бросить исключение на битом/просроченном токене
+            // до того, как маршрутизатор успеет отдать 401.
+            report($e);
+            return $this->unavailableResponse('invalid_token');
+        }
         if (!$user) {
+            \Illuminate\Support\Facades\Log::info('SSE stream: user not resolved from token', [
+                'ip' => $request->ip(),
+                'token_prefix' => substr((string) $request->query('token'), 0, 6),
+            ]);
             return $this->unavailableResponse('unauthenticated');
         }
 

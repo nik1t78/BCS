@@ -49,11 +49,16 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // с route-model-binding (implicit bind) и падает с ModelNotFoundException
     // ("No query results for model [App\Models\Meeting] check-conflicts").
 
-    // Проверка конфликтов расписания (пересечения по времени у одних и тех же людей)
-    Route::get('/meetings/check-conflicts', [\App\Http\Controllers\Api\ScheduleConflictController::class, 'check']);
+    // Проверка конфликтов расписания (пересечения по времени у одних и тех же людей).
+    // ОБЯЗАТЕЛЬНО с whereNumber: иначе запросы вида /meetings/check-conflicts?users=1,1
+    // при устаревшем кэше маршрутов на сервере могут матчиться как /meetings/{meeting}
+    // и давать 404 "No query results for model [App\Models\Meeting]".
+    Route::get('/meetings/check-conflicts', [\App\Http\Controllers\Api\ScheduleConflictController::class, 'check'])
+        ->whereNumber('meeting')->name('meetings.check-conflicts');
 
     // Агрегированная доступность всех залов на дату — доступна всем авторизованным
-    Route::get('/meetings/rooms-availability', [\App\Http\Controllers\Api\RoomController::class, 'allAvailability']);
+    Route::get('/meetings/rooms-availability', [\App\Http\Controllers\Api\RoomController::class, 'allAvailability'])
+        ->whereNumber('meeting')->name('meetings.rooms-availability');
 
     // Meetings
     Route::apiResource('meetings', MeetingController::class);
