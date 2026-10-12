@@ -61,8 +61,8 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
         let active: Room[] = [];
         try {
           const res: any = await roomsAPI.list();
-          const rooms: Room[] = Array.isArray(res) ? res : res?.data ?? [];
-          active = rooms.filter((r) => r.isActive !== false);
+          const roomsList: Room[] = Array.isArray(res) ? res : res?.data ?? [];
+          active = roomsList.filter((r) => r.isActive !== false);
         } catch (e: any) {
           // 403 — у роли «user» нет доступа к справочнику комнат:
           // получим список залов из доступности встреч /meetings/rooms-availability
@@ -78,6 +78,21 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
           } else {
             throw e;
           }
+        }
+        // Fallback и для 404/ошибки сети (например, на сервере ещё работает
+        // СТАРЫЙ бэкенд, где /meetings/rooms-availability отдаёт 404):
+        // если список пустой — берём залы из агрегированной доступности.
+        if (!active.length) {
+          try {
+            const av: any = await meetingsAPI.roomsAvailability({ date });
+            const list: any[] = av?.data ?? av ?? [];
+            active = list.map((r, i) => ({
+              id: String(r.id ?? `room-${i}`),
+              name: r.name,
+              capacity: Number(r.capacity ?? 0),
+              isActive: true,
+            })) as unknown as Room[];
+          } catch { /* остаётся пустым — покажем «Комнаты не настроены» */ }
         }
         const results = await Promise.allSettled(
           active.map(async (r) => {
@@ -114,8 +129,8 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
           const avail: RoomAvailability = (resItem.value as any)?.data ?? resItem.value;
           const slots = computeFreeSlots(avail.busy ?? [], { isToday, nowMin: curMin });
           const busy = (avail.busy ?? []).map((b: any) => ({
-            startMin: Math.max(toMin(b.start), WORK_DAY_START_MIN),
-            endMin: Math.min(toMin(b.end), WORK_DAY_END_MIN),
+            startMin: toMin(b.start),
+            endMin: toMin(b.end),
             title: b.title || b.meetingTitle || "",
           })).filter((b: any) => b.endMin > b.startMin);
           next.push({ room, slots, busy });

@@ -31,7 +31,22 @@ export function subscribeToNotifications(onNotification: (n: RealtimeEvent) => v
     }
   };
   es.addEventListener("notification", handler);
-  return () => es.close();
+  // Сервер может отдать штатное событие "unavailable" (нет Redis / SSE
+  // недоступен) — закрываем соединение, чтобы EventSource не переподключался
+  // бесконечно и не спамил в консоль. Поллинг unread-count остаётся запасным.
+  const unavailable = () => {
+    try {
+      es.close();
+    } catch {
+      /* noop */
+    }
+  };
+  es.addEventListener("unavailable", unavailable);
+  return () => {
+    es.removeEventListener("notification", handler);
+    es.removeEventListener("unavailable", unavailable);
+    es.close();
+  };
 }
 
 export function useNewNotificationToasts(enabled: boolean) {

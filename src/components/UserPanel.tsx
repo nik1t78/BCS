@@ -216,12 +216,7 @@ function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, c
                   <button
                     type="button"
                     onClick={() => {
-                      if (!openVksCreatePage()) {
-                        setFormData({ ...formData, link: "https://salutejazz.ru/calls/create" });
-                        alert(
-                          "Браузер заблокировал новую вкладку. Скопирована ссылка на страницу создания — откройте её вручную, создайте встречу и вставьте готовую ссылку в это поле."
-                        );
-                      }
+                      openVksCreatePage();
                     }}
                     title="Открыть salutejazz.ru/calls/create, создать комнату вручную и вставить ссылку сюда"
                     className="px-3 py-2 text-sm rounded-lg border border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400 hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors whitespace-nowrap font-medium"
@@ -1171,12 +1166,7 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
                       <button
                         type="button"
                         onClick={() => {
-                          if (!openVksCreatePage()) {
-                            setFormData({ ...formData, link: "https://salutejazz.ru/calls/create" });
-                            alert(
-                              "Браузер заблокировал новую вкладку. Скопирована ссылка на страницу создания — откройте её вручную, создайте встречу и вставьте готовую ссылку в это поле."
-                            );
-                          }
+                          openVksCreatePage();
                         }}
                         title="Открыть salutejazz.ru/calls/create, создать комнату вручную и вставить ссылку сюда"
                         className="px-3 py-2 text-sm rounded-lg border border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400 hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors whitespace-nowrap font-medium"
