@@ -28,6 +28,14 @@ Route::get('/health', function () {
     ]);
 });
 
+// Realtime-канал уведомлений (Server-Sent Events) — ОБЯЗАТЕЛЬНО вне группы
+// auth:sanctum/throttle:api. Причина: у EventSource нет способа отправить
+// заголовок Authorization, токен передаётся только в query (?token=...).
+// Внутри sanctum-группы такой запрос не аутентифицируется гардой и падал
+// с 401/500 (fatal уже после отправки SSE-заголовков). Маршрут объявляется
+// здесь, контроль сам резолвит пользователя по ?token= через Sanctum::findByToken.
+Route::middleware('throttle:20,1')->get('/notifications/stream', [\App\Http\Controllers\Api\NotificationStreamController::class, 'stream']);
+
 // Защищённые маршруты
 Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // Auth
@@ -76,9 +84,8 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::delete('/notifications/clear', [NotificationController::class, 'clearAll']);
     Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
 
-    // Realtime-канал уведомлений (Server-Sent Events). Отдельный лимит:
-    // это долгоживущее соединение, его throttle не должен считать каждый heartbeat.
-    Route::middleware('throttle:10,1')->get('/notifications/stream', [\App\Http\Controllers\Api\NotificationStreamController::class, 'stream']);
+    // NB: /notifications/stream объявлен ВЫШЕ, вне этой auth:sanctum-группы —
+    // EventSource не шлёт заголовок Authorization (токен только в ?token=).
 
     // Settings
     Route::get('/settings', [UserController::class, 'getSettings']);
