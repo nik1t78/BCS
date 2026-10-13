@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { User, Meeting, Tag, ScheduleConflict } from "../types";
 import { roomsAPI, meetingsAPI } from "../api/client";
 import {
@@ -44,6 +44,8 @@ interface UserPanelProps {
   formOnly?: boolean;
   /** Вызывается после успешного создания конференции (для закрытия модалки) */
   onCreated?: () => void;
+  /** Закрытие формы без сохранения (в режиме formOnly — закрыть модалку на главной) */
+  onClose?: () => void;
 }
 
 const PAGE_SIZE = 20;
@@ -420,13 +422,16 @@ function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, c
   );
 }
 
-export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillConsumed, formOnly, onCreated }: UserPanelProps) {
+export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillConsumed, formOnly, onCreated, onClose }: UserPanelProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
-  const [loading, setLoading] = useState(true);
+  // formOnly (модалка «Создание ВКС» поверх главной): НЕ начинаем с loading=true —
+  // иначе при каждом обновлении списка встреч (loadData после onCreated) панель
+  // на мгновение размонтируется («исчезает») и форма закрывается сама.
+  const [loading, setLoading] = useState(!formOnly);
   const [error, setError] = useState(false);
   // Модальное окно просмотра конференции (доступен всем участникам)
   const [viewMeeting, setViewMeeting] = useState<Meeting | null>(null);
@@ -484,7 +489,25 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
     isPrivate: false,
   };
 
-  const [formData, setFormData] = useState<Meeting>(emptyMeeting);
+  const [formData, setFormData] = useState<Meeting>(() => {
+    // ВАЖНО: если форма открыта сразу с предзаполнением (модалка «Выбор зала»
+    // из плашек «Свободные залы» / «Расписание аудиторий»), начальные значения
+    // должны содержать prefill СРАЗУ. Иначе первый рендер показывает пустую
+    // форму, а эффект ниже после onPrefillConsumed() родитель сбрасывает
+    // initialPrefill в null — предзаполнение теряется и окно «быстро
+    // закрывается», выбрать ничего нельзя.
+    if (initialPrefill) {
+      return {
+        ...emptyMeeting,
+        date: initialPrefill.date ?? emptyMeeting.date,
+        startTime: initialPrefill.startTime ?? emptyMeeting.startTime,
+        endTime: initialPrefill.endTime ?? emptyMeeting.endTime,
+        room: initialPrefill.room || emptyMeeting.room,
+        link: initialPrefill.autoLink ? "" : initialPrefill.link || "",
+      };
+    }
+    return emptyMeeting;
+  });
   // Индикатор: «Создаём ссылку ВКС…» (пока Selenium-бот работает на salutejazz.ru)
   const [savingNote, setSavingNote] = useState<string | null>(null);
 
@@ -506,7 +529,12 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
       link: p.autoLink ? "" : p.link || "",
     });
     setShowForm(true);
-    onPrefillConsumed?.();
+    // formOnly: НЕ уведомляем родителя о «потреблении» предзаполнения —
+    // иначе Dashboard делает setCreatePrefill(null), панель «Создание ВКС»
+    // мгновенно размонтируется и форма закрывается раньше, чем пользователь
+    // что-либо выбрал. Для formOnly панель закрывается только через
+    // onCreated / кнопку «×».
+    if (!formOnly) onPrefillConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialPrefill]);
 
@@ -687,6 +715,8 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
   const [conflicts, setConflicts] = useState<ScheduleConflict[]>([]);
   const [conflictChecked, setConflictChecked] = useState(false);
   const [forceSave, setForceSave] = useState(false);
+  // Флаг «идёт сохранение» — защита от двойного submit (двойной клик)
+  const savingRef = useRef(false);
 
   const runConflictCheck = async (): Promise<ScheduleConflict[]> => {
     const userIds = [...(formData.participants ?? []), editingMeeting ? editingMeeting.organizerId : user.id]
@@ -705,6 +735,18 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Защита от двойной отправки (двойной клик по «Создать»): второй submit
+    // создавал дубликат конференции и закрывал панель раньше времени.
+    if (savingRef.current) return;
+    savingRef.current = true;
+    try {
+      await handleSubmitInner();
+    } finally {
+      savingRef.current = false;
+    }
+  };
+
+  const handleSubmitInner = async () => {
     if (!formData.title || !formData.date || !formData.startTime || !formData.endTime) {
       alert("Заполните все обязательные поля");
       return;
@@ -820,6 +862,18 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
 
   // Режим формы: только модалка создания ВКС (открывается с главной сразу после выбора времени/зала)
   if (formOnly) {
+    // Закрытие панели: ОБЯЗАТЕЛЬНО уведомляем родителя (onClose / onCreated),
+    // иначе Dashboard оставит createPrefill !== null и панель будет «восставать»
+    // при каждом ре-рендере. Раньше здесь вызывался только onCreated?.(), а
+    // onCancel в CreateMeetingForm вообще не закрывал родительскую панель —
+    // из-за чего окно «быстро закрывалось»/не давало выбрать значения.
+    const closePanel = () => {
+      setShowForm(false);
+      setConflicts([]);
+      setConflictChecked(false);
+      setForceSave(false);
+      onClose?.();
+    };
     return showForm ? (
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="p-6">
@@ -828,14 +882,9 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
               {editingMeeting ? "Редактировать конференцию" : "Новая конференция"}
             </h2>
             <button
-              onClick={() => {
-                setShowForm(false);
-                setConflicts([]);
-                setConflictChecked(false);
-                setForceSave(false);
-                onCreated?.();
-              }}
+              onClick={closePanel}
               className="text-gray-400 hover:text-gray-600"
+              aria-label="Закрыть"
             >
               <i className="fas fa-times text-xl"></i>
             </button>
@@ -849,12 +898,7 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
             conflicts={conflicts}
             editing={!!editingMeeting}
             savingNote={savingNote}
-            onCancel={() => {
-              setShowForm(false);
-              setConflicts([]);
-              setConflictChecked(false);
-              setForceSave(false);
-            }}
+            onCancel={closePanel}
             handleSubmit={handleSubmit}
           />
         </div>

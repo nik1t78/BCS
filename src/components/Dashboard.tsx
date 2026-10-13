@@ -462,9 +462,20 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
         onConfirm={handleBookingConfirm}
       />
 
-      {/* Панель создания ВКС прямо поверх главной — без перехода в другой раздел */}
+      {/* Панель создания ВКС прямо поверх главной — без перехода в другой раздел.
+          ВАЖНО: закрытие по клику на тёмный фон (backdrop) НЕ сбрасывает prefill
+          мгновенно — иначе любой «скользнувший» клик мимо карточки закрывал окно
+          раньше, чем пользователь успевал что-либо выбрать. Закрытие происходит
+          только если mousedown тоже начался на backdrop (как в нативных диалогах). */}
       {createOpen && (
-        <div className="fixed inset-0 z-[60] bg-black/50 flex items-start justify-center p-4 overflow-auto" onClick={() => setCreatePrefill(null)}>
+        <div
+          className="fixed inset-0 z-[60] bg-black/50 flex items-start justify-center p-4 overflow-auto"
+          onMouseDown={(e) => { (e.target as HTMLElement).setAttribute("data-backdown", "1"); }}
+          onClick={(e) => {
+            const t = e.target as HTMLElement;
+            if (t.getAttribute("data-backdown") === "1") setCreatePrefill(null);
+          }}
+        >
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl my-8" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 rounded-t-xl z-10">
               <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">
@@ -479,6 +490,7 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
                 formOnly
                 initialPrefill={createPrefill}
                 onPrefillConsumed={() => setCreatePrefill(null)}
+                onClose={() => setCreatePrefill(null)}
                 onCreated={() => {
                   setCreatePrefill(null);
                   // обновим список встреч после создания

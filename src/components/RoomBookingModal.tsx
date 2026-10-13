@@ -207,10 +207,32 @@ export default function RoomBookingModal({ open, date, startTime, roomName, endT
 
   const selRoom = rooms.find((r) => String(r.id) === selRoomId);
 
+  // Закрытие модалки по Escape (как в нативных диалогах) — удобно и не даёт
+  // окну «зависнуть», если клик мимо карточки не сработал.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+      onMouseDown={(e) => { (e.target as HTMLElement).setAttribute("data-backdown", "1"); }}
+      onClick={(e) => {
+        // Закрываем ТОЛЬКО если и mousedown, и mouseup произошли на самом фоне
+        // (backdrop). Раньше закрытие шло по любому click с «всплытием» из
+        // внутреннего скролла/drag шкалы — из-за чего модалка выбора зала
+        // мгновенно закрывалась и нельзя было выбрать время/зал.
+        const t = e.target as HTMLElement;
+        if (t.getAttribute("data-backdown") === "1") onClose();
+      }}
+    >
       <div
         className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-auto"
         onClick={(e) => e.stopPropagation()}
