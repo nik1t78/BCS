@@ -1,0 +1,28 @@
+#!/usr/bin/env php
+<?php
+
+use Illuminate\Foundation\Application;
+use Symfony\Component\Console\Input\ArgvInput;
+
+define('LARAVEL_START', microtime(true));
+
+// Регистрируем автозагрузчик Composer (в контейнере — /var/www/html/vendor,
+// при локальной разработке — backend/vendor).
+require __DIR__.'/vendor/autoload.php';
+
+// Создаём приложение из bootstrap/app.php.
+/** @var Application $app */
+$app = require_once __DIR__.'/bootstrap/app.php';
+
+// Прогоняем консольную команду через ядро консоли.
+$kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+
+$status = $kernel->handle(
+    $input = new ArgvInput,
+    new Illuminate\Console\OutputStyle($input, new Symfony\Component\Console\Output\ConsoleOutput)
+);
+
+// Завершаем работу консоли (до asynchronously-задания, shutdown-функции).
+$kernel->terminate($input, $status);
+
+exit($status);

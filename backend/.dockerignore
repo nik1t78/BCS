@@ -1,0 +1,9 @@
+vendor
+# composer.lock НЕ игнорируем — он обязателен для детерминированной сборки образа
+.env
+!.env.dev.example
+storage/logs/*
+storage/framework/cache/data/*
+storage/framework/sessions/*
+storage/framework/views/*
+*.log
