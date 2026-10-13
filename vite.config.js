@@ -12,7 +12,7 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["icons/apple-touch-icon.png"],
       manifest: {
-        name: "ВКС Расписание",
+        name: "ВКС",
         short_name: "ВКС",
         description: "Управление видеоконференциями: расписание, протоколы, задачи, RSVP",
         lang: "ru",

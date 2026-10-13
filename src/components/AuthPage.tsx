@@ -70,7 +70,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
           <div className="inline-flex items-center justify-center w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl mb-4">
             <i className="fas fa-video text-white text-3xl"></i>
           </div>
-          <h1 className="text-3xl font-bold text-white">ВКС Расписание</h1>
+          <h1 className="text-3xl font-bold text-white">ВКС</h1>
           <p className="text-blue-100 mt-2">Система управления видеоконференциями</p>
         </div>
 
