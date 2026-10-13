@@ -1,0 +1,593 @@
+import React, { useState, useRef, useEffect } from "react";
+import { User } from "../types";
+import { updateProfile, changePassword, getSettings, updateSettings } from "../store-api";
+import { maxAPI } from "../api/client";
+import type { MaxStatus } from "../types";
+
+interface ProfileProps {
+  user: User;
+  onUpdate: () => void;
+}
+
+const REMINDER_OPTIONS = [5, 15, 30, 60];
+
+export default function Profile({ user, onUpdate }: ProfileProps) {
+  const [notifSettings, setNotifSettings] = useState({
+    soundEnabled: true,
+    browserNotifications: true,
+    defaultReminderMinutes: 15,
+  });
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
+  const [settingsError, setSettingsError] = useState("");
+  const [maxStatus, setMaxStatus] = useState<MaxStatus | null>(null);
+  const [maxChatId, setMaxChatId] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    getSettings().then((s) => {
+      if (!cancelled && s) {
+        setNotifSettings({
+          soundEnabled: s.soundEnabled ?? true,
+          browserNotifications: s.browserNotifications ?? true,
+          defaultReminderMinutes: s.defaultReminderMinutes ?? 15,
+        });
+      }
+      if (!cancelled) setSettingsLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    maxAPI
+      .status()
+      .then((res: any) => {
+        if (!cancelled && res) setMaxStatus(res as MaxStatus);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const linkMax = async () => {
+    if (!maxChatId.trim()) return;
+    try {
+      await maxAPI.link(maxChatId.trim());
+      setMaxStatus((prev) => (prev ? { ...prev, linkedChatId: maxChatId.trim() } : prev));
+      setMaxChatId("");
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const unlinkMax = async () => {
+    await maxAPI.unlink().catch(() => {});
+    setMaxStatus((prev) => (prev ? { ...prev, linkedChatId: null } : prev));
+  };
+
+  const handleSaveSettings = async () => {
+    setSettingsError("");
+    const ok = await updateSettings({
+      sound_enabled: notifSettings.soundEnabled,
+      browser_notifications: notifSettings.browserNotifications,
+      default_reminder_minutes: notifSettings.defaultReminderMinutes,
+    });
+    if (ok) {
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 3000);
+    } else {
+      setSettingsError("Не удалось сохранить настройки. Попробуйте ещё раз.");
+    }
+  };
+
+  const [formData, setFormData] = useState({
+    name: user.name,
+    phone: user.phone || "",
+    department: user.department || "",
+    position: user.position || "",
+  });
+  const [avatar, setAvatar] = useState<string>(user.avatar || "");
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [saved, setSaved] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState("");
+
+  const handleSave = async () => {
+    // Отправляем ТОЛЬКО реально изменённые поля. Иначе пустые строки
+    // (phone/department/position) проходят валидацию как nullable и затирают
+    // уже сохранённые значения в БД (например, аватар пропадал после смены пароля).
+    const payload: Record<string, unknown> = {};
+    if (formData.name !== user.name) payload.name = formData.name;
+    if ((formData.phone || "") !== (user.phone || "")) payload.phone = formData.phone;
+    if ((formData.department || "") !== (user.department || "")) payload.department = formData.department;
+    if ((formData.position || "") !== (user.position || "")) payload.position = formData.position;
+    if ((avatar || "") !== (user.avatar || "")) payload.avatar = avatar || null;
+
+    const updatedUser = Object.keys(payload).length > 0 ? await updateProfile(payload) : user;
+
+    if (updatedUser) {
+      onUpdate();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    }
+  };
+
+  // Загрузка и сжатие аватара в data-URL (чтобы не гонять мегабайты на сервер)
+  const handleAvatarFile = (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      alert("Можно загружать только изображения");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 256;
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        setAvatar(canvas.toDataURL("image/jpeg", 0.85));
+      };
+      img.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError("");
+    setPasswordSuccess("");
+
+    if (passwordData.newPassword.length < 6) {
+      setPasswordError("Пароль должен быть не менее 6 символов");
+      return;
+    }
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      setPasswordError("Пароли не совпадают");
+      return;
+    }
+
+    const success = await changePassword(passwordData.currentPassword, passwordData.newPassword);
+
+    if (success) {
+      setPasswordSuccess("Пароль успешно изменён");
+      setPasswordData({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+      setTimeout(() => {
+        setShowPasswordForm(false);
+        setPasswordSuccess("");
+      }, 2000);
+    } else {
+      setPasswordError("Неверный текущий пароль");
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Profile Header */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div className="bg-gradient-to-r from-blue-500 to-purple-600 h-32 relative">
+          <div className="absolute -bottom-12 left-6">
+            <div
+              onClick={() => avatarInputRef.current?.click()}
+              title="Нажмите, чтобы изменить аватар"
+              className="w-24 h-24 bg-white dark:bg-gray-700 rounded-xl shadow-lg flex items-center justify-center border-4 border-white dark:border-gray-800 overflow-hidden cursor-pointer group relative"
+            >
+              {avatar ? (
+                <img src={avatar} alt="Аватар" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-3xl font-bold text-blue-600 dark:text-blue-400">{user.name.charAt(0)}</span>
+              )}
+              <div className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <i className="fas fa-camera"></i>
+              </div>
+            </div>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => handleAvatarFile(e.target.files?.[0])}
+            />
+          </div>
+        </div>
+        <div className="px-6 pt-16 pb-6">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">{user.name}</h2>
+              <p className="text-gray-500 dark:text-gray-400 capitalize mt-1">
+                {user.role === "admin"
+                  ? "🛡️ Администратор"
+                  : user.role === "moderator"
+                    ? "🔧 Модератор"
+                    : "👤 Пользователь"}
+              </p>
+            </div>
+            {avatar && (
+              <button
+                onClick={() => setAvatar("")}
+                className="text-sm text-red-500 hover:text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
+              >
+                <i className="fas fa-trash mr-1"></i>Удалить аватар
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+            <i className="fas fa-info-circle mr-1"></i>Выберите изображение кликом по аватару — изменения применятся
+            после нажатия «Сохранить».
+          </p>
+        </div>
+      </div>
+
+      {/* Profile Form */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
+        <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4">Личные данные</h3>
+
+        {saved && (
+          <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-green-700 dark:text-green-400 flex items-center gap-2">
+            <i className="fas fa-check-circle"></i>
+            Профиль успешно сохранён!
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">ФИО</label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Логин</label>
+            <input
+              type="text"
+              value={user.login}
+              readOnly
+              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg opacity-60"
+            />
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Логин нельзя изменить</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Роль</label>
+            <input
+              type="text"
+              value={user.role === "admin" ? "Администратор" : user.role === "moderator" ? "Модератор" : "Пользователь"}
+              readOnly
+              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg opacity-60"
+            />
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Роль назначается администратором</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Телефон</label>
+            <input
+              type="tel"
+              value={formData.phone}
+              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Отдел</label>
+            <input
+              type="text"
+              value={formData.department}
+              onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Должность</label>
+            <input
+              type="text"
+              value={formData.position}
+              onChange={(e) => setFormData({ ...formData, position: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+            />
+          </div>
+        </div>
+        <div className="mt-6">
+          <button
+            onClick={handleSave}
+            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <i className="fas fa-save mr-2"></i>Сохранить
+          </button>
+        </div>
+      </div>
+
+      {/* MAX messenger integration */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
+        <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-1">
+          <i className="fas fa-paper-plane mr-2 text-sky-500"></i>Мессенджер MAX
+        </h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          Уведомления о встречах, изменениях и задачах приходят в чат бота MAX (max.ru).
+        </p>
+        {!maxStatus ? (
+          <p className="text-sm text-gray-400">
+            <i className="fas fa-spinner fa-spin mr-2"></i>Загрузка…
+          </p>
+        ) : !maxStatus.enabled ? (
+          <p className="text-sm text-amber-600 dark:text-amber-400">
+            <i className="fas fa-info-circle mr-2"></i>Интеграция с MAX отключена на сервере (MAX_ENABLED=false).
+          </p>
+        ) : maxStatus.linkedChatId ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-sm font-medium">
+              <i className="fas fa-check-circle"></i>Привязан чат: {maxStatus.linkedChatId}
+            </span>
+            <a
+              href={maxStatus.botLink}
+              target="_blank"
+              rel="noreferrer"
+              className="text-sm text-blue-600 hover:underline"
+            >
+              Открыть бота
+            </a>
+            <button onClick={unlinkMax} className="text-sm text-red-600 hover:underline">
+              Отвязать
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2 max-w-xl">
+            <a
+              href={maxStatus.botLink}
+              target="_blank"
+              rel="noreferrer"
+              className="px-4 py-2 rounded-lg bg-sky-600 text-white text-sm font-medium hover:bg-sky-700"
+            >
+              <i className="fas fa-comment-dots mr-2"></i>Написать боту в MAX
+            </a>
+            <input
+              value={maxChatId}
+              onChange={(e) => setMaxChatId(e.target.value)}
+              placeholder="ID чата из бота"
+              className="flex-1 min-w-[160px] px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg text-sm"
+            />
+            <button
+              onClick={linkMax}
+              disabled={!maxChatId.trim()}
+              className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+            >
+              Привязать
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Notification Settings */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
+        <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-1">
+          <i className="fas fa-bell mr-2 text-blue-500"></i>Настройки уведомлений
+        </h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          Напоминания о конференциях: когда и куда присылать.
+        </p>
+
+        {settingsSaved && (
+          <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-green-700 dark:text-green-400 flex items-center gap-2">
+            <i className="fas fa-check-circle"></i>Настройки сохранены!
+          </div>
+        )}
+        {settingsError && (
+          <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 flex items-center gap-2">
+            <i className="fas fa-exclamation-circle"></i>
+            {settingsError}
+          </div>
+        )}
+
+        {!settingsLoaded ? (
+          <p className="text-sm text-gray-400">
+            <i className="fas fa-spinner fa-spin mr-2"></i>Загрузка настроек…
+          </p>
+        ) : (
+          <div className="space-y-4 max-w-2xl">
+            <label className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg cursor-pointer">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                <i className="fas fa-volume-up mr-2 text-purple-500"></i>Звук при уведомлении
+              </span>
+              <input
+                type="checkbox"
+                checked={notifSettings.soundEnabled}
+                onChange={(e) => setNotifSettings({ ...notifSettings, soundEnabled: e.target.checked })}
+                className="w-5 h-5 accent-blue-600"
+              />
+            </label>
+            <label className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg cursor-pointer">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                <i className="fas fa-desktop mr-2 text-green-500"></i>Уведомления в браузере
+              </span>
+              <input
+                type="checkbox"
+                checked={notifSettings.browserNotifications}
+                onChange={(e) => setNotifSettings({ ...notifSettings, browserNotifications: e.target.checked })}
+                className="w-5 h-5 accent-blue-600"
+              />
+            </label>
+            <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+              <span className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
+                <i className="fas fa-clock mr-2 text-orange-500"></i>Напоминать за
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {REMINDER_OPTIONS.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setNotifSettings({ ...notifSettings, defaultReminderMinutes: m })}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      notifSettings.defaultReminderMinutes === m
+                        ? "bg-blue-600 text-white"
+                        : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:border-blue-400"
+                    }`}
+                  >
+                    {m} мин
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button
+              onClick={handleSaveSettings}
+              className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <i className="fas fa-save mr-2"></i>Сохранить настройки
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Password Change */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
+        <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4">Безопасность</h3>
+
+        {!showPasswordForm ? (
+          <button
+            onClick={() => setShowPasswordForm(true)}
+            className="bg-yellow-600 text-white px-6 py-2 rounded-lg hover:bg-yellow-700 transition-colors"
+          >
+            <i className="fas fa-key mr-2"></i>Сменить пароль
+          </button>
+        ) : (
+          <form onSubmit={handleChangePassword} className="space-y-4 max-w-md">
+            {passwordError && (
+              <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 flex items-center gap-2">
+                <i className="fas fa-exclamation-circle"></i>
+                {passwordError}
+              </div>
+            )}
+
+            {passwordSuccess && (
+              <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-green-700 dark:text-green-400 flex items-center gap-2">
+                <i className="fas fa-check-circle"></i>
+                {passwordSuccess}
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Текущий пароль</label>
+              <input
+                type="password"
+                value={passwordData.currentPassword}
+                onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                placeholder="••••••••"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Новый пароль</label>
+              <input
+                type="password"
+                value={passwordData.newPassword}
+                onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                placeholder="Минимум 6 символов"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Подтвердите пароль
+              </label>
+              <input
+                type="password"
+                value={passwordData.confirmPassword}
+                onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+                placeholder="Повторите пароль"
+                required
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPasswordForm(false);
+                  setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" });
+                  setPasswordError("");
+                  setPasswordSuccess("");
+                }}
+                className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                Отмена
+              </button>
+              <button
+                type="submit"
+                className="px-6 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
+              >
+                <i className="fas fa-key mr-2"></i>Изменить пароль
+              </button>
+            </div>
+          </form>
+        )}
+
+        <div className="mt-6 pt-6 border-t dark:border-gray-600">
+          <h4 className="font-medium text-gray-800 dark:text-gray-100 mb-3">Активные сессии</h4>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+              <div className="flex items-center gap-3">
+                <i className="fas fa-desktop text-gray-400"></i>
+                <div>
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-100">Текущий браузер</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Активна сейчас</p>
+                </div>
+              </div>
+              <span className="text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2 py-1 rounded">
+                Активна
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Account Info */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
+        <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4">Информация об аккаунте</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <p className="text-xs text-gray-500 dark:text-gray-400">Дата регистрации</p>
+            <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
+              {new Date(user.createdAt).toLocaleDateString("ru-RU")}
+            </p>
+          </div>
+          <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <p className="text-xs text-gray-500 dark:text-gray-400">Последний вход</p>
+            <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
+              {user.lastLogin ? new Date(user.lastLogin).toLocaleString("ru-RU") : "—"}
+            </p>
+          </div>
+          <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <p className="text-xs text-gray-500 dark:text-gray-400">Роль</p>
+            <p className="text-sm font-medium text-gray-800 dark:text-gray-100 capitalize">
+              {user.role === "admin" ? "Администратор" : user.role === "moderator" ? "Модератор" : "Пользователь"}
+            </p>
+          </div>
+          <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <p className="text-xs text-gray-500 dark:text-gray-400">Статус</p>
+            <p className="text-sm font-medium text-green-600 dark:text-green-400">● Активен</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
