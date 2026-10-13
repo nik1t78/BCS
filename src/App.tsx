@@ -106,7 +106,9 @@ function App() {
   // и автоматически созданной ссылкой на ВКС salutejazz.ru.
   const [meetingPrefill, setMeetingPrefill] = useState<MeetingPrefill | null>(null);
   const handleBookSlot = (roomName: string, startTime: string, endTime: string, date: string, link?: string) => {
-    setMeetingPrefill({ date, startTime, endTime, room: roomName, autoLink: true, link });
+    // autoLink=false + явная ссылка: форма открывается УЖЕ с полным адресом
+    // ВКС (?psw=...), пароль не нужно вводить на платформе вручную.
+    setMeetingPrefill({ date, startTime, endTime, room: roomName, autoLink: false, link });
     setCurrentPage("meetings");
   };
 

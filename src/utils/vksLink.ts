@@ -53,16 +53,29 @@ export function isVksLink(link?: string | null): boolean {
  * Собрать «правильную» ссылку для перехода в конференцию.
  * Платформа SaluteJazz принимает вход только по полному адресу:
  *   https://salutejazz.ru/calls/<код>?psw=<пароль>
- * Если пароль (psw) потерян (например, бот вернул ссылку без него или его
- * обрезал автоклиппер) — подставляем пароль конференции из карточки встречи,
- * иначе платформа показывает экран «Представьтесь / Введите правильный пароль».
+ * Порядок поиска пароля: ?psw= в самой ссылке → поле meetingPassword карточки
+ * встречи → любой фрагмент вида «...?psw=XXXX» внутри текстовых полей встречи
+ * (описание, примечания). Если нигде не найден — возвращаем ссылку как есть,
+ * и платформа покажет экран ввода пароля (так задумано для встреч с вручную
+ * созданными комнатами).
  */
-export function buildJoinUrl(link?: string | null, meetingPassword?: string | null): string {
+export function buildJoinUrl(
+  link?: string | null,
+  meetingPassword?: string | null,
+  extra?: { description?: string | null; note?: string | null } | null
+): string {
   if (!link) return "";
   try {
     const url = new URL(link);
     if (url.hostname === "salutejazz.ru" && !url.searchParams.get("psw")) {
-      const psw = (meetingPassword || "").trim();
+      let psw = (meetingPassword || "").trim() || extractPswFromAny(link);
+      if (!psw) {
+        // пароль могли сохранить в описании/примечании встречи (вставка ссылки целиком)
+        psw =
+          extractPswFromAny(extra?.description ?? "") ||
+          extractPswFromAny(extra?.note ?? "") ||
+          "";
+      }
       if (psw) url.searchParams.set("psw", psw);
     }
     return url.toString();

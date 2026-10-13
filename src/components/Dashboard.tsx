@@ -54,12 +54,14 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
   const createOpen = createPrefill !== null;
 
   // Единая точка: при любом предзаполнении форма ВКС открывается сразу.
-  // Ссылка salutejazz.ru создаётся автоматически при сохранении
-  // (Selenium-бот делает реальную комнату, фолбэк — локальная генерация).
+  // Ссылка salutejazz.ru создаётся ЛОКАЛЬНО сразу (поле видно заполненным,
+  // полный адрес с ?psw=) — встреча не может сохраниться без ссылки и платформа
+  // не просит вводить пароль вручную. Selenium-бот (живые комнаты) остаётся
+  // фолбэком в UserPanel.handleSave на случай пустого поля.
   // Зал фактически «занят» самой конференцией при сохранении — отдельного
   // API бронирования не требуется.
   const openCreatePanel = (p: MeetingPrefill) => {
-    setCreatePrefill(p.autoLink ? p : { ...p, link: p.link || generateVksLink() });
+    setCreatePrefill({ ...p, autoLink: false, link: p.link || generateVksLink() });
   };
 
   const handleDownloadIcs = async () => {
@@ -396,7 +398,7 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">
             <i className="fas fa-calendar-day text-purple-500 mr-2"></i>
-            Расписание аудиторий{todayMeetings.length > 0 ? ` • сегодня ${todayMeetings.length}` : ""}
+            Расписание аудиторий
           </h2>
           <div className="flex items-center gap-2">
             <button
