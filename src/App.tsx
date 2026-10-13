@@ -177,9 +177,10 @@ function App() {
               <i className="fas fa-video text-white text-lg"></i>
             </div>
             <div className={`${sidebarOpen ? "block" : "hidden md:block"}`}>
+              {/* Название продукта: без «нуля» — просто «ВКС». Подзаголовок «Расписание» убран,
+                  чтобы он не был виден у всех в сайдбаре. */}
               <div>
                 <h1 className="font-bold text-gray-800 dark:text-gray-100 text-lg">ВКС</h1>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Расписание</p>
               </div>
             </div>
           </div>

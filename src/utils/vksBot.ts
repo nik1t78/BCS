@@ -8,6 +8,18 @@ import { generateVksLink } from "./vksLink";
 
 const BOT_URL = (import.meta.env.VITE_VKS_BOT_URL as string) || "/vks-bot";
 
+/**
+ * Автосоздание ВКС через Selenium-бота ВЫКЛЮЧЕНО по умолчанию
+ * (VITE_VKS_AUTOBOT=1 включает обратно). Причина: контейнер vks-bot
+ * запускает Chromium и «съедает» ~0,8–1 ГБ RAM на время каждого создания
+ * ссылки. Ссылка в эталонном формате https://salutejazz.ru/calls/<код>?psw=<пароль>
+ * генерируется локально мгновенно и бесплатно (см. vksLink.ts), а комната на
+ * платформе создаётся автоматически при первом входе организатора по ссылке.
+ * Кнопка «Создать вручную» (открытие salutejazz.ru/calls/create во вкладке)
+ * работает независимо от этого флага.
+ */
+const AUTOBOT_ENABLED = import.meta.env.VITE_VKS_AUTOBOT === "1";
+
 export interface BotCreateResult {
   link: string;
   room?: string;
@@ -26,6 +38,11 @@ export async function createVksViaBot(
   name: string,
   timeoutMs = 75_000,
 ): Promise<BotCreateResult> {
+  if (!AUTOBOT_ENABLED) {
+    // Бот выключен (экономия RAM контейнера vks-bot) — мгновенная
+    // локальная генерация ссылки в эталонном формате платформы.
+    return { link: generateVksLink(), real: false };
+  }
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);

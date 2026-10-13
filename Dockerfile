@@ -12,6 +12,10 @@ COPY index.html vite.config.js tsconfig.json ./
 
 # NODE_OPTIONS — лимит heap, чтобы сборка не съедала всю оперативку
 ENV NODE_OPTIONS=--max-old-space-size=768
+# "1" — включить автосоздание ВКС через Selenium-бота (см. src/utils/vksBot.ts).
+# По умолчанию "0": ссылка генерируется локально, контейнер vks-bot не нужен.
+ARG VITE_VKS_AUTOBOT=0
+ENV VITE_VKS_AUTOBOT=$VITE_VKS_AUTOBOT
 RUN npm run build
 
 # Финальный крошечный образ-экспортёр (alpine, без node)

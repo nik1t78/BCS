@@ -24,6 +24,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # "1" — включать автосоздание ссылок через Selenium-бота (жрёт ~1 ГБ RAM).
+        # Значение берётся из .env (VITE_VKS_AUTOBOT), по умолчанию выключено.
+        VITE_VKS_AUTOBOT: "${VITE_VKS_AUTOBOT:-0}"
     container_name: vks-frontend-builder
     restart: "no"   # одноразовый: собрал dist -> volume -> завершился, RAM не держит
     deploy:
@@ -318,7 +322,14 @@ services:
 
   # VKS-бот (Selenium): автоматически создаёт встречи на salutejazz.ru.
   # Фронт обращается к нему через nginx: /vks-bot/ -> http://vks-bot:8090/
+  # ВАЖНО: сервис опциональный и НЕ запускается по умолчанию (profiles:
+  # ["bot"]). Chromium внутри контейнера занимает ~0,8–1 ГБ RAM на время
+  # каждого создания ссылки; без бота фронт мгновенно генерирует ссылку
+  # локально в том же формате платформы — всё работает так же.
+  # Включить бота: docker compose --profile bot up -d vks-bot
+  # + VITE_VKS_AUTOBOT=1 при сборке фронта.
   vks-bot:
+    profiles: ["bot"]
     build:
       context: ./vks-bot
       dockerfile: Dockerfile
@@ -327,8 +338,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1G
-          cpus: "2.0"
+          memory: 768M
+          cpus: "1.0"
+    shm_size: 256mb   # иначе Chromium падает в headless из-за маленького /dev/shm
     logging:
       driver: json-file
       options:
