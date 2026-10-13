@@ -1,14 +1,1 @@
-*.tar.gz
-node_modules/
-backend/vendor/
-backend/storage/logs/*.log
-backend/storage/app/backups/*
-docker/mysql/data/*
-deploy/*.zip
-*.old
-.env
-public/storage
-backend/public/storage
-bcs-optimized.bundle
-bcs-fixes.main.bundle
-bcs-full.bundle
+out/
