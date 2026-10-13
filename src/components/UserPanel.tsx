@@ -479,7 +479,9 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
     organizerId: user.id,
     participants: [user.id],
     participantEmails: [],
-    link: "",
+    // Ссылка ВКС генерируется СРАЗУ при создании формы: поле видно заполненным
+    // (полный адрес с ?psw=), и встреча не может сохраниться без ссылки.
+    link: generateVksLink(),
     room: "",
     status: "scheduled",
     reminderMinutes: getDefaultReminder(),
@@ -503,7 +505,10 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
         startTime: initialPrefill.startTime ?? emptyMeeting.startTime,
         endTime: initialPrefill.endTime ?? emptyMeeting.endTime,
         room: initialPrefill.room || emptyMeeting.room,
-        link: initialPrefill.autoLink ? "" : initialPrefill.link || "",
+        // autoLink всегда приоритетнее: при авто-сценариях (слот календаря /
+        // выбор зала) ссылка создаётся Selenium-ботом на salutejazz.ru при
+        // сохранении; локальная заглушка из prefill не должна её блокировать.
+        link: initialPrefill.autoLink ? "" : initialPrefill.link || generateVksLink(),
       };
     }
     return emptyMeeting;
@@ -526,7 +531,7 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
       // autoLink всегда приоритетнее: при авто-сценариях (слот календаря /
       // выбор зала) ссылка создаётся Selenium-ботом на salutejazz.ru при
       // сохранении; локальная заглушка из prefill не должна её блокировать.
-      link: p.autoLink ? "" : p.link || "",
+      link: p.autoLink ? "" : p.link || generateVksLink(),
     });
     setShowForm(true);
     // formOnly: НЕ уведомляем родителя о «потреблении» предзаполнения —

@@ -2,6 +2,13 @@ vendor
 # composer.lock НЕ игнорируем — он обязателен для детерминированной сборки образа
 .env
 !.env.dev.example
+# Симлинк storage:link (появляется на серверах, где запускали artisan storage:link).
+# Docker BuildKit не может отправить в контекст симлинк, указывающий наружу
+# (public/storage -> ../storage), и сборка падает с "failed to solve: invalid
+# file request public/storage". Исключаем его из контекста — внутри образа
+# симлинк не нужен (файлы отдаются через bind-mount ./backend).
+public/storage
+storage/app/backups/*
 storage/logs/*
 storage/framework/cache/data/*
 storage/framework/sessions/*
