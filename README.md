@@ -186,10 +186,17 @@ php artisan migrate                    # применить миграции (в
 Пересборки образов копят старые слои и кеш builder. Раз в неделю (или cron) запускайте:
 
 ```bash
-./scripts/docker-prune.sh        # безопасная чистка: stopped-контейнеры, <none>-образы, сети, кеш builder (остаток ≤2 ГБ)
+./scripts/docker-prune.sh   # мягкая чистка: stopped-контейнеры, <none>-образы, сети, кеш builder (остаток ≤2 ГБ)
+./scripts/docker-lean.sh    # полная «похуделка»: дополнительно удаляет ВСЕ неиспользуемые образы
+                            # (включая тяжёлый chromium из vks-bot), весь кеш сборки и контейнер бота.
+                            # Данные MySQL (bind-монтирование) и volume frontend_build НЕ трогаются.
 ```
 
-Пример cron (Linux): `0 4 * * 0 cd /opt/BCS-main && ./scripts/docker-prune.sh >> /var/log/vks-prune.log 2>&1`
+После `docker-lean.sh` потребление диска обычно падает с десятков гигабайт до 2–4 ГБ — остаются только
+рабочие образы nginx/php-fpm/mysql/redis. Значения «Disk: 24 GB» в панели — это накопленные слои старых
+пересборок и образ Chromium; скрипт убирает их за один запуск.
+
+Пример cron (Linux): `0 4 * * 0 cd /opt/BCS-main && ./scripts/docker-lean.sh >> /var/log/vks-prune.log 2>&1`
 Windows (планировщик задач): действие `powershell -Command "docker system prune -f"` раз в неделю.
 
 Жёсткие лимиты под конкретный сервер можно переопределить без правки основного файла:

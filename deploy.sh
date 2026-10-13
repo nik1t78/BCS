@@ -13,7 +13,8 @@ docker compose build frontend
 docker rm -f vks-bot 2>/dev/null || true
 docker compose up -d frontend
 
-# Почистить старые образы/кеш (безопасно: данные mysql в bind-монтировании не трогаются)
-./scripts/docker-prune.sh || true
+# Полная чистка Docker: контейнер бота, неиспользуемые образы, кеш сборки.
+# Безопасно: данные mysql (bind ./docker/mysql/data) и volume frontend_build не трогаются.
+./scripts/docker-lean.sh || true
 
 echo "Готово. Сайт обновлён: https://salutejazz.ru"
