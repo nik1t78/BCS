@@ -17,13 +17,15 @@ FROM php:8.4-fpm-alpine AS base
 # 3) if/unset: oniguruma и tidy живут только в репозитории community для части
 #    релизов alpine — если пакет не найден, сборка не должна падать.
 # 4) $PHPIZE_DEPS вместо жёсткого autoconf/g++/make/linux-headers.
-RUN sed -i 's|^\(https\?://.*/v[0-9.]*/main\).*$|\1 http://dl-cdn.alpinelinux.org/alpine/edge/community|' /etc/apk/repositories \
-    && apk add --no-cache --retry-times 5 --wait 10 \
+RUN ver="$(cat /etc/alpine-release)" \
+    && echo "http://dl-cdn.alpinelinux.org/alpine/v${ver}/community" >> /etc/apk/repositories \
+    && retry_apk() { i=0; until apk add --no-cache "$@"; do i=$((i+1)); [ "$i" -ge 4 ] && return 1; sleep 5; done; } \
+    && retry_apk \
         git curl icu-dev libpng-dev libjpeg-turbo-dev freetype-dev \
         libxml2-dev libzip-dev zip unzip mariadb-client \
         $PHPIZE_DEPS \
     && for p in oniguruma-dev oniguruma tidy-dev; do \
-         apk add --no-cache --retry-times 5 --wait 10 "$p" || true; \
+         retry_apk "$p" || true; \
        done \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j"$(nproc)" pdo_mysql mbstring exif pcntl bcmath gd zip opcache \
