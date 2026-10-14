@@ -11,10 +11,20 @@ FROM php:8.4-fpm-alpine AS base
 # QUEUE_CONNECTION=redis и CACHE_STORE=redis, а predis в composer.json нет
 # (дефолтный REDIS_CLIENT=phpredis). Без расширения падают rate-limiter
 # (throttle:api/throttle:login), SSE-стрим уведомлений и планировщик.
-RUN apk add --no-cache \
+# 1) main+community: на некоторых зеркалах/регионах пакет есть только в
+#    community — без этого apk падает с "unable to select packages".
+# 2) retry+wait: страхует от таймаутов сети (типичная причина exit code 1).
+# 3) if/unset: oniguruma и tidy живут только в репозитории community для части
+#    релизов alpine — если пакет не найден, сборка не должна падать.
+# 4) $PHPIZE_DEPS вместо жёсткого autoconf/g++/make/linux-headers.
+RUN sed -i 's|^\(https\?://.*/v[0-9.]*/main\).*$|\1 http://dl-cdn.alpinelinux.org/alpine/edge/community|' /etc/apk/repositories \
+    && apk add --no-cache --retry-times 5 --wait 10 \
         git curl icu-dev libpng-dev libjpeg-turbo-dev freetype-dev \
-        oniguruma-dev libxml2-dev libzip-dev zip unzip autoconf g++ make linux-headers \
-        mariadb-client \
+        libxml2-dev libzip-dev zip unzip mariadb-client \
+        $PHPIZE_DEPS \
+    && for p in oniguruma-dev oniguruma tidy-dev; do \
+         apk add --no-cache --retry-times 5 --wait 10 "$p" || true; \
+       done \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j"$(nproc)" pdo_mysql mbstring exif pcntl bcmath gd zip opcache \
     && pecl install redis \
