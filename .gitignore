@@ -1,2 +1,8 @@
-node_modules/
+*.patch
 dist/
+export/
+*.b64
+*.bundle
+*.tar.gz
+*.tar.xz
+node_modules/
