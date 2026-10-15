@@ -19,7 +19,7 @@ import MeetingMinutes from "./MeetingMinutes";
 import { SortMode, SORT_OPTIONS, sortMeetings, getMeetingGroup } from "../utils/meetingSort";
 import { exportMeetingToIcs } from "../utils/ics";
 import { getFavoriteIds, toggleFavorite, addFavorites } from "../utils/favorites";
-import { generateVksLink, normalizeVksLink, isVksLink, buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
+import { generateVksLink, normalizeVksLink, isVksLink, buildJoinUrl, extractPswFromAny, sanitizeVksLink, vksRoomCodeFromLink, vksPasswordFromLink } from "../utils/vksLink";
 import { createVksViaBot, openVksCreatePage } from "../utils/vksBot";
 
 /** Предзаполнение формы создания конференции (например, из блока «Свободные залы» на главной) */
@@ -62,6 +62,17 @@ const getDefaultReminder = (): number => {
   return 15;
 };
 
+// Копирование текста в буфер обмена (код конференции / пароль ВКС)
+const copyText = async (text: string): Promise<boolean> => {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    /* браузер не дал доступ к буферу */
+    return false;
+  }
+};
+
 interface CreateMeetingFormProps {
   formData: Meeting;
   setFormData: React.Dispatch<React.SetStateAction<Meeting>>;
@@ -73,13 +84,16 @@ interface CreateMeetingFormProps {
   editing?: boolean;
   /** Текст-индикатор («Создаём ссылку ВКС…») — показывается над кнопками */
   savingNote?: string | null;
+  /** Копирование в буфер обмена (код/пароль конференции) + зелёная подсказка */
+  copyToClipboard?: (text: string, okLabel?: string) => Promise<void> | void;
+  vksHint?: string | null;
   onCancel: () => void;
   handleSubmit: (e: React.FormEvent) => void;
 }
 
 /** Форма создания/редактирования конференции — вынесена из UserPanel,
  *  чтобы открываться и в разделе «Мои конференции», и в модалке на главной. */
-function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, conflicts, editing, savingNote, onCancel, handleSubmit }: CreateMeetingFormProps) {
+function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, conflicts, editing, savingNote, copyToClipboard, vksHint, onCancel, handleSubmit }: CreateMeetingFormProps) {
   const toggleParticipant = (userId: string) => {
     setFormData((f) => {
       const has = (f.participants ?? []).some((id) => String(id) === String(userId));
@@ -228,12 +242,31 @@ function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, c
                   </button>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Как создать вручную: нажмите «Создать вручную» → на salutejazz.ru нажмите
-                  «Создать видео встречу» → укажите Ваше имя и название встречи → «Создать и
-                  присоединиться» → «Пригласить участников» → скопируйте ссылку и вставьте в это
-                  поле (можно копировать приглашение целиком — лишнее обрежется). Ссылка
-                  сохранится как есть.
+                  Как создать вручную: «Создать вручную» → на salutejazz.ru «Создать видео
+                  встречу» → Ваше имя и название → «Создать и присоединиться» → «Пригласить
+                  участников» → скопируйте ссылку в это поле (лишнее из приглашения обрежется).
+                  Кнопка «Создать ВКС» генерирует ссылку мгновенно в формате платформы; комната
+                  создаётся автоматически при первом входу по ссылке.
                 </p>
+                {isVksLink(formData.link) && vksRoomCodeFromLink(sanitizeVksLink(formData.link)) && (
+                  <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
+                    <span className="px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-mono">
+                      Код конференции: {vksRoomCodeFromLink(sanitizeVksLink(formData.link))}@salutejazz.ru
+                    </span>
+                    <button type="button" onClick={() => copyToClipboard?.(vksRoomCodeFromLink(sanitizeVksLink(formData.link)) + "@salutejazz.ru", "Код конференции скопирован")}
+                      className="text-blue-600 dark:text-blue-400 hover:underline"><i className="fas fa-copy mr-1"></i>копировать код</button>
+                    {vksPasswordFromLink(sanitizeVksLink(formData.link)) && (
+                      <>
+                        <span className="px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-mono">
+                          Пароль: {vksPasswordFromLink(sanitizeVksLink(formData.link))}
+                        </span>
+                        <button type="button" onClick={() => copyToClipboard?.(vksPasswordFromLink(sanitizeVksLink(formData.link)) || "", "Пароль скопирован")}
+                          className="text-blue-600 dark:text-blue-400 hover:underline"><i className="fas fa-copy mr-1"></i>копировать пароль</button>
+                      </>
+                    )}
+                    {vksHint && <span className="text-emerald-600 dark:text-emerald-400"><i className="fas fa-check mr-1"></i>{vksHint}</span>}
+                  </div>
+                )}
                 {isVksLink(formData.link) && (
                   <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
                     <i className="fas fa-check-circle mr-1" aria-hidden="true"></i>
@@ -426,6 +459,14 @@ function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, c
 }
 
 export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillConsumed, formOnly, onCreated, onClose }: UserPanelProps) {
+  // короткая зелёная подсказка после копирования кода/пароля конференции
+  const [vksHint, setVksHint] = useState<string | null>(null);
+  const copyToClipboard = async (text: string, okLabel?: string) => {
+    if (await copyText(text) && okLabel) {
+      setVksHint(okLabel);
+      setTimeout(() => setVksHint((h) => (h === okLabel ? null : h)), 2500);
+    }
+  };
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -804,8 +845,16 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
       } finally {
         setSavingNote(null);
       }
+    } else if (isVksLink(payload.link)) {
+      // ВАЖНО: ссылка на нашу платформу (в т.ч. созданная вручную на
+      // salutejazz.ru, напр. /calls/09pa0i?psw=...) сохраняется КАК ЕСТЬ —
+      // только чистка от мусора и дописывание https://. Код комнаты и пароль
+      // НЕ меняем, иначе ссылка «не совпадает» с живой комнатой.
+      payload.link = sanitizeVksLink(payload.link);
     } else {
-      payload.link = normalizeVksLink(payload.link);
+      // посторонняя ссылка (zoom/webex/…) — сохраняем как есть; пустое поле
+      // ниже никогда не бывает (ссылка генерируется при открытии формы)
+      payload.link = payload.link.trim();
     }
 
     const saved = editingMeeting ? await updateMeeting(editingMeeting.id, payload) : await createMeeting(payload);
@@ -906,6 +955,8 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
             conflicts={conflicts}
             editing={!!editingMeeting}
             savingNote={savingNote}
+            copyToClipboard={copyToClipboard}
+            vksHint={vksHint}
             onCancel={closePanel}
             handleSubmit={handleSubmit}
           />
@@ -1247,6 +1298,25 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
                       участников» → скопируйте ссылку в это поле (лишнее из приглашения
                       обрежется). Ссылка сохранится как есть.
                     </p>
+                    {isVksLink(formData.link) && vksRoomCodeFromLink(sanitizeVksLink(formData.link)) && (
+                      <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
+                        <span className="px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-mono">
+                          Код конференции: {vksRoomCodeFromLink(sanitizeVksLink(formData.link))}@salutejazz.ru
+                        </span>
+                        <button type="button" onClick={() => copyToClipboard?.(vksRoomCodeFromLink(sanitizeVksLink(formData.link)) + "@salutejazz.ru", "Код конференции скопирован")}
+                          className="text-blue-600 dark:text-blue-400 hover:underline"><i className="fas fa-copy mr-1"></i>копировать код</button>
+                        {vksPasswordFromLink(sanitizeVksLink(formData.link)) && (
+                          <>
+                            <span className="px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-mono">
+                              Пароль: {vksPasswordFromLink(sanitizeVksLink(formData.link))}
+                            </span>
+                            <button type="button" onClick={() => copyToClipboard?.(vksPasswordFromLink(sanitizeVksLink(formData.link)) || "", "Пароль скопирован")}
+                              className="text-blue-600 dark:text-blue-400 hover:underline"><i className="fas fa-copy mr-1"></i>копировать пароль</button>
+                          </>
+                        )}
+                        {vksHint && <span className="text-emerald-600 dark:text-emerald-400"><i className="fas fa-check mr-1"></i>{vksHint}</span>}
+                      </div>
+                    )}
                     {isVksLink(formData.link) && (
                       <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
                         <i className="fas fa-check-circle mr-1" aria-hidden="true"></i>

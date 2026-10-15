@@ -15,7 +15,7 @@ import {
   rsvpAPI,
   trashAPI,
 } from "./api/client";
-import { normalizeVksLink } from "./utils/vksLink";
+import { normalizeVksLink, sanitizeVksLink, isVksLink } from "./utils/vksLink";
 import { forceRelogin } from "./api/client";
 import {
   User,
@@ -153,7 +153,11 @@ export function meetingToApi(data: any): any {
   // Пользователь мог вставить «salutejazz.ru/calls/...» без протокола или со
   // мусором после копирования — чиним до отправки, иначе 422 и «не сохраняется».
   if (typeof out.link === "string" && out.link.trim()) {
-    out.link = normalizeVksLink(out.link);
+    // ссылка на нашу ВКС сохраняется КАК ЕСТЬ (только чистка/https), иначе —
+    // канонизируется. ВАЖНО: normalizeVksLink дописывает СЛУЧАЙНЫЙ psw к
+    // ссылкам без пароля — это ломает живые комнаты (ссылка перестаёт
+    // совпадать с созданной на salutejazz.ru).
+    out.link = isVksLink(out.link) ? sanitizeVksLink(out.link) : normalizeVksLink(out.link);
   } else if ("link" in out) {
     out.link = null;
   }

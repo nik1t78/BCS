@@ -72,6 +72,15 @@ export function sanitizeVksLink(link?: string | null): string {
     }
     // http -> https для нашего хоста
     if (u.hostname === "salutejazz.ru" && u.protocol === "http:") u.protocol = "https:";
+    // Платформа SaluteJazz принимает и короткие коды комнат («09pa0i», 6 символов),
+    // не только эталонные 8-значные — никогда не отбрасываем их как «мусор».
+    const shortCode = s.match(/\/calls\/([A-Za-z0-9_-]{4,})/);
+    if (shortCode) {
+      u.pathname = "/calls/" + shortCode[1];
+      const pswMatch = s.match(/[?&]psw=([A-Za-z0-9_-]+)/i);
+      if (pswMatch) u.search = "?psw=" + pswMatch[1];
+      else if (!u.searchParams.get("psw")) u.search = "";
+    }
     // вырванную из текста ссылку («...?psw=XXXПароль:YYY») чиним: код комнаты —
     // ровно один сегмент /calls/<код>, пароль — валидный psw или остаток query
     if (u.hostname === "salutejazz.ru" && /^\/calls\/[^/]+$/.test(u.pathname) === false) {
@@ -98,11 +107,11 @@ export function sanitizeVksLink(link?: string | null): string {
 export function normalizeVksLink(link: string): string {
   const clean = sanitizeVksLink(link);
   if (!isVksLink(clean)) return clean || link;
-  const url = new URL(clean);
-  if (!url.searchParams.get("psw")) {
-    url.searchParams.set("psw", randomVksPassword());
-  }
-  return url.toString();
+  // ВАЖНО: код комнаты и пароль НЕ меняем. Раньше сюда мог попасть
+  // случайный psw при сохранении ссылки без пароля — из-за этого ссылка в
+  // календаре «не совпадала» с живой комнатой на salutejazz.ru. Пароль
+  // нужен только для новых автогенерируемых ссылок (generateVksLink).
+  return clean;
 }
 
 /** Проверка: ссылка ли это на нашу ВКС-платформу */
