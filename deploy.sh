@@ -48,6 +48,18 @@ docker compose build frontend
 docker rm -f vks-bot 2>/dev/null || true
 docker compose up -d frontend
 
+# Бэкенд: если менялся backend/ — пересобрать и ОБЯЗАТЕЛЬНО перезалить конфиг.
+# После config:cache Laravel читает env() только из config/*; устаревший кеш
+# с null-значениями — типичная причина «уведомления молчат».
+if git diff --quiet HEAD@{1} HEAD -- backend/ 2>/dev/null; then
+  echo "[deploy] backend не менялся — пересборка не требуется."
+else
+  echo "[deploy] изменения в backend/ — пересобираю и обновляю конфиг..."
+  docker compose up -d --build backend queue scheduler
+fi
+docker compose exec -T backend php artisan config:cache || true
+docker compose exec -T backend php artisan route:cache   || true
+
 # Полная чистка Docker: контейнер бота, неиспользуемые образы, кеш сборки.
 # Безопасно: данные mysql (bind ./docker/mysql/data) и volume frontend_build не трогаются.
 ./scripts/docker-lean.sh || true

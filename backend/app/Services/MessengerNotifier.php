@@ -22,7 +22,9 @@ class MessengerNotifier
 {
     public static function driver(): string
     {
-        return strtolower((string) env('MESSENGER', 'max'));
+        // config(), а не env() — см. MaxMessengerService::flagOn() (после
+        // config:cache env() возвращает null для переменных вне config/*).
+        return strtolower((string) (config('services.messenger', env('MESSENGER', 'max'))));
     }
 
     public static function isEnabled(): bool

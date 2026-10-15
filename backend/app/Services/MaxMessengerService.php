@@ -22,8 +22,36 @@ class MaxMessengerService
             return false;
         }
 
-        return filter_var(env('MAX_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
-            && !empty(env('MAX_BOT_TOKEN'));
+        return self::flagOn() && !empty(self::token());
+    }
+
+    /**
+     * ВАЖНО: читаем настройки через config(), а не env().
+     * После `php artisan config:cache` функция env() возвращает null для всех
+     * переменных, не описанных в config/* — из-за этого MAX-уведомления
+     * «молчали» даже при MAX_ENABLED=true и заданном токене.
+     */
+    public static function flagOn(): bool
+    {
+        return filter_var(
+            config('services.max.enabled', env('MAX_ENABLED', false)),
+            FILTER_VALIDATE_BOOLEAN
+        );
+    }
+
+    public static function token(): string
+    {
+        return (string) config('services.max.token', env('MAX_BOT_TOKEN', ''));
+    }
+
+    public static function apiUrl(): string
+    {
+        return rtrim((string) config('services.max.api_url', env('MAX_API_URL', 'https://maxapi.ru/v1')), '/');
+    }
+
+    public static function botLink(): string
+    {
+        return (string) config('services.max.bot_link', env('MAX_BOT_LINK', 'https://max.ru/masterbot'));
     }
 
     /**
@@ -37,9 +65,9 @@ class MaxMessengerService
             return false;
         }
 
-        $url = rtrim((string) env('MAX_API_URL', 'https://maxapi.ru/v1'), '/') . '/sendmessage';
+        $url = self::apiUrl() . '/sendmessage';
         $payload = ['chat_id' => $chatId, 'text' => $text];
-        $headers = ['Authorization' => 'Bearer ' . env('MAX_BOT_TOKEN')];
+        $headers = ['Authorization' => 'Bearer ' . self::token()];
 
         try {
             $response = Http::timeout(5)->withHeaders($headers)->post($url, $payload);
@@ -69,8 +97,8 @@ class MaxMessengerService
             return false;
         }
 
-        $url = rtrim((string) env('MAX_API_URL', 'https://maxapi.ru/v1'), '/') . '/upload_file';
-        $headers = ['Authorization' => 'Bearer ' . env('MAX_BOT_TOKEN')];
+        $url = self::apiUrl() . '/upload_file';
+        $headers = ['Authorization' => 'Bearer ' . self::token()];
 
         try {
             $response = Http::timeout(20)

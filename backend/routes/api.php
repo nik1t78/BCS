@@ -158,13 +158,14 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // Интеграция с мессенджером MAX (max.ru): deep-link на чат бота для уведомлений
     Route::get('/max/status', function (\Illuminate\Http\Request $request) {
         // enabled = реально рабочий режим (флаг И заданный токен), как в MaxMessengerService::isEnabled().
-        // linked = есть ли у пользователя колонка привязки (миграция выполнена).
+        // ВАЖНО: читаем через App\Services\MaxMessengerService (он использует config()),
+        // а не env() напрямую — после config:cache env() вернул бы null и статус был бы ложным.
         return response()->json([
             'enabled' => \App\Services\MaxMessengerService::isEnabled(),
-            'flagOn' => filter_var(env('MAX_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
-            'tokenSet' => !empty(env('MAX_BOT_TOKEN')),
+            'flagOn' => \App\Services\MaxMessengerService::flagOn(),
+            'tokenSet' => \App\Services\MaxMessengerService::token() !== '',
             'linked' => isset($request->user()->max_chat_id),
-            'botLink' => env('MAX_BOT_LINK', 'https://max.ru/id0000000000_bot'),
+            'botLink' => \App\Services\MaxMessengerService::botLink(),
             'linkedChatId' => $request->user()->max_chat_id,
         ]);
     });
