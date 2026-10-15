@@ -17,6 +17,7 @@ import {
   trashAPI,
 } from "./api/client";
 import { normalizeVksLink } from "./utils/vksLink";
+import { forceRelogin } from "./api/client";
 import {
   User,
   Meeting,
@@ -82,8 +83,10 @@ export async function register(
 export async function logout(): Promise<void> {
   try {
     await authAPI.logout();
-  } catch (error) {
-    console.error("Logout error:", error);
+  } catch (error: any) {
+    // Сессия могла истечь заранее — сервер ответит 401, это штатно:
+    // локальные данные всё равно очищаются в finally. Не логируем как ошибку.
+    if (error?.status !== 401) console.error("Logout error:", error);
   } finally {
     localStorage.removeItem("vks_auth");
   }
@@ -336,7 +339,7 @@ export async function getMeetings(params?: {
     return await loadAllMeetingPages(params);
   } catch (error: any) {
     // 401 — истёкший токен Sanctum: показываем понятный экран входа, а не пустой список
-    if (String(error?.message ?? "").includes("401")) forceRelogin();
+    if (error?.status === 401 || String(error?.message ?? "").includes("Unauthenticated")) forceRelogin();
     console.error("Get meetings error:", error);
     return [];
   }
@@ -344,16 +347,9 @@ export async function getMeetings(params?: {
 
 // При 401 на любой запрос чистим локальные данные авторизации — App.tsx
 // перерендерится на страницу входа (без «белого экрана»/вечной загрузки).
-let reloginShown = false;
-function forceRelogin() {
-  if (reloginShown) return;
-  reloginShown = true;
-  localStorage.removeItem("vks_auth");
-  window.dispatchEvent(new Event("vks-unauthorized"));
-  setTimeout(() => {
-    reloginShown = false;
-  }, 3000);
-}
+// Реализация вынесена в api/client.forceRelogin (вызывается из базового
+// запроса при неудачном refresh); здесь оставлен ре-экспорт для совместимости.
+export { forceRelogin };
 
 export async function createMeeting(data: any): Promise<Meeting | null> {
   try {

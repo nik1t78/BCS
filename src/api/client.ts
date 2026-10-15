@@ -47,6 +47,21 @@ const tryRefreshToken = (): Promise<boolean> => {
   return refreshPromise;
 };
 
+// При 401 от API чистим локальные данные авторизации — App.tsx слушает это
+// событие и показывает экран входа. Делается ДО попытки refresh и независимо
+// от её результата, поэтому сессия никогда не «зависает» в состоянии
+// «пользователь как будто залогинен, а все запросы падают с Unauthenticated».
+let reloginShown = false;
+export function forceRelogin() {
+  if (reloginShown) return;
+  reloginShown = true;
+  localStorage.removeItem("vks_auth");
+  window.dispatchEvent(new Event("vks-unauthorized"));
+  setTimeout(() => {
+    reloginShown = false;
+  }, 3000);
+}
+
 // Базовая функция для запросов
 const apiRequest = async (endpoint: string, options: RequestInit = {}, _retried = false): Promise<any> => {
   const token = getToken();
@@ -69,10 +84,15 @@ const apiRequest = async (endpoint: string, options: RequestInit = {}, _retried 
       headers,
     });
 
-    // Истёк access-токен — один раз пробуем обновить его по refresh-токену
+    // Истёк access-токен — один раз пробуем обновить его по refresh-токену.
+    // Если обновить не удалось (refresh-токена нет/истёк/сервер отверг) —
+    // сразу чистим сессию и показываем экран входа: иначе пользователь
+    // остаётся «залогиненным», а каждый запрос падает с 401 Unauthenticated
+    // (именно это наблюдали на страницах встреч/уведомлений).
     if (response.status === 401 && !_retried) {
       const refreshed = await tryRefreshToken();
       if (refreshed) return apiRequest(endpoint, options, true);
+      forceRelogin();
     }
 
     if (!response.ok) {
