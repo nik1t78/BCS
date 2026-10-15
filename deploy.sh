@@ -17,24 +17,30 @@ fi
 # Если нули остались (гибрид UTF-8 + UTF-16LE-хвост) — чиним БЕЗ Python
 # (на Windows python может быть Store-заглушкой и «молча» убивать скрипт):
 # 1) powershell -File ./fix-env.ps1  (нативный способ для Windows),
-# 2) fолбэк — ./fix-env.sh (bash+od+dd+iconv, работает в Git Bash и Linux).
-if grep -q $'\x00' .env 2>/dev/null; then
+# 2) фолбэк — ./fix-env.sh (bash+od+dd+iconv, работает в Git Bash и Linux).
+# ВАЖНО: проверка делается через od, т.к. grep по '\x00' в Git Bash на Windows
+# срабатывает ненадёжно (ложные «нули остались», хотя файл уже чистый).
+has_nulls() { od -c "$1" 2>/dev/null | grep -q '\\0'; }
+
+if has_nulls .env; then
   echo "[deploy] в .env нулевые байты (UTF-16 от PowerShell) — чищу через fix-env.ps1..."
   if command -v powershell.exe >/dev/null 2>&1; then
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./fix-env.ps1 || true
   fi
 fi
-if grep -q $'\x00' .env 2>/dev/null; then
-  echo "[deploy]powershell не помог/недоступен — чищу через fix-env.sh (bash/iconv)..."
+if has_nulls .env; then
+  echo "[deploy] powershell не помог/недоступен — чищу через fix-env.sh (bash/iconv)..."
   chmod +x fix-env.sh 2>/dev/null || true
   ./fix-env.sh || true
 fi
-if grep -q $'\x00' .env 2>/dev/null; then
-  echo "[deploy] ОШИБКА: .env всё ещё битый. Почините вручную:"
-  echo "  в PowerShell:  powershell -ExecutionPolicy Bypass -File .\\fix-env.ps1"
+if has_nulls .env; then
+  echo "[deploy] ОШИБКА: .env всё ещё содержит нулевые байты. Почините вручную:"
+  echo "  в PowerShell из папки проекта:  powershell -ExecutionPolicy Bypass -File .\\fix-env.ps1"
+  echo "  затем проверьте: docker compose config --quiet"
   echo "  либо скопируйте .env.example в .env и впишите свои значения (NOTEPAD, СОХРАНИТЬ КАК -> кодировка UTF-8)"
   exit 1
 fi
+echo "[deploy] .env чистый (UTF-8, без нулевых байтов)."
 
 # Пересобрать только фронтенд (nginx отдаёт новый dist) — бэкенд/БД не трогаем
 docker compose build frontend

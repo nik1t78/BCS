@@ -1,12 +1,12 @@
 #!/bin/bash
 # Починка .env без Python (Git Bash / MSYS на Windows, Linux).
-# PowerShell дописывает в конец .env кусок в UTF-16LE (нулевые байты) —
-# docker compose падает: "unexpected character \\x00". Пересобираем файл в UTF-8(LF).
+# PowerShell дописывает/перезаписывает .env в UTF-16LE (нулевые байты) —
+# docker compose падает: "unexpected character \x00". Пересобираем файл в UTF-8(LF).
 set -e
 cd "$(dirname "$0")"
 [ -f .env ] || { echo "[fix-env] .env не найден"; exit 1; }
 
-has_nulls() { tr -d -c '\000' < "$1" | wc -c | grep -qv '^0$'; }
+has_nulls() { [ "$(tr -d -c '\000' < "$1" | wc -c)" != "0" ]; }
 if ! has_nulls .env; then
   # нулей нет — просто нормализуем CRLF и BOM
   sed -i -e 's/\r$//' -e '1s/^\xEF\xBB\xBF//' .env
@@ -16,47 +16,59 @@ fi
 
 bak=".env.bak.$(date +%s)"; cp .env "$bak"; echo "[fix-env] резервная копия: $bak"
 
-# Универсальный способ без Python: делим файл по ПЕРВОМУ нулевому байту.
-# Всё до него — легитимная UTF-8-часть (нули в UTF-8 для ASCII-текста невозможны);
-# всё после — кусок, записанный PowerShell в UTF-16LE: вырезаем из него нули
-# (tr -d), получаем ровно правильный текст ("V\0I\0T\0E..." -> "VITE_...").
-# Важно: позиция считается побайтово через index()+ORS='' (awk не печатает \0,
-# поэтому индекс берём из stdout отдельно).
-# ORS='' ОБЯЗАТЕЛЕН: иначе awk добавляет перевод строки к числу, а $() его
-# отбрасывает — смещение оказывается на 1 байт больше и «съедает» первый символ
-# UTF-16-хвоста (V -> "ITE_..."), оставляя валидный KEY= с мусорным значением.
-NP=$(awk '{p=index($0,"\0"); if(p>0){print (NR-1)*length($0)+p-1; exit}}' ORS='' .env)
-if [ -n "$NP" ]; then
+# Позиция ПЕРВОГО нулевого байта через od (побайтово, без засоса awk по \n):
+# всё до него — легитимный ASCII/UTF-8 (нули там невозможны), после — UTF-16LE.
+NP=$(od -An -v -tu1 -w1 .env | tr -s ' \n' '\n' | grep -v '^$' | grep -nx '0' | head -1 | cut -d: -f1)
+NP=$(( ${NP:-1} - 1 ))   # grep -n нумерует с 1 -> байтовое смещение
+
+head -c "$NP" .env > .env.head
+tail -c +"$((NP+1))" .env > .env.tail16
+
+# Декодируем хвост из UTF-16LE в UTF-8 (iconv есть в Git Bash и Linux).
+decode_tail() {
+  if command -v iconv >/dev/null 2>&1; then
+    iconv -f UTF-16LE -t UTF-8 .env.tail16 2>/dev/null | tr -d '\r' > .env.tail || : > .env.tail
+  else
+    tr -d '\000\r' < .env.tail16 > .env.tail
+  fi
+}
+decode_tail
+
+# Если хвост НЕ чётной длины или декодирование дало мусор/нули — сдвигаем
+# границу на 1 байт назад (ноль мог принадлежать последнему символу UTF-16LE
+# при нечётном «шуме») и пробуем снова.
+if [ $(( $(wc -c < .env.tail16) % 2 )) -ne 0 ] || has_nulls .env.tail; then
+  head -c "$((NP))" .env > /dev/null 2>&1 || true
+  tail -c +1 .env > /dev/null 2>&1 || true
+  # переоткрываем голову короче на 1 байт, хвост длиннее на 1
+  NP=$((NP - 1))
   head -c "$NP" .env > .env.head
-  tail -c +"$((NP+1))" .env | tr -d '\000\r' > .env.tail
-  # если хвост не заканчивается переводом строки — добавим, чтобы склейка была чистой
-  [ -s .env.tail ] && [ "$(tail -c 1 .env.tail)" != "" ] && echo >> .env.tail
-  cat .env.head .env.tail > .env.tmp
-  rm -f .env.head .env.tail
-else
-  # запасной вариант: просто вырезать все нули
-  tr -d '\000' < .env > .env.tmp
+  tail -c +"$((NP+1))" .env > .env.tail16
+  decode_tail
 fi
 
-# PowerShell "echo ... >> .env" часто НЕ добавляет перевод строки перед
-# допиской — чиним склейку вида "...=0VITE_..." -> две отдельные строки.
+# если хвост не заканчивается переводом строки — добавим, чтобы склейка была чистой
+if [ -s .env.tail ] && [ "$(tail -c 1 .env.tail)" != "" ]; then printf '\n' >> .env.tail; fi
+cat .env.head .env.tail > .env.tmp
+rm -f .env.head .env.tail .env.tail16
+
+# PowerShell "echo ... >> .env" часто НЕ добавляет перевод строки перед допиской —
+# чиним склейку вида "...=0VITE_..." -> две отдельные строки.
 sed -i -e 's/=[A-Za-z0-9_]*\(VITE_[A-Z_]*=\)/=\n\1/g' .env.tmp
 
 # нормализация концов строк + BOM
 sed -i -e 's/\r$//' -e '1s/^\xEF\xBB\xBF//' .env.tmp
 
-# дедупликация переменных: если ключ уже встречен со НЕПУСТЫМ значением —
-# пропускаем повторное определение (поздние дописки PowerShell перекрывали
-# боевые значения пустыми/мусорными)
-# Дедупликация переменных в два прохода (без GNU-расширений awk — работает
+# дедупликация переменных в два прохода (без GNU-расширений awk — работает
 # и на mawk/busybox в Git Bash):
-#   проход 1: для каждого ключа берётся ПЕРВОЕ непустое значение;
+#   проход 1: для каждого ключа берётся ПОСЛЕДНЕЕ непустое значение
+#            (поздняя дописка PowerShell = осознанное изменение значения);
 #   проход 2: строка "KEY=val" заменяется на "KEY=<лучшее>", повторы удаляются.
 awk -F= '
   !/^[[:space:]]*#/ && !/^[[:space:]]*$/ && index($0,"=")>0 {
     key=$1; sub(/^[[:space:]]+/,"",key); sub(/[[:space:]]+$/,"",key)
     val=substr($0, length($1)+2)
-    if (!(key in best) && val!="") best[key]=val
+    if (val!="") best[key]=val
   }
   { lines[NR]=$0 }
   END {
@@ -73,7 +85,8 @@ awk -F= '
 ' .env.tmp > .env.tmp2 && mv .env.tmp2 .env.tmp
 
 if has_nulls .env.tmp; then
-  echo "[fix-env] ОШИБКА: нули остались после конвертации"
+  echo "[fix-env] ОШИБКА: нули остались после конвертации. Восстановите из $bak"
+  echo "[fix-env] и пересохраните .env в UTF-8 (Блокнот: Сохранить как -> Кодировка UTF-8)."
   exit 1
 fi
 mv .env.tmp .env

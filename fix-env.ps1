@@ -1,57 +1,70 @@
-# Починка .env: PowerShell дописал в конец файла кусок в UTF-16LE (нулевые байты),
-# из-за чего docker compose падает: "unexpected character \x00".
-# Запуск из папки проекта:  powershell -ExecutionPolicy Bypass -File .\fix-env.ps1
+﻿# -*- requires: saved as UTF-8 WITH BOM so PowerShell 5.1 reads Cyrillic correctly -*-
+# Fix .env: PowerShell appended a UTF-16LE chunk (null bytes) -> docker compose fails
+# with "unexpected character \x00". This script converts the whole file to clean UTF-8 (LF).
+# Run from project folder:  powershell -ExecutionPolicy Bypass -File .\fix-env.ps1
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
 $p = Join-Path (Get-Location) '.env'
-if (-not (Test-Path $p)) { Write-Host "[fix-env] .env не найден в $(Get-Location)" -ForegroundColor Red; exit 1 }
+if (-not (Test-Path $p)) { Write-Host "[fix-env] .env not found in $(Get-Location)" -ForegroundColor Red; exit 1 }
 
 $bak = "$p.bak.$([DateTimeOffset]::Now.ToUnixTimeSeconds())"
 Copy-Item $p $bak
-Write-Host "[fix-env] резервная копия: $bak"
+Write-Host "[fix-env] backup: $bak"
 
 $bytes = [System.IO.File]::ReadAllBytes($p)
 
-# Вариант A: весь файл UTF-16 (с BOM FF FE или без)
-$asU16 = [System.Text.Encoding]::Unicode.GetString($bytes)
-if ($asU16 -match 'SITE_IP|APP_|DB_' -and $asU16.IndexOf([char]0) -lt 0) {
-    $txt = $asU16
+# strip UTF-8 BOM if present
+$start = 0
+if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { $start = 3 }
+
+# find first null byte (start of the UTF-16LE tail written by PowerShell Add-Content)
+$idx = -1
+for ($i = $start; $i -lt $bytes.Length; $i++) {
+    if ($bytes[$i] -eq 0) { $idx = $i; break }
+}
+
+$txt = ''
+if ($idx -lt 0) {
+    # no nulls at all -> file is already fine, just normalize line endings
+    $txt = [System.Text.Encoding]::UTF8.GetString($bytes, $start, $bytes.Length - $start)
 } else {
-    # Вариант B: гибрид — ищем границу «последний перевод строки перед серией нулей»
-    $idx = -1
-    for ($i = 0; $i -lt $bytes.Length - 3; $i++) {
-        if ($bytes[$i] -eq 0 -and $bytes[$i+1] -eq 0 -and $bytes[$i+2] -eq 0 -and $bytes[$i+3] -eq 0) { $idx = $i; break }
-    }
-    if ($idx -lt 0) {
-        # нулей нет — файл уже нормальный, просто приведём CRLF->LF и уберём BOM
-        $txt = [System.Text.Encoding]::UTF8.GetString($bytes).TrimStart([char]0xFEFF)
+    # hybrid: UTF-8 head + UTF-16LE tail. The head must end on a newline before nulls.
+    $headLen = $idx
+    # trim head back to the last complete line
+    $headStr = [System.Text.Encoding]::UTF8.GetString($bytes, $start, $headLen - $start)
+    $nl = $headStr.LastIndexOf("`n")
+    if ($nl -ge 0) {
+        $cutAbs = $start + $nl + 1
     } else {
-        $utf8Part = [System.Text.Encoding]::UTF8.GetString($bytes[0..($idx-1)])
-        # отрезаем хвост так, чтобы он был чётной длины для UTF-16LE:
-        # идём назад от $idx до предыдущего \n (0x0A) в UTF-8-части
-        $nl = $utf8Part.LastIndexOf("`n")
-        if ($nl -ge 0) {
-            $cutUtf8 = $utf8Part.Substring(0, $nl + 1)
-            $tailBytes = $bytes[($cutUtf8.Length)..($bytes.Length-1)]
-            if ($tailBytes.Length % 2 -ne 0) { $tailBytes = $tailBytes[0..($tailBytes.Length-2)] }
-            $tail = [System.Text.Encoding]::Unicode.GetString($tailBytes)
-            $txt = $cutUtf8 + $tail
-        } else {
-            $txt = $utf8Part + ($bytes[$idx..($bytes.Length-1)] | ForEach-Object { if ($_ -ne 0) { [char]$_ } }) -join ''
-        }
+        $cutAbs = $start
+    }
+    $txt = [System.Text.Encoding]::UTF8.GetString($bytes, $start, $cutAbs - $start)
+
+    # decode the UTF-16LE tail (skip possible CRLF bytes glued before it)
+    $tailBytes = @($bytes[$cutAbs..($bytes.Length-1)])
+    if ($tailBytes.Count % 2 -ne 0) { $tailBytes = @($tailBytes[0..($tailBytes.Count-2)]) }
+    if ($tailBytes.Count -gt 0) {
+        $tail = [System.Text.Encoding]::Unicode.GetString([byte[]]$tailBytes)
+        $txt += $tail
     }
 }
 
-# финальная нормализация: убираем все нули/BOM/CR, лишние пустые строки
+# final normalization: remove all NUL/BOM/CR, collapse blank lines
 $txt = $txt.Replace([string][char]0, '').Replace([string][char]0xFEFF, '')
 $txt = $txt -replace "`r`n", "`n" -replace "`r", "`n"
 $txt = $txt.Trim() + "`n"
 
 [System.IO.File]::WriteAllText($p, $txt, (New-Object System.Text.UTF8Encoding($false)))
 
-# проверка
+# verify
 $check = [System.IO.File]::ReadAllBytes($p)
-$bad = $check | Where-Object { $_ -eq 0 }
-if ($bad.Count -gt 0) { Write-Host "[fix-env] ОШИБКА: нули остались ($($bad.Count) шт.)" -ForegroundColor Red; exit 1 }
-Write-Host "[fix-env] OK: .env пересохранён в UTF-8 (LF), нулей нет."
-Write-Host "[fix-env] Проверьте содержимое: notepad .env  (строки VITE_VKS_AUTOBOT / BOT_TOKENS должны читаться)"
-Write-Host "[fix-env] Затем: docker compose config --quiet  &&  docker compose build frontend  &&  docker compose up -d frontend"
+$bad = @($check | Where-Object { $_ -eq 0 })
+if ($bad.Count -gt 0) { Write-Host "[fix-env] ERROR: nulls remain ($($bad.Count))" -ForegroundColor Red; exit 1 }
+if ((Get-Content $p -Raw) -notmatch 'SITE_IP|APP_ENV|DB_') {
+    Write-Host "[fix-env] WARNING: .env looks empty/corrupted after fix. Restore from backup: $bak" -ForegroundColor Yellow
+    exit 1
+}
+Write-Host "[fix-env] OK: .env re-saved as UTF-8 (LF), no null bytes."
+Write-Host "[fix-env] Check content: notepad .env  (lines VITE_VKS_AUTOBOT / BOT_TOKENS must be readable)"
+Write-Host "[fix-env] Then run deploy again:  bash ./deploy.sh"
