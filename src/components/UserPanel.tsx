@@ -871,13 +871,27 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
     // который реально заходит на https://salutejazz.ru/calls/create, вводит
     // название встречи и имя организатора и возвращает живую ссылку.
     // Если бот недоступен — генерируем ссылку локально в том же формате.
+    // ВАЖНО: если ссылка уже есть в поле, но она НЕ ведёт на нашу платформу
+    // (например, вставлен текст приглашения или посторонний URL при авто-
+    // сценарии), заменяем её автоматически созданной — иначе встреча
+    // сохранялась со «странным» адресом вместо рабочей ссылки ВКС.
     if (!payload.link) {
       setSavingNote("Создаём ссылку ВКС на salutejazz.ru…");
       try {
         const botRes = await createVksViaBot(payload.title || "Встреча", user.name);
         payload.link = botRes.link;
+      } catch {
+        payload.link = generateVksLink();
       } finally {
         setSavingNote(null);
+      }
+    } else if (!isVksLink(payload.link) && !/^https?:\/\//i.test(String(payload.link).trim())) {
+      // не ссылка вовсе (обрывки текста из буфера обмена) — создаём новую
+      try {
+        const botRes = await createVksViaBot(payload.title || "Встреча", user.name);
+        payload.link = botRes.link;
+      } catch {
+        payload.link = generateVksLink();
       }
     } else if (isVksLink(payload.link)) {
       // ВАЖНО: ссылка на нашу платформу (в т.ч. созданная вручную на

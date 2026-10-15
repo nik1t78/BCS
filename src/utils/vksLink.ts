@@ -169,11 +169,17 @@ export function extractPswFromAny(value?: string | null): string | null {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
-/** Код комнаты из готовой ссылки (для отображения в интерфейсе) */
+/** Код комнаты из готовой ссылки (для отображения в интерфейсе).
+ *  ВАЖНО: ссылка могла быть вставлена без протокола («salutejazz.ru/calls/xxx»)
+ *  или с хвостом текста («...?psw=XXX Пароль: YYY»), поэтому сначала чистим
+ *  её sanitizeVksLink и добавляем схему, если её нет — иначе new URL падает
+ *  и код возвращался null (приглашение не показывалось / было «не то»). */
 export function vksRoomCodeFromLink(link?: string | null): string | null {
   if (!isVksLink(link)) return null;
   try {
-    const path = new URL(link as string).pathname; // /calls/<код>
+    const clean = sanitizeVksLink(link);
+    const full = /^https?:\/\//i.test(clean) ? clean : "https://" + clean.replace(/^\/\//, "");
+    const path = new URL(full).pathname; // /calls/<код>
     const code = path.split("/").filter(Boolean).pop();
     return code || null;
   } catch {
@@ -181,13 +187,16 @@ export function vksRoomCodeFromLink(link?: string | null): string | null {
   }
 }
 
-/** Пароль (?psw=...) из готовой ссылки */
+/** Пароль (?psw=...) из готовой ссылки (также через очистку ссылки) */
 export function vksPasswordFromLink(link?: string | null): string | null {
   if (!isVksLink(link)) return null;
   try {
-    return new URL(link as string).searchParams.get("psw");
+    const clean = sanitizeVksLink(link);
+    const full = /^https?:\/\//i.test(clean) ? clean : "https://" + clean.replace(/^\/\//, "");
+    const psw = new URL(full).searchParams.get("psw");
+    return psw || extractPswFromAny(clean);
   } catch {
-    return null;
+    return extractPswFromAny(String(link));
   }
 }
 

@@ -14,17 +14,46 @@ if command -v iconv >/dev/null 2>&1 && file .env 2>/dev/null | grep -qi 'UTF-16'
   cp .env ".env.bak.$(date +%s)"
   iconv -f UTF-16LE -t UTF-8 .env | tr -d '\r' > .env.tmp && mv .env.tmp .env
 fi
-# Если iconv нет/не сработало — python-фолбэк (читает UTF-16 по BOM, пишет UTF-8)
+# Если iconv нет/не сработало — python-фолбэк (проверен на 3 сценариях:
+# гибрид UTF-8+UTF-16LE, весь файл UTF-16 с BOM, хвост после двойного \n).
 if grep -q $'\x00' .env 2>/dev/null; then
-  echo "[deploy] в .env остались нулевые байты — чищу через python..."
+  echo "[deploy] в .env есть нулевые байты (UTF-16 от PowerShell) — чищу через python..."
   python3 - <<'PY'
+import re
 raw = open('.env','rb').read()
-try:
-    txt = raw.decode('utf-16')          # если весь файл UTF-16 (с BOM или без)
-except Exception:
-    txt = raw.decode('utf-8', 'ignore') # иначе просто вырезаем мусор
-txt = txt.replace('\x00','').replace('\r\n','\n')
-open('.env','w',encoding='utf-8',newline='\n').write(txt if txt.endswith('\n') else txt+'\n')
+
+def fix_env(raw):
+    # 1) чистый UTF-8 без нулей
+    if b'\x00' not in raw:
+        return raw.decode('utf-8', 'ignore')
+    # 2) граница utf8|utf16: последний \n перед серией >=4 нулей, дальше блок
+    #    чётной длины декодируется как UTF-16LE без потерь (PowerShell «echo >>»
+    #    дописывает именно так: UTF-8-файл + кусок UTF-16LE без BOM)
+    for mm in re.finditer(rb'\x00{4,}', raw):
+        nl = raw.rfind(b'\n', 0, mm.start())
+        if nl == -1 or (len(raw) - (nl + 1)) % 2:
+            continue
+        try:
+            s = raw[nl+1:].decode('utf-16le')
+            if '\x00' not in s and sum(1 for c in s if ord(c) < 9 or ord(c) in (11,12)) <= 2:
+                return raw[:nl+1].decode('utf-8', 'ignore') + s
+        except Exception:
+            pass
+    # 3) весь файл UTF-16 (с BOM или без)
+    for enc in ('utf-16', 'utf-16le'):
+        try:
+            s = raw.decode(enc)
+            if '\x00' not in s and any(k in s for k in ('VITE_', 'APP_', 'DB_')):
+                return s
+        except Exception:
+            pass
+    # 4) крайний случай: просто выбросить нули
+    return raw.replace(b'\x00', b'').decode('utf-8', 'ignore')
+
+txt = fix_env(raw)
+txt = txt.replace('\ufeff','').replace('\x00','').replace('\r\n','\n').replace('\r','\n')
+open('.env','w',encoding='utf-8',newline='\n').write(txt.strip()+'\n')
+print('[deploy] .env пересохранён в UTF-8 (LF)')
 PY
 fi
 grep -q $'\x00' .env 2>/dev/null && { echo "[deploy] ОШИБКА: .env всё ещё битый — почините вручную"; exit 1; } || true
