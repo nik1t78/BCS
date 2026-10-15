@@ -32,19 +32,28 @@ sed -i -e 's/\r$//' -e '1s/^\xEF\xBB\xBF//' .env.tmp
 # дедупликация переменных: если ключ уже встречен со НЕПУСТЫМ значением —
 # пропускаем повторное определение (поздние дописки PowerShell перекрывали
 # боевые значения пустыми/мусорными)
-awk '
-  /^[[:space:]]*#/ || /^[[:space:]]*$/ { out[n++]=($0=="")?"":$0; next }
-  {
-    eq = index($0, "=")
-    if (eq > 0) {
-      key = substr($0, 1, eq-1)
-      val = substr($0, eq+1)
-      if (key in seen && seen[key] != "") { next }        # уже задано непустым — игнор
-      if (!(key in seen) || seen[key]=="") { seen[key]=val }
-    }
-    out[n++]=$0
+# Дедупликация переменных в два прохода (без GNU-расширений awk — работает
+# и на mawk/busybox в Git Bash):
+#   проход 1: для каждого ключа берётся ПЕРВОЕ непустое значение;
+#   проход 2: строка "KEY=val" заменяется на "KEY=<лучшее>", повторы удаляются.
+awk -F= '
+  !/^[[:space:]]*#/ && !/^[[:space:]]*$/ && index($0,"=")>0 {
+    key=$1; sub(/^[[:space:]]+/,"",key); sub(/[[:space:]]+$/,"",key)
+    val=substr($0, length($1)+2)
+    if (!(key in best) && val!="") best[key]=val
   }
-  END { for (i=0;i<n;i++) print out[i] "\n" }
+  { lines[NR]=$0 }
+  END {
+    for (i=1;i<=NR;i++) {
+      $0=lines[i]
+      if (/^[[:space:]]*#/ || /^[[:space:]]*$/ || index($0,"=")==0) { print; continue }
+      key=$1; sub(/^[[:space:]]+/,"",key); sub(/[[:space:]]+$/,"",key)
+      if (key in done) continue          # повторный ключ — выбрасываем строку
+      done[key]=1
+      v=(key in best)?best[key]:substr($0, length($1)+2)
+      print key "=" v
+    }
+  }
 ' .env.tmp > .env.tmp2 && mv .env.tmp2 .env.tmp
 
 if has_nulls .env.tmp; then
