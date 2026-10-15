@@ -220,7 +220,7 @@ function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, c
                     onClick={() => {
                       openVksCreatePage();
                     }}
-                    title="Открыть salutejazz.ru/calls/create, создать комнату вручную и вставить ссылку сюда"
+                    title="Открыть salutejazz.ru/calls: «Создать видео встречу» → имя и название → «Создать и присоединиться» → «Пригласить участников» → скопировать ссылку"
                     className="px-3 py-2 text-sm rounded-lg border border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400 hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors whitespace-nowrap font-medium"
                   >
                     <i className="fas fa-hand-pointer mr-1" aria-hidden="true"></i>
@@ -228,8 +228,11 @@ function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, c
                   </button>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Можно вставить свою ссылку: откройте «Создать вручную», создайте встречу на
-                  salutejazz.ru и скопируйте полученную ссылку в поле — она сохранится как есть.
+                  Как создать вручную: нажмите «Создать вручную» → на salutejazz.ru нажмите
+                  «Создать видео встречу» → укажите Ваше имя и название встречи → «Создать и
+                  присоединиться» → «Пригласить участников» → скопируйте ссылку и вставьте в это
+                  поле (можно копировать приглашение целиком — лишнее обрежется). Ссылка
+                  сохранится как есть.
                 </p>
                 {isVksLink(formData.link) && (
                   <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
@@ -1231,7 +1234,7 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
                         onClick={() => {
                           openVksCreatePage();
                         }}
-                        title="Открыть salutejazz.ru/calls/create, создать комнату вручную и вставить ссылку сюда"
+                        title="Открыть salutejazz.ru/calls: «Создать видео встречу» → имя и название → «Создать и присоединиться» → «Пригласить участников» → скопировать ссылку"
                         className="px-3 py-2 text-sm rounded-lg border border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400 hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors whitespace-nowrap font-medium"
                       >
                         <i className="fas fa-hand-pointer mr-1" aria-hidden="true"></i>
@@ -1239,8 +1242,10 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
                       </button>
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      Можно вставить свою ссылку: создайте встречу на salutejazz.ru и скопируйте
-                      полученную ссылку в поле — она сохранится как есть.
+                      Как создать вручную: «Создать вручную» → на salutejazz.ru «Создать видео
+                      встречу» → Ваше имя и название → «Создать и присоединиться» → «Пригласить
+                      участников» → скопируйте ссылку в это поле (лишнее из приглашения
+                      обрежется). Ссылка сохранится как есть.
                     </p>
                     {isVksLink(formData.link) && (
                       <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">

@@ -96,7 +96,10 @@ export function openVksCreatePage(): boolean {
     // блокируют его («Браузер заблокировал создание всплывающего окна»).
     // Обычный вызов window.open(url, "_blank") в обработчике клика по
     // кнопке считается пользовательским жестом и открывается как вкладка.
-    const w = window.open("https://salutejazz.ru/calls/create", "_blank");
+    // Фикс «не работает»: раньше открывался /calls/create, которого на
+    // платформе нет (страница не загружалась). Правильный путь —
+    // https://salutejazz.ru/calls → кнопка «Создать видео встречу».
+    const w = window.open("https://salutejazz.ru/calls", "_blank");
     if (w) return true;
   } catch {
     /* noop — переходим к фолбэку */
@@ -106,7 +109,7 @@ export function openVksCreatePage(): boolean {
   // встречи при этом НЕ теряется — приложение хранит черновик в
   // localStorage, а ссылка из salutejazz.ru вставляется после возврата.
   try {
-    window.location.href = "https://salutejazz.ru/calls/create";
+    window.location.href = "https://salutejazz.ru/calls";
   } catch {
     return false;
   }

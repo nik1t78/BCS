@@ -1312,7 +1312,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         <button
                           type="button"
                           onClick={() => openVksCreatePage()}
-                          title="Открыть salutejazz.ru/calls/create и создать комнату вручную"
+                          title="Открыть salutejazz.ru/calls: «Создать видео встречу» → имя и название → «Создать и присоединиться» → «Пригласить участников» → скопировать ссылку"
                           className="px-3 py-2 text-sm rounded-lg border border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400 hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors whitespace-nowrap font-medium"
                         >
                           <i className="fas fa-hand-pointer mr-1" aria-hidden="true"></i>
@@ -1320,7 +1320,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         </button>
                       </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Можно вставить любую ссылку — она сохранится как есть.
+                        Как создать вручную: «Создать вручную» → на salutejazz.ru «Создать видео
+                        встречу» → Ваше имя и название → «Создать и присоединиться» → «Пригласить
+                        участников» → скопируйте ссылку в это поле (можно всё приглашение —
+                        лишнее обрежется). Сохранится как есть.
                       </p>
                     </div>
                     <div className="flex justify-end gap-3 pt-4 border-t dark:border-gray-600">

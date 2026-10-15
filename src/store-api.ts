@@ -16,6 +16,7 @@ import {
   rsvpAPI,
   trashAPI,
 } from "./api/client";
+import { normalizeVksLink } from "./utils/vksLink";
 import {
   User,
   Meeting,
@@ -147,6 +148,14 @@ export function meetingToApi(data: any): any {
   }
   if (data.startTime) out.start_time = data.startTime;
   if (data.endTime) out.end_time = data.endTime;
+  // Ссылка ВКС: бэкенд валидирует её как `url` (обязательна схема https://).
+  // Пользователь мог вставить «salutejazz.ru/calls/...» без протокола или со
+  // мусором после копирования — чиним до отправки, иначе 422 и «не сохраняется».
+  if (typeof out.link === "string" && out.link.trim()) {
+    out.link = normalizeVksLink(out.link);
+  } else if ("link" in out) {
+    out.link = null;
+  }
   if (Array.isArray(out.participants))
     out.participants = out.participants.map((v: any) => Number(v)).filter((v: number) => !Number.isNaN(v));
   // Теги встречи — id тегов из справочника (meeting_tag); бэкенд валидирует их как integer[]

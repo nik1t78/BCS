@@ -34,10 +34,71 @@ export function generateVksLink(): string {
   return `${VKS_LINK_BASE}${randomVksRoomCode()}?psw=${randomVksPassword()}`;
 }
 
+/**
+ * Привести ссылку к каноническому виду перед отправкой на сервер.
+ * ВАЖНО (фикс «не работает» при ручной вставке): ссылка может быть
+ * вставлена/сохранена без протокола («salutejazz.ru/calls/xxx?psw=yyy»)
+ * или с лишними пробелами/кириллицей/крайним нул-символом, скопированным
+ * из чата. Laravel-валидатор `url` принимает только полные адреса со схемой,
+ * поэтому такая ссылка отклонялась (422) и встреча не сохранялась.
+ * Здесь: обрезаем мусор, при необходимости добавляем https:// и
+ * пересобираем адрес через URL (проценты в пароле остаются целыми).
+ */
+export function sanitizeVksLink(link?: string | null): string {
+  if (!link) return "";
+  let s = String(link)
+    .trim()
+    // управляющие символы, которые приходят при копировании из мессенджеров
+    .replace(/[\u0000-\u001F\u007F\u200B\uFEFF]/g, "")
+    // неразрывные пробелы внутри ссылки (заменяем на обычный, затем чистим)
+  .replace(/\u00A0/g, " ");
+  // «Пригласить участников» копируют иногда целиком («Ссылка: https://... Пароль: ...») —
+  // вырываем адрес встречи из произвольного текста; если его нет, берём первое слово
+  const extracted = s.match(/(?:https?:\/\/)?(?:www\.)?salutejazz\.ru\/calls\/[^\s"'<>]+|(?:https?:\/\/)[^\s"'<>]*salutejazz\.ru\/calls\/[^\s"'<>]+/i);
+  s = (extracted ? extracted[0] : s.split(/\s+/)[0]) || "";
+  if (!s) return "";
+  // «salutejazz.ru/...» / «www....» / «//host/...» — дописываем схему
+  if (/^(www\.|salutejazz\.ru\/|\/\/)/i.test(s)) s = "https://" + s.replace(/^\/\//, "");
+  try {
+    let u: URL;
+    try {
+      u = new URL(s);
+    } catch {
+      // вставлен не-URL (например, скопирован текст приглашения целиком) —
+      // вырываем ссылку salutejazz.ru/calls из текста и чистим её от хвоста
+      const m = s.match(/(?:https?:\/\/)?(?:www\.)?salutejazz\.ru\/calls\/[A-Za-z0-9_-]+(?:\?psw=[A-Za-z0-9_-]+)?/i);
+      if (!m) return s;
+      u = new URL(m[0].startsWith("http") ? m[0] : "https://" + m[0].replace(/^\/\//, ""));
+    }
+    // http -> https для нашего хоста
+    if (u.hostname === "salutejazz.ru" && u.protocol === "http:") u.protocol = "https:";
+    // вырванную из текста ссылку («...?psw=XXXПароль:YYY») чиним: код комнаты —
+    // ровно один сегмент /calls/<код>, пароль — валидный psw или остаток query
+    if (u.hostname === "salutejazz.ru" && /^\/calls\/[^/]+$/.test(u.pathname) === false) {
+      const m = s.match(/\/calls\/([A-Za-z0-9_-]+)(?:[?&]psw=([A-Za-z0-9_-]+))?/i);
+      if (m) {
+        u.pathname = "/calls/" + m[1];
+        u.search = m[2] ? "?psw=" + m[2] : "";
+      }
+    } else if (u.hostname === "salutejazz.ru") {
+      const psw = u.searchParams.get("psw");
+      if (psw && !/^[A-Za-z0-9_-]+$/.test(psw)) {
+        const m = psw.match(/^([A-Za-z0-9_-]+)/);
+        if (m) u.searchParams.set("psw", m[1]);
+        else u.searchParams.delete("psw");
+      }
+    }
+    return u.toString();
+  } catch {
+    return s;
+  }
+}
+
 /** Проверка и «починка» ссылки до канонического вида платформы. */
 export function normalizeVksLink(link: string): string {
-  if (!isVksLink(link)) return link;
-  const url = new URL(link);
+  const clean = sanitizeVksLink(link);
+  if (!isVksLink(clean)) return clean || link;
+  const url = new URL(clean);
   if (!url.searchParams.get("psw")) {
     url.searchParams.set("psw", randomVksPassword());
   }
@@ -46,7 +107,14 @@ export function normalizeVksLink(link: string): string {
 
 /** Проверка: ссылка ли это на нашу ВКС-платформу */
 export function isVksLink(link?: string | null): boolean {
-  return !!link && link.startsWith("https://salutejazz.ru/calls/");
+  if (!link) return false;
+  const s = String(link).trim();
+  // принимаем и канонический вид, и вставленный без протокола вариант —
+  // sanitizeVksLink/normalizeVksLink доведут его до полного адреса при сохранении
+  return (
+    s.startsWith("https://salutejazz.ru/calls/") ||
+    /^(http:\/\/)?(www\.)?salutejazz\.ru\/calls\//i.test(s)
+  );
 }
 
 /**
@@ -65,8 +133,11 @@ export function buildJoinUrl(
   extra?: { description?: string | null; note?: string | null } | null
 ): string {
   if (!link) return "";
+  // ссылка могла быть сохранена без протокола / с мусором после копирования —
+  // чиним её, иначе «Войти в конференцию» ведёт в никуда
+  const clean = sanitizeVksLink(link);
   try {
-    const url = new URL(link);
+    const url = new URL(clean);
     if (url.hostname === "salutejazz.ru" && !url.searchParams.get("psw")) {
       let psw = (meetingPassword || "").trim() || extractPswFromAny(link);
       if (!psw) {
