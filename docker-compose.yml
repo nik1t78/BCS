@@ -28,6 +28,9 @@ services:
         # "1" — включать автосоздание ссылок через Selenium-бота (жрёт ~1 ГБ RAM).
         # Значение берётся из .env (VITE_VKS_AUTOBOT), по умолчанию выключено.
         VITE_VKS_AUTOBOT: "${VITE_VKS_AUTOBOT:-0}"
+        # Секрет для вызова бота (заголовок X-Bot-Token). Совпадает с BOT_TOKENS
+        # для контейнера vks-bot; вшивается в JS при сборке фронта.
+        VITE_VKS_BOT_TOKEN: "${BOT_TOKENS:-}"
     container_name: vks-frontend-builder
     restart: "no"   # одноразовый: собрал dist -> volume -> завершился, RAM не держит
     deploy:
@@ -96,6 +99,8 @@ services:
       APP_ENV: "${APP_ENV:-production}"
       APP_DEBUG: "false"
       MESSENGER: "${MESSENGER:-max}"
+      MAX_ENABLED: "${MAX_ENABLED:-true}"
+      MAX_API_URL: "${MAX_API_URL:-https://maxapi.ru/v1}"
       MAX_BOT_TOKEN: "${MAX_BOT_TOKEN:-}"
       # Сессии/кэш ОСТАЮТСЯ в redis даже при временном отключении контейнера
       # redis (phpredis сам переподключается). Иначе при остановленном redis
@@ -276,6 +281,8 @@ services:
       APP_URL: "http://${SITE_IP:-localhost}"
       APP_KEY: "${APP_KEY:-dev-placeholder-key}"
       MESSENGER: "${MESSENGER:-max}"
+      MAX_ENABLED: "${MAX_ENABLED:-true}"
+      MAX_API_URL: "${MAX_API_URL:-https://maxapi.ru/v1}"
       MAX_BOT_TOKEN: "${MAX_BOT_TOKEN:-}"
     depends_on:
       - backend
@@ -315,6 +322,10 @@ services:
       DB_PASSWORD: "${DB_PASSWORD:-vks_2026}"
       APP_URL: "http://${SITE_IP:-localhost}"
       APP_KEY: "${APP_KEY:-dev-placeholder-key}"
+      MESSENGER: "${MESSENGER:-max}"
+      MAX_ENABLED: "${MAX_ENABLED:-true}"
+      MAX_API_URL: "${MAX_API_URL:-https://maxapi.ru/v1}"
+      MAX_BOT_TOKEN: "${MAX_BOT_TOKEN:-}"
     depends_on:
       - backend
     networks:

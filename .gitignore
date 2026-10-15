@@ -1,14 +1,10 @@
-*.patch
-dist/
-export/
-*.b64
-*.bundle
-*.tar.gz
-*.tar.xz
 node_modules/
-
-# секреты и локальные дубли — никогда не коммитить
+dist/
 .env
 .env.bak*
 .env.tmp*
-backend/.env
+*.log
+*.swp
+*.swo
+.vscode/
+.idea/

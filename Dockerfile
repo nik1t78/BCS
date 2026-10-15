@@ -16,6 +16,8 @@ ENV NODE_OPTIONS=--max-old-space-size=768
 # По умолчанию "0": ссылка генерируется локально, контейнер vks-bot не нужен.
 ARG VITE_VKS_AUTOBOT=0
 ENV VITE_VKS_AUTOBOT=$VITE_VKS_AUTOBOT
+ARG VITE_VKS_BOT_TOKEN=
+ENV VITE_VKS_BOT_TOKEN=$VITE_VKS_BOT_TOKEN
 RUN npm run build
 
 # Финальный крошечный образ-экспортёр (alpine, без node)

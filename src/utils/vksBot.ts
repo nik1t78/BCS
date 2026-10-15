@@ -46,9 +46,15 @@ export async function createVksViaBot(
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    // Секрет бота (заголовок X-Bot-Token) — то же значение, что BOT_TOKENS в .env.
+    // Без него сервер бота отвечает 401, если BOT_TOKENS настроены.
+    const botToken = (import.meta.env.VITE_VKS_BOT_TOKEN as string) || "";
     const resp = await fetch(`${BOT_URL.replace(/\/$/, "")}/create`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(botToken ? { "X-Bot-Token": botToken } : {}),
+      },
       body: JSON.stringify({ title, name }),
       signal: ctrl.signal,
     });
