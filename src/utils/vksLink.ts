@@ -108,13 +108,11 @@ export function normalizeVksLink(link: string): string {
 /** Проверка: ссылка ли это на нашу ВКС-платформу */
 export function isVksLink(link?: string | null): boolean {
   if (!link) return false;
-  const s = String(link).trim();
-  // принимаем и канонический вид, и вставленный без протокола вариант —
-  // sanitizeVksLink/normalizeVksLink доведут его до полного адреса при сохранении
-  return (
-    s.startsWith("https://salutejazz.ru/calls/") ||
-    /^(http:\/\/)?(www\.)?salutejazz\.ru\/calls\//i.test(s)
-  );
+  // принимаем и канонический вид, и «грязную» вставку из приглашения
+  // («Ссылка: salutejazz.ru/calls/... Пароль: ... Войти») — sanitizeVksLink/
+  // normalizeVksLink доведут её до полного адреса при сохранении
+  const s = sanitizeVksLink(link);
+  return /^https:\/\/(www\.)?salutejazz\.ru\/calls\//i.test(s);
 }
 
 /**
