@@ -1589,6 +1589,38 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
                       </button>
                     )}
                     {vm.link && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          // «Скопировать приглашение» — по шагам ручного создания:
+                          // ссылку с salutejazz.ru вставляют в это поле, а здесь её
+                          // можно скопировать целиком и разослать участникам.
+                          const joinUrl = buildJoinUrl(vm.link, vm.meetingPassword, vm);
+                          const psw = extractPswFromAny(joinUrl);
+                          const text =
+                            `Приглашаю на встречу: ${vm.title}\n` +
+                            `Дата: ${vm.date} ${vm.startTime || ""}${vm.endTime ? "–" + vm.endTime : ""}\n` +
+                            `Ссылка для входа: ${joinUrl}` +
+                            (psw ? `\nПароль конференции: ${psw}` : "");
+                          try {
+                            await navigator.clipboard.writeText(text);
+                          } catch {
+                            // HTTP/старые браузеры: фолбэк через временное textarea
+                            const ta = document.createElement("textarea");
+                            ta.value = text;
+                            document.body.appendChild(ta);
+                            ta.select();
+                            try { document.execCommand("copy"); } catch { /* noop */ }
+                            document.body.removeChild(ta);
+                          }
+                        }}
+                        className="px-4 py-2 border border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400 rounded-lg hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors"
+                        title="Скопировать ссылку и пароль для отправки участникам"
+                      >
+                        <i className="fas fa-copy mr-1"></i>Скопировать приглашение
+                      </button>
+                    )}
+                    {vm.link && (
                       <a
                         href={buildJoinUrl(vm.link, vm.meetingPassword ?? extractPswFromAny(vm.link))}
                         target="_blank"

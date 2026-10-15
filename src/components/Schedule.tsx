@@ -324,7 +324,7 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
                         className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100"
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Начало</label>
                         <input

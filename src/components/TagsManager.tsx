@@ -157,7 +157,7 @@ export default function TagsManager({ userId }: TagsManagerProps) {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Цвет</label>
-                  <div className="grid grid-cols-8 gap-2">
+                  <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
                     {colors.map((color) => (
                       <button
                         key={color}
