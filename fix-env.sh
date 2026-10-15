@@ -6,7 +6,8 @@ set -e
 cd "$(dirname "$0")"
 [ -f .env ] || { echo "[fix-env] .env не найден"; exit 1; }
 
-if ! grep -q $'\x00' .env 2>/dev/null; then
+has_nulls() { tr -d -c '\000' < "$1" | wc -c | grep -qv '^0$'; }
+if ! has_nulls .env; then
   # нулей нет — просто нормализуем CRLF и BOM
   sed -i -e 's/\r$//' -e '1s/^\xEF\xBB\xBF//' .env
   echo "[fix-env] .env уже без нулей — нормализованы только концы строк (LF)"
@@ -15,10 +16,11 @@ fi
 
 bak=".env.bak.$(date +%s)"; cp .env "$bak"; echo "[fix-env] резервная копия: $bak"
 
-# Универсальный способ без Python: awk с RS="\0" вырезает ВСЕ нулевые байты.
+# Универсальный способ без Python: tr -d вырезает ВСЕ нулевые байты.
 # Для UTF-16LE-кусков ("V\0I\0T\0E...") это даёт ровно правильный текст
 # ("VITE_..."), а UTF-8 часть (где нулей нет) проходит без изменений.
-awk 'BEGIN{RS="\0"; ORS=""} {print}' .env > .env.tmp
+# tr -d '\0' вырезает нулевые байты надёжно на всех awk/sed (MSYS/GNU).
+tr -d '\000' < .env > .env.tmp
 
 # PowerShell "echo ... >> .env" часто НЕ добавляет перевод строки перед
 # допиской — чиним склейку вида "...=0VITE_..." -> две отдельные строки.
@@ -45,7 +47,7 @@ awk '
   END { for (i=0;i<n;i++) print out[i] "\n" }
 ' .env.tmp > .env.tmp2 && mv .env.tmp2 .env.tmp
 
-if grep -q $'\x00' .env.tmp 2>/dev/null; then
+if has_nulls .env.tmp; then
   echo "[fix-env] ОШИБКА: нули остались после конвертации"
   exit 1
 fi
