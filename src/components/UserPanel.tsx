@@ -91,69 +91,78 @@ interface CreateMeetingFormProps {
   handleSubmit: (e: React.FormEvent) => void;
 }
 
+/** Данные приглашения участников из текущей ссылки ВКС.
+ *  ВАЖНО: buildJoinUrl ждёт ПОЛНУЮ ссылку (https://salutejazz.ru/calls/<код>?psw=<пароль>). */
+export function computeInviteData(link?: string | null):
+  | { joinUrl: string; code: string; psw: string | null; inviteText: string }
+  | null {
+  if (!link || !isVksLink(link)) return null;
+  const clean = sanitizeVksLink(link);
+  const code = vksRoomCodeFromLink(clean);
+  if (!code) return null;
+  const psw = vksPasswordFromLink(clean);
+  const joinUrl = buildJoinUrl(clean, psw ?? undefined) || clean;
+  const lines = [
+    "Максимальное количество — 100 человек",
+    `Адрес видеовстречи: ${joinUrl}`,
+    `Код видеовстречи: ${code}@salutejazz.ru`,
+  ];
+  if (psw) lines.push(`Пароль: ${psw}`);
+  return { joinUrl, code, psw, inviteText: lines.join("\n") };
+}
+
+/** Блок «Приглашение участников» — общий для обеих форм создания ВКС
+ *  (раздел «Мои конференции» и модалка на главной). Раньше каждая форма
+ *  имела свою копию рендера, из-за чего после рефакторинга осталась ссылка
+ *  на несуществующую renderVksInviteBlock → крах страницы при создании. */
+export function VksInviteBlock({ link, copyToClipboard }: {
+  link?: string | null;
+  copyToClipboard?: (text: string, okLabel?: string) => Promise<void> | void;
+}) {
+  const inviteData = computeInviteData(link);
+  if (!inviteData) return null;
+  const { joinUrl, code, psw, inviteText } = inviteData;
+  return (
+    <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/60 dark:bg-blue-900/20 p-3 text-sm">
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+        <span className="font-medium text-gray-800 dark:text-gray-100">
+          <i className="fas fa-user-plus mr-1 text-blue-600 dark:text-blue-400" aria-hidden="true"></i>
+          Приглашение участников
+        </span>
+        <button
+          type="button"
+          onClick={() => copyToClipboard?.(inviteText, "Приглашение скопировано")}
+          title="Скопировать всё приглашение целиком"
+          className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
+        >
+          <i className="fas fa-copy mr-1" aria-hidden="true"></i>
+          Копировать приглашение
+        </button>
+      </div>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Максимальное количество — 100 человек</p>
+      <div className="space-y-1.5">
+        <div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">Адрес видеовстречи</div>
+          <div className="font-mono text-xs break-all text-gray-800 dark:text-gray-100">{joinUrl}</div>
+        </div>
+        <div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">Код видеовстречи</div>
+          <div className="font-mono text-xs text-gray-800 dark:text-gray-100">{code}@salutejazz.ru</div>
+        </div>
+        {psw && (
+          <div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">Пароль</div>
+            <div className="font-mono text-xs text-gray-800 dark:text-gray-100">{psw}</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** Форма создания/редактирования конференции — вынесена из UserPanel,
  *  чтобы открываться и в разделе «Мои конференции», и в модалке на главной. */
 function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, conflicts, editing, savingNote, copyToClipboard, vksHint, onCancel, handleSubmit }: CreateMeetingFormProps) {
-  // Формирует текст приглашения по данным ВКС-ссылки (как на salutejazz.ru «Пригласить участников»)
-  const buildVksInviteText = (link?: string): string | null => {
-    if (!isVksLink(link)) return null;
-    const clean = sanitizeVksLink(link);
-    const code = vksRoomCodeFromLink(clean);
-    if (!code) return null;
-    const psw = vksPasswordFromLink(clean);
-    const joinUrl = buildJoinUrl(code, psw ?? undefined) || clean;
-    const lines = [
-      "Максимальное количество — 100 человек",
-      `Адрес видеовстречи: ${joinUrl}`,
-      `Код видеовстречи: ${code}@salutejazz.ru`,
-    ];
-    if (psw) lines.push(`Пароль: ${psw}`);
-    return lines.join("\n");
-  };
-  const renderVksInviteBlock = () => {
-    const inviteText = buildVksInviteText(formData.link);
-    if (!inviteText) return null;
-    const clean = sanitizeVksLink(formData.link);
-    const code = vksRoomCodeFromLink(clean)!;
-    const psw = vksPasswordFromLink(clean);
-    const joinUrl = buildJoinUrl(code, psw ?? undefined) || clean;
-    return (
-      <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/60 dark:bg-blue-900/20 p-3 text-sm">
-        <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-          <span className="font-medium text-gray-800 dark:text-gray-100">
-            <i className="fas fa-user-plus mr-1 text-blue-600 dark:text-blue-400" aria-hidden="true"></i>
-            Приглашение участников
-          </span>
-          <button
-            type="button"
-            onClick={() => copyToClipboard?.(inviteText, "Приглашение скопировано")}
-            title="Скопировать всё приглашение целиком"
-            className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
-          >
-            <i className="fas fa-copy mr-1" aria-hidden="true"></i>
-            Копировать приглашение
-          </button>
-        </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Максимальное количество — 100 человек</p>
-        <div className="space-y-1.5">
-          <div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">Адрес видеовстречи</div>
-            <div className="font-mono text-xs break-all text-gray-800 dark:text-gray-100">{joinUrl}</div>
-          </div>
-          <div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">Код видеовстречи</div>
-            <div className="font-mono text-xs text-gray-800 dark:text-gray-100">{code}@salutejazz.ru</div>
-          </div>
-          {psw && (
-            <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Пароль</div>
-              <div className="font-mono text-xs text-gray-800 dark:text-gray-100">{psw}</div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
   const toggleParticipant = (userId: string) => {
     setFormData((f) => {
       const has = (f.participants ?? []).some((id) => String(id) === String(userId));
@@ -297,7 +306,7 @@ function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, c
                     Ссылка на корпоративную ВКС
                   </p>
                 )}
-                {renderVksInviteBlock()}
+                <VksInviteBlock link={formData.link} copyToClipboard={copyToClipboard} />
               </div>
 
               <div>
@@ -1313,7 +1322,6 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
                         Ссылка на корпоративную ВКС
                       </p>
                     )}
-                    {renderVksInviteBlock()}
                   </div>
 
                   <div>
@@ -1327,6 +1335,11 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
                       <option value="medium">Средний</option>
                       <option value="high">Высокий</option>
                     </select>
+                  </div>
+
+                  {/* Приглашение участников — общий блок VksInviteBlock (модалка «Мои конференции») */}
+                  <div className="md:col-span-2">
+                    <VksInviteBlock link={formData.link} copyToClipboard={copyToClipboard} />
                   </div>
                 </div>
 
@@ -1488,7 +1501,12 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
                     Отмена
                   </button>
                   <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                    {editingMeeting ? "Сохранить" : "Создать"}
+                    {savingNote ? (
+                      <span className="flex items-center gap-2">
+                        <i className="fas fa-spinner fa-spin"></i>
+                        {savingNote}
+                      </span>
+                    ) : editingMeeting ? "Сохранить" : "Создать"}
                   </button>
                 </div>
               </form>
