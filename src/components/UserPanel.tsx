@@ -20,7 +20,7 @@ import { SortMode, SORT_OPTIONS, sortMeetings, getMeetingGroup } from "../utils/
 import { exportMeetingToIcs } from "../utils/ics";
 import { getFavoriteIds, toggleFavorite, addFavorites } from "../utils/favorites";
 import { generateVksLink, normalizeVksLink, isVksLink, buildJoinUrl, extractPswFromAny, sanitizeVksLink, vksRoomCodeFromLink, vksPasswordFromLink } from "../utils/vksLink";
-import { createVksViaBot, openVksCreatePage } from "../utils/vksBot";
+import { createVksViaBot } from "../utils/vksBot";
 
 /** Предзаполнение формы создания конференции (например, из блока «Свободные залы» на главной) */
 export interface MeetingPrefill {
@@ -136,30 +136,18 @@ function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, c
         </div>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Максимальное количество — 100 человек</p>
         <div className="space-y-1.5">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="text-xs text-gray-500 dark:text-gray-400">Адрес видеовстречи</div>
-              <div className="font-mono text-xs break-all text-gray-800 dark:text-gray-100">{joinUrl}</div>
-            </div>
-            <button type="button" onClick={() => copyToClipboard?.(joinUrl, "Адрес скопирован")}
-              className="text-blue-600 dark:text-blue-400 hover:underline text-xs shrink-0"><i className="fas fa-copy mr-1"></i>копировать</button>
+          <div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">Адрес видеовстречи</div>
+            <div className="font-mono text-xs break-all text-gray-800 dark:text-gray-100">{joinUrl}</div>
           </div>
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Код видеовстречи</div>
-              <div className="font-mono text-xs text-gray-800 dark:text-gray-100">{code}@salutejazz.ru</div>
-            </div>
-            <button type="button" onClick={() => copyToClipboard?.(`${code}@salutejazz.ru`, "Код скопирован")}
-              className="text-blue-600 dark:text-blue-400 hover:underline text-xs shrink-0"><i className="fas fa-copy mr-1"></i>копировать</button>
+          <div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">Код видеовстречи</div>
+            <div className="font-mono text-xs text-gray-800 dark:text-gray-100">{code}@salutejazz.ru</div>
           </div>
           {psw && (
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Пароль</div>
-                <div className="font-mono text-xs text-gray-800 dark:text-gray-100">{psw}</div>
-              </div>
-              <button type="button" onClick={() => copyToClipboard?.(psw, "Пароль скопирован")}
-                className="text-blue-600 dark:text-blue-400 hover:underline text-xs shrink-0"><i className="fas fa-copy mr-1"></i>копировать</button>
+            <div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">Пароль</div>
+              <div className="font-mono text-xs text-gray-800 dark:text-gray-100">{psw}</div>
             </div>
           )}
         </div>
@@ -292,52 +280,16 @@ function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, c
                     className="flex-1 min-w-[180px] px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
                     placeholder="https://salutejazz.ru/calls/... или вставьте свою ссылку"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, link: generateVksLink() })}
-                    title="Автоматически создать ссылку на ВКС (salutejazz.ru)"
-                    className="px-3 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors whitespace-nowrap font-medium"
-                  >
-                    <i className="fas fa-wand-magic-sparkles mr-1" aria-hidden="true"></i>
-                    Создать ВКС
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      openVksCreatePage();
-                    }}
-                    title="Открыть salutejazz.ru/calls: «Создать видео встречу» → имя и название → «Создать и присоединиться» → «Пригласить участников» → скопировать ссылку"
-                    className="px-3 py-2 text-sm rounded-lg border border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400 hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors whitespace-nowrap font-medium"
-                  >
-                    <i className="fas fa-hand-pointer mr-1" aria-hidden="true"></i>
-                    Создать вручную
-                  </button>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Как создать вручную: «Создать вручную» → на salutejazz.ru «Создать видео
-                  встречу» → Ваше имя и название → «Создать и присоединиться» → «Пригласить
-                  участников» → скопируйте ссылку в это поле (лишнее из приглашения обрежется).
-                  Кнопка «Создать ВКС» генерирует ссылку мгновенно в формате платформы; комната
-                  создаётся автоматически при первом входу по ссылке.
+                  Ссылка ВКС создаётся автоматически при сохранении встречи (бот проходит
+                  salutejazz.ru/calls/create). При желании можно вставить свою ссылку — она
+                  сохранится как есть. Данные для приглашения участников показаны ниже.
                 </p>
-                {isVksLink(formData.link) && vksRoomCodeFromLink(sanitizeVksLink(formData.link)) && (
-                  <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
-                    <span className="px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-mono">
-                      Код конференции: {vksRoomCodeFromLink(sanitizeVksLink(formData.link))}@salutejazz.ru
-                    </span>
-                    <button type="button" onClick={() => copyToClipboard?.(vksRoomCodeFromLink(sanitizeVksLink(formData.link)) + "@salutejazz.ru", "Код конференции скопирован")}
-                      className="text-blue-600 dark:text-blue-400 hover:underline"><i className="fas fa-copy mr-1"></i>копировать код</button>
-                    {vksPasswordFromLink(sanitizeVksLink(formData.link)) && (
-                      <>
-                        <span className="px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-mono">
-                          Пароль: {vksPasswordFromLink(sanitizeVksLink(formData.link))}
-                        </span>
-                        <button type="button" onClick={() => copyToClipboard?.(vksPasswordFromLink(sanitizeVksLink(formData.link)) || "", "Пароль скопирован")}
-                          className="text-blue-600 dark:text-blue-400 hover:underline"><i className="fas fa-copy mr-1"></i>копировать пароль</button>
-                      </>
-                    )}
-                    {vksHint && <span className="text-emerald-600 dark:text-emerald-400"><i className="fas fa-check mr-1"></i>{vksHint}</span>}
-                  </div>
+                {isVksLink(formData.link) && vksHint && (
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2">
+                    <i className="fas fa-check mr-1"></i>{vksHint}
+                  </p>
                 )}
                 {isVksLink(formData.link) && (
                   <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
@@ -1344,51 +1296,16 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
                         className="flex-1 min-w-[180px] px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
                         placeholder="https://salutejazz.ru/calls/... или вставьте свою ссылку"
                       />
-                      <button
-                        type="button"
-                        onClick={() => setFormData({ ...formData, link: generateVksLink() })}
-                        title="Автоматически создать ссылку на ВКС (salutejazz.ru)"
-                        className="px-3 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors whitespace-nowrap font-medium"
-                      >
-                        <i className="fas fa-wand-magic-sparkles mr-1" aria-hidden="true"></i>
-                        Создать ВКС
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          openVksCreatePage();
-                        }}
-                        title="Открыть salutejazz.ru/calls: «Создать видео встречу» → имя и название → «Создать и присоединиться» → «Пригласить участников» → скопировать ссылку"
-                        className="px-3 py-2 text-sm rounded-lg border border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400 hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors whitespace-nowrap font-medium"
-                      >
-                        <i className="fas fa-hand-pointer mr-1" aria-hidden="true"></i>
-                        Создать вручную
-                      </button>
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      Как создать вручную: «Создать вручную» → на salutejazz.ru «Создать видео
-                      встречу» → Ваше имя и название → «Создать и присоединиться» → «Пригласить
-                      участников» → скопируйте ссылку в это поле (лишнее из приглашения
-                      обрежется). Ссылка сохранится как есть.
+                      Ссылка ВКС создаётся автоматически при сохранении встречи (бот проходит
+                      salutejazz.ru/calls/create). При желании можно вставить свою ссылку — она
+                      сохранится как есть. Данные для приглашения участников показаны ниже.
                     </p>
-                    {isVksLink(formData.link) && vksRoomCodeFromLink(sanitizeVksLink(formData.link)) && (
-                      <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
-                        <span className="px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-mono">
-                          Код конференции: {vksRoomCodeFromLink(sanitizeVksLink(formData.link))}@salutejazz.ru
-                        </span>
-                        <button type="button" onClick={() => copyToClipboard?.(vksRoomCodeFromLink(sanitizeVksLink(formData.link)) + "@salutejazz.ru", "Код конференции скопирован")}
-                          className="text-blue-600 dark:text-blue-400 hover:underline"><i className="fas fa-copy mr-1"></i>копировать код</button>
-                        {vksPasswordFromLink(sanitizeVksLink(formData.link)) && (
-                          <>
-                            <span className="px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-mono">
-                              Пароль: {vksPasswordFromLink(sanitizeVksLink(formData.link))}
-                            </span>
-                            <button type="button" onClick={() => copyToClipboard?.(vksPasswordFromLink(sanitizeVksLink(formData.link)) || "", "Пароль скопирован")}
-                              className="text-blue-600 dark:text-blue-400 hover:underline"><i className="fas fa-copy mr-1"></i>копировать пароль</button>
-                          </>
-                        )}
-                        {vksHint && <span className="text-emerald-600 dark:text-emerald-400"><i className="fas fa-check mr-1"></i>{vksHint}</span>}
-                      </div>
+                    {isVksLink(formData.link) && vksHint && (
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2">
+                        <i className="fas fa-check mr-1"></i>{vksHint}
+                      </p>
                     )}
                     {isVksLink(formData.link) && (
                       <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
