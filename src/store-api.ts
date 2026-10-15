@@ -9,7 +9,6 @@ import {
   profileAPI,
   tagsAPI,
   templatesAPI,
-  attachmentsAPI,
   meetingHistoryAPI,
   minutesAPI,
   meetingTasksAPI,
@@ -25,7 +24,6 @@ import {
   Settings,
   Tag,
   MeetingTemplate,
-  Attachment,
   MeetingHistory,
   MeetingMinute,
   MeetingTask,
@@ -959,58 +957,6 @@ export async function deleteTemplate(id: string): Promise<boolean> {
     return true;
   } catch (error) {
     console.error("Delete template error:", error);
-    return false;
-  }
-}
-
-// ============ ATTACHMENTS ============
-// Бэкенд отдаёт snake_case-поля (file_path, mime_type...) — приводим их к
-// camelCase-типу Attachment и строим корректный URL: файлы лежат в Laravel
-// public disk и доступны только по префиксу /storage/ (см. nginx alias).
-function mapAttachment(raw: any): Attachment {
-  const relPath: string = String(raw?.file_path ?? raw?.filePath ?? "");
-  const storageUrl = /^https?:\/\//i.test(relPath) ? relPath : `/storage/${relPath.replace(/^\/+/, "")}`;
-  return {
-    id: String(raw.id),
-    meetingId: String(raw.meeting_id ?? raw.meetingId ?? ""),
-    userId: String(raw.user_id ?? raw.userId ?? ""),
-    fileName: raw.file_name ?? raw.fileName ?? "",
-    filePath: storageUrl,
-    fileSize: Number(raw.file_size ?? raw.fileSize ?? 0),
-    mimeType: raw.mime_type ?? raw.mimeType ?? "application/octet-stream",
-    createdAt: raw.created_at ?? raw.createdAt ?? "",
-  } as Attachment;
-}
-
-export async function getAttachments(meetingId: string): Promise<Attachment[]> {
-  try {
-    const response = await attachmentsAPI.getByMeeting(meetingId);
-    const list = Array.isArray(response) ? response : (response.data ?? []);
-    return list.map(mapAttachment);
-  } catch (error) {
-    console.error("Get attachments error:", error);
-    return [];
-  }
-}
-
-export async function uploadAttachment(meetingId: string, file: File): Promise<Attachment | null> {
-  try {
-    const formData = new FormData();
-    formData.append("file", file);
-    const response = await attachmentsAPI.upload(meetingId, formData);
-    return mapAttachment(response);
-  } catch (error) {
-    console.error("Upload attachment error:", error);
-    return null;
-  }
-}
-
-export async function deleteAttachment(id: string): Promise<boolean> {
-  try {
-    await attachmentsAPI.delete(id);
-    return true;
-  } catch (error) {
-    console.error("Delete attachment error:", error);
     return false;
   }
 }

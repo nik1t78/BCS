@@ -493,23 +493,6 @@ export const templatesAPI = {
     }),
 };
 
-// ATTACHMENTS API
-export const attachmentsAPI = {
-  getByMeeting: (meetingId: string) => apiRequest(`/meetings/${meetingId}/attachments`),
-
-  upload: (meetingId: string, formData: FormData) =>
-    apiRequest(`/meetings/${meetingId}/attachments`, {
-      method: "POST",
-      body: formData,
-      // Content-Type с boundary выставляет браузер (см. apiRequest: для FormData заголовок не ставится)
-    }),
-
-  delete: (id: string) =>
-    apiRequest(`/attachments/${id}`, {
-      method: "DELETE",
-    }),
-};
-
 // MEETING HISTORY API
 export const meetingHistoryAPI = {
   getByMeeting: (meetingId: string) => apiRequest(`/meetings/${meetingId}/history`),
