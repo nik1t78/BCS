@@ -76,6 +76,16 @@ class AuthController extends Controller
         // «Неверный логин или пароль» даже при правильном пароле.
         $user = User::whereRaw('LOWER(login) = ?', [mb_strtolower(trim($request->login))])->first();
 
+        // Самодиагностика «вечного» бага: старые аккаунты (созданные версиями
+        // кода с двойным bcrypt-хэшированием) имеют хэш длиной > 60 символов —
+        // такой пароль проверить невозможно НИКОГДА, даже если пользователь
+        // вводит его правильно. Раньше это выглядело как «не работает вход».
+        if ($user && strlen((string) $user->password) !== 60) {
+            throw ValidationException::withMessages([
+                'login' => ['Пароль этого аккаунта повреждён (устаревший формат хэша). Восстановите доступ: php artisan vks:reset-passwords или сброс пароля администратором.'],
+            ]);
+        }
+
         if (!$user || !$this->verifyPassword($request->password, $user->password)) {
             throw ValidationException::withMessages([
                 'login' => ['Неверный логин или пароль'],

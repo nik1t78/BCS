@@ -557,9 +557,10 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
     organizerId: user.id,
     participants: [user.id],
     participantEmails: [],
-    // Ссылка ВКС генерируется СРАЗУ при создании формы: поле видно заполненным
-    // (полный адрес с ?psw=), и встреча не может сохраниться без ссылки.
-    link: generateVksLink(),
+    // Ссылка ВКС ПУСТАЯ: живая комната создаётся Selenium-ботом на
+    // salutejazz.ru при сохранении (handleSave). Локальная заглушка давала
+    // несуществующий код комнаты → «неправильный пароль» при входе.
+    link: "",
     room: "",
     status: "scheduled",
     reminderMinutes: getDefaultReminder(),
@@ -583,10 +584,9 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
         startTime: initialPrefill.startTime ?? emptyMeeting.startTime,
         endTime: initialPrefill.endTime ?? emptyMeeting.endTime,
         room: initialPrefill.room || emptyMeeting.room,
-        // autoLink всегда приоритетнее: при авто-сценариях (слот календаря /
-        // выбор зала) ссылка создаётся Selenium-ботом на salutejazz.ru при
-        // сохранении; локальная заглушка из prefill не должна её блокировать.
-        link: initialPrefill.autoLink ? "" : initialPrefill.link || generateVksLink(),
+        // Ссылка: либо готовая из prefill (например, вставленная вручную),
+        // либо пустая — живая комната создаётся Selenium-ботом при сохранении.
+        link: initialPrefill.link || "",
       };
     }
     return emptyMeeting;
@@ -606,10 +606,8 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
       startTime: p.startTime ?? emptyMeeting.startTime,
       endTime: p.endTime ?? emptyMeeting.endTime,
       room: p.room || emptyMeeting.room,
-      // autoLink всегда приоритетнее: при авто-сценариях (слот календаря /
-      // выбор зала) ссылка создаётся Selenium-ботом на salutejazz.ru при
-      // сохранении; локальная заглушка из prefill не должна её блокировать.
-      link: p.autoLink ? "" : p.link || generateVksLink(),
+      // Ссылка: готовая из prefill или пустая (бот создаст живую комнату при сохранении).
+      link: p.link || "",
     });
     setShowForm(true);
     // formOnly: НЕ уведомляем родителя о «потреблении» предзаполнения —
@@ -880,8 +878,19 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
       try {
         const botRes = await createVksViaBot(payload.title || "Встреча", user.name);
         payload.link = botRes.link;
+        if (!botRes.real) {
+          alert(
+            "Внимание: Selenium-бот не смог создать встречу на salutejazz.ru" +
+              (botRes.error ? ` (${botRes.error})` : "") +
+              ". Ссылка сгенерирована локально — такой комнаты на платформе ещё нет, вход может потребовать создания встречи организатором. Проверьте, что контейнер vks-bot запущен (docker compose --profile bot up -d vks-bot)."
+          );
+        }
       } catch {
         payload.link = generateVksLink();
+        alert(
+          "Не удалось создать ссылку через бота — ссылка сгенерирована локально. " +
+            "Проверьте запуск vks-bot: docker compose --profile bot up -d vks-bot"
+        );
       } finally {
         setSavingNote(null);
       }
@@ -890,6 +899,12 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
       try {
         const botRes = await createVksViaBot(payload.title || "Встреча", user.name);
         payload.link = botRes.link;
+        if (!botRes.real) {
+          alert(
+            "Бот недоступен — ссылка сгенерирована локально (комнаты на платформе ещё нет). " +
+              "Проверьте vks-bot: docker compose --profile bot up -d vks-bot"
+          );
+        }
       } catch {
         payload.link = generateVksLink();
       }

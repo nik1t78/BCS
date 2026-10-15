@@ -102,6 +102,7 @@ services:
       MAX_ENABLED: "${MAX_ENABLED:-true}"
       MAX_API_URL: "${MAX_API_URL:-https://maxapi.ru/v1}"
       MAX_BOT_TOKEN: "${MAX_BOT_TOKEN:-}"
+      MAX_BOT_LINK: "${MAX_BOT_LINK:-https://max.ru/id0070719725_bot}"
       # Сессии/кэш ОСТАЮТСЯ в redis даже при временном отключении контейнера
       # redis (phpredis сам переподключается). Иначе при остановленном redis
       # rate-limiter на /auth/login падал с 500, а nginx отдавал 502.
@@ -284,6 +285,7 @@ services:
       MAX_ENABLED: "${MAX_ENABLED:-true}"
       MAX_API_URL: "${MAX_API_URL:-https://maxapi.ru/v1}"
       MAX_BOT_TOKEN: "${MAX_BOT_TOKEN:-}"
+      MAX_BOT_LINK: "${MAX_BOT_LINK:-https://max.ru/id0070719725_bot}"
     depends_on:
       - backend
       - redis
@@ -326,6 +328,7 @@ services:
       MAX_ENABLED: "${MAX_ENABLED:-true}"
       MAX_API_URL: "${MAX_API_URL:-https://maxapi.ru/v1}"
       MAX_BOT_TOKEN: "${MAX_BOT_TOKEN:-}"
+      MAX_BOT_LINK: "${MAX_BOT_LINK:-https://max.ru/id0070719725_bot}"
     depends_on:
       - backend
     networks:

@@ -18,7 +18,12 @@ const BOT_URL = (import.meta.env.VITE_VKS_BOT_URL as string) || "/vks-bot";
  * Кнопка «Создать вручную» (открытие salutejazz.ru/calls/create во вкладке)
  * работает независимо от этого флага.
  */
-const AUTOBOT_ENABLED = import.meta.env.VITE_VKS_AUTOBOT === "1";
+// ВКЛЮЧЕНО по умолчанию: локальная генерация ссылки создаёт код комнаты,
+// которого НЕ существует на salutejazz.ru — платформа отвечает «неправильный
+// пароль» при попытке входа. Бот реально нажимает «Create and join» и
+// возвращает живую ссылку. Выключить: VITE_VKS_AUTOBOT=0 в .env (тогда
+// фолбэк ниже вернёт локальную ссылку — комната не будет существовать).
+const AUTOBOT_ENABLED = import.meta.env.VITE_VKS_AUTOBOT !== "0";
 
 export interface BotCreateResult {
   link: string;
@@ -26,6 +31,8 @@ export interface BotCreateResult {
   password?: string;
   /** true — ссылка получена от реального salutejazz.ru через бота */
   real: boolean;
+  /** если real=false — причина (бот недоступен/секрет не задан и т.п.) */
+  error?: string;
 }
 
 /**
@@ -75,7 +82,11 @@ export async function createVksViaBot(
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn("[vksBot] бот недоступен, используется локальная генерация:", e);
-    return { link: generateVksLink(), real: false };
+    return {
+      link: generateVksLink(),
+      real: false,
+      error: e instanceof Error ? e.message : String(e),
+    };
   }
 }
 

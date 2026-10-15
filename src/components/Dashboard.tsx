@@ -7,7 +7,7 @@ import OutlookCalendar, { OutlookView } from "./OutlookCalendar";
 import RoomBookingModal from "./RoomBookingModal";
 import UserPanel from "./UserPanel";
 import type { MeetingPrefill } from "./UserPanel";
-import { generateVksLink, buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
+import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { toDateKey } from "../utils/dateKey";
 import { icsAPI } from "../api/client";
 
@@ -54,14 +54,12 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
   const createOpen = createPrefill !== null;
 
   // Единая точка: при любом предзаполнении форма ВКС открывается сразу.
-  // Ссылка salutejazz.ru создаётся ЛОКАЛЬНО сразу (поле видно заполненным,
-  // полный адрес с ?psw=) — встреча не может сохраниться без ссылки и платформа
-  // не просит вводить пароль вручную. Selenium-бот (живые комнаты) остаётся
-  // фолбэком в UserPanel.handleSave на случай пустого поля.
-  // Зал фактически «занят» самой конференцией при сохранении — отдельного
-  // API бронирования не требуется.
+  // Поле ссылки оставляем ПУСТЫМ (autoLink=true) — живая комната на
+  // salutejazz.ru создаётся Selenium-ботом при сохранении встречи.
+  // Раньше ссылка генерировалась локально сразу, но такой коды комнаты НЕ
+  // существовали на платформе → «неправильный пароль» при входе.
   const openCreatePanel = (p: MeetingPrefill) => {
-    setCreatePrefill({ ...p, autoLink: false, link: p.link || generateVksLink() });
+    setCreatePrefill({ ...p, autoLink: true, link: "" });
   };
 
   const handleDownloadIcs = async () => {
