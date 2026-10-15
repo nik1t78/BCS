@@ -94,6 +94,78 @@ interface CreateMeetingFormProps {
 /** Форма создания/редактирования конференции — вынесена из UserPanel,
  *  чтобы открываться и в разделе «Мои конференции», и в модалке на главной. */
 function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, conflicts, editing, savingNote, copyToClipboard, vksHint, onCancel, handleSubmit }: CreateMeetingFormProps) {
+  // Формирует текст приглашения по данным ВКС-ссылки (как на salutejazz.ru «Пригласить участников»)
+  const buildVksInviteText = (link?: string): string | null => {
+    if (!isVksLink(link)) return null;
+    const clean = sanitizeVksLink(link);
+    const code = vksRoomCodeFromLink(clean);
+    if (!code) return null;
+    const psw = vksPasswordFromLink(clean);
+    const joinUrl = buildJoinUrl(code, psw ?? undefined) || clean;
+    const lines = [
+      "Максимальное количество — 100 человек",
+      `Адрес видеовстречи: ${joinUrl}`,
+      `Код видеовстречи: ${code}@salutejazz.ru`,
+    ];
+    if (psw) lines.push(`Пароль: ${psw}`);
+    return lines.join("\n");
+  };
+  const renderVksInviteBlock = () => {
+    const inviteText = buildVksInviteText(formData.link);
+    if (!inviteText) return null;
+    const clean = sanitizeVksLink(formData.link);
+    const code = vksRoomCodeFromLink(clean)!;
+    const psw = vksPasswordFromLink(clean);
+    const joinUrl = buildJoinUrl(code, psw ?? undefined) || clean;
+    return (
+      <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/60 dark:bg-blue-900/20 p-3 text-sm">
+        <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+          <span className="font-medium text-gray-800 dark:text-gray-100">
+            <i className="fas fa-user-plus mr-1 text-blue-600 dark:text-blue-400" aria-hidden="true"></i>
+            Приглашение участников
+          </span>
+          <button
+            type="button"
+            onClick={() => copyToClipboard?.(inviteText, "Приглашение скопировано")}
+            title="Скопировать всё приглашение целиком"
+            className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
+          >
+            <i className="fas fa-copy mr-1" aria-hidden="true"></i>
+            Копировать приглашение
+          </button>
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Максимальное количество — 100 человек</p>
+        <div className="space-y-1.5">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-xs text-gray-500 dark:text-gray-400">Адрес видеовстречи</div>
+              <div className="font-mono text-xs break-all text-gray-800 dark:text-gray-100">{joinUrl}</div>
+            </div>
+            <button type="button" onClick={() => copyToClipboard?.(joinUrl, "Адрес скопирован")}
+              className="text-blue-600 dark:text-blue-400 hover:underline text-xs shrink-0"><i className="fas fa-copy mr-1"></i>копировать</button>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">Код видеовстречи</div>
+              <div className="font-mono text-xs text-gray-800 dark:text-gray-100">{code}@salutejazz.ru</div>
+            </div>
+            <button type="button" onClick={() => copyToClipboard?.(`${code}@salutejazz.ru`, "Код скопирован")}
+              className="text-blue-600 dark:text-blue-400 hover:underline text-xs shrink-0"><i className="fas fa-copy mr-1"></i>копировать</button>
+          </div>
+          {psw && (
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">Пароль</div>
+                <div className="font-mono text-xs text-gray-800 dark:text-gray-100">{psw}</div>
+              </div>
+              <button type="button" onClick={() => copyToClipboard?.(psw, "Пароль скопирован")}
+                className="text-blue-600 dark:text-blue-400 hover:underline text-xs shrink-0"><i className="fas fa-copy mr-1"></i>копировать</button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
   const toggleParticipant = (userId: string) => {
     setFormData((f) => {
       const has = (f.participants ?? []).some((id) => String(id) === String(userId));
@@ -273,6 +345,7 @@ function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, c
                     Ссылка на корпоративную ВКС
                   </p>
                 )}
+                {renderVksInviteBlock()}
               </div>
 
               <div>
@@ -1323,6 +1396,7 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
                         Ссылка на корпоративную ВКС
                       </p>
                     )}
+                    {renderVksInviteBlock()}
                   </div>
 
                   <div>
