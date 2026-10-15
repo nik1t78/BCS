@@ -6,3 +6,9 @@ export/
 *.tar.gz
 *.tar.xz
 node_modules/
+
+# секреты и локальные дубли — никогда не коммитить
+.env
+.env.bak*
+.env.tmp*
+backend/.env
