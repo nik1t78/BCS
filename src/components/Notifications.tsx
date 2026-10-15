@@ -119,10 +119,32 @@ export function useNewNotificationToasts(enabled: boolean) {
     };
 
     check();
-    const timer = setInterval(check, 20000);
+    // Поллинг — только для активной вкладки (см. Dashboard: фоновые вкладки
+    // не должны грузить сервер). SSE-канал ниже работает всегда и доставляет
+    // уведомления мгновенно, когда браузер не «замораживает» вкладку.
+    let timer: number | null = null;
+    const startTimer = () => {
+      if (timer === null) timer = window.setInterval(check, 20000);
+    };
+    const stopTimer = () => {
+      if (timer !== null) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+    const onVisibility = () => {
+      if (document.hidden) stopTimer();
+      else {
+        startTimer();
+        check(); // при возврате к вкладке — сразу перепроверить
+      }
+    };
+    if (!document.hidden) startTimer();
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       cancelled = true;
-      clearInterval(timer);
+      stopTimer();
+      document.removeEventListener("visibilitychange", onVisibility);
       if (unsubscribe) unsubscribe();
     };
   }, [enabled]);
@@ -182,8 +204,21 @@ export default function Notifications({ user }: NotificationsProps) {
     cancelledRef.current = false;
     loadNotifications();
 
-    // Обновляем уведомления каждые 30 секунд (запасной механизм при недоступном SSE)
-    const timer = setInterval(loadNotifications, 30000);
+    // Запасной поллинг (при недоступном SSE) — только пока страница уведомлений
+    // активна во вкладке; фоновые вкладки не грузят сервер.
+    let timer: number | null = null;
+    const startTimer = () => {
+      if (timer === null) timer = window.setInterval(loadNotifications, 30000);
+    };
+    const stopTimer = () => {
+      if (timer !== null) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+    const onVisibility = () => (document.hidden ? stopTimer() : startTimer());
+    if (!document.hidden) startTimer();
+    document.addEventListener("visibilitychange", onVisibility);
 
     // Realtime: мгновенное обновление списка при новом уведомлении.
     // В режиме «все пользователи» (админ) SSE-событие касается другого
@@ -194,7 +229,8 @@ export default function Notifications({ user }: NotificationsProps) {
 
     return () => {
       cancelledRef.current = true;
-      clearInterval(timer);
+      stopTimer();
+      document.removeEventListener("visibilitychange", onVisibility);
       if (unsubscribe) unsubscribe();
     };
   }, [user.id, showAllUsers]);

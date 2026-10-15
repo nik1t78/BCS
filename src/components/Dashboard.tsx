@@ -85,9 +85,11 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
   };
 
   useEffect(() => {
+    let cancelled = false;
     const loadData = async () => {
       try {
         const [m, u] = await Promise.all([getMeetings(), getUsersForDisplay(user.role)]);
+        if (cancelled) return; // компонент мог размонтироваться за время запроса
         setMeetings(m);
         setUsers(u);
       } catch (error) {
@@ -97,11 +99,30 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
     loadData();
 
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    const dataTimer = setInterval(loadData, 30000); // Обновляем каждые 30 секунд
+    // Фоновое обновление данных — ТОЛЬКО когда вкладка видна. Раньше поллинг
+    // работал и в фоновых вкладках: у пользователей открыто по несколько
+    // вкладок/страниц и каждая каждые 30 с тянула ВСЕ встречи со страницы 1
+    // до последней (per_page=200) — сервер «лысил» и ответы тормозили.
+    const startPolling = () => {
+      if (dataTimer !== null) return;
+      dataTimer = window.setInterval(loadData, 60000);
+    };
+    const stopPolling = () => {
+      if (dataTimer !== null) {
+        clearInterval(dataTimer);
+        dataTimer = null;
+      }
+    };
+    let dataTimer: number | null = null;
+    const onVisibility = () => (document.hidden ? stopPolling() : startPolling());
+    if (!document.hidden) startPolling();
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
+      cancelled = true;
       clearInterval(timer);
-      clearInterval(dataTimer);
+      stopPolling();
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
 

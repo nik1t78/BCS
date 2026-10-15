@@ -91,6 +91,8 @@ function App() {
       if ((n as any).type === "read" || (n as any).event === "read") setUnreadCount((c) => Math.max(0, c - 1));
     });
     const timer = setInterval(refresh, 60000); // запасной поллинг раз в минуту
+    // Фоновые вкладки браузер «замораживает» сам (setInterval → ~раз/мин),
+    // поэтому дополнительной оптимизации здесь не требуется.
     const onReadEvent = () => refresh();
     window.addEventListener("vks-notification-read", onReadEvent);
     return () => {
