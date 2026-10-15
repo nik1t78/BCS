@@ -49,6 +49,8 @@ export function sanitizeVksLink(link?: string | null): string {
   let s = String(link)
     .trim()
     // управляющие символы, которые приходят при копировании из мессенджеров
+    // (eslint-disable: range намеренно — чистим \x00–\x1F из «грязных» вставок)
+    // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u001F\u007F\u200B\uFEFF]/g, "")
     // неразрывные пробелы внутри ссылки (заменяем на обычный, затем чистим)
   .replace(/\u00A0/g, " ");
