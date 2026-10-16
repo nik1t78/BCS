@@ -44,6 +44,20 @@ def health():
     return {"ok": True, "service": "vks-selenium-bot"}
 
 
+# Тот же ответ на "/" — чтобы работала проверка без префикса /vks-bot
+# (напрямую http://localhost:8090/ или через nginx при любом варианте
+# проксирования пути). Также добавлен алиас /vks-bot/health — защита от
+# конфигураций nginx без завершающего слэша в proxy_pass.
+@app.get("/")
+def root():
+    return {"ok": True, "service": "vks-selenium-bot", "endpoints": ["/health", "/create"]}
+
+
+@app.get("/vks-bot/health")
+def health_prefixed():
+    return health()
+
+
 @app.post("/create")
 def create(req: CreateReq, x_bot_token: str | None = Header(default=None)):
     _check_token(x_bot_token)
