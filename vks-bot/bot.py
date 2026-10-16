@@ -12,6 +12,7 @@ VKS-бот (Selenium): автоматически заходит на https://sa
 import argparse
 import json
 import logging
+import os
 import random
 import re
 import string
@@ -20,6 +21,7 @@ import time
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -88,7 +90,37 @@ class VkxBot:
         self._lock = threading.Lock()
 
     def _make_driver(self) -> webdriver.Chrome:
-        driver = webdriver.Chrome(options=_chrome_options(self.headless))
+        """Запуск Chromium внутри Docker-контейнера (chromium + chromium-driver).
+
+        Selenium Manager по умолчанию скачивает «свой» Chrome-for-Testing в
+        ~/.cache/selenium — в контейнере это не нужно и ломает старт. Поэтому
+        явно указываем системные бинарники, а если и они не найдены — падаем
+        с понятной ошибкой вместо молчаливого исключения.
+        """
+        opts = _chrome_options(self.headless)
+        candidates_bin = [
+            os.getenv("CHROME_BIN", ""),
+            "/usr/bin/chromium",
+            "/usr/bin/chromium-browser",
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+        ]
+        candidates_drv = [
+            os.getenv("CHROMEDRIVER_BIN", ""),
+            "/usr/bin/chromedriver",
+            "/usr/bin/chromium-driver",
+        ]
+        chrome_bin = next((p for p in candidates_bin if p and os.path.exists(p)), None)
+        driver_bin = next((p for p in candidates_drv if p and os.path.exists(p)), None)
+        if not chrome_bin or not driver_bin:
+            raise RuntimeError(
+                "Chromium/chromedriver не найдены в контейнере (искали: "
+                + ", ".join(filter(None, candidates_bin))
+                + "). Пересоберите образ: docker compose build --no-cache vks-bot"
+            )
+        opts.binary_location = chrome_bin
+        service = Service(executable_path=driver_bin)
+        driver = webdriver.Chrome(service=service, options=opts)
         driver.set_page_load_timeout(45)
         return driver
 
