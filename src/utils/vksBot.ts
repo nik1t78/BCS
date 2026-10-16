@@ -23,7 +23,13 @@ const BOT_URL = (import.meta.env.VITE_VKS_BOT_URL as string) || "/vks-bot";
 // пароль» при попытке входа. Бот реально нажимает «Create and join» и
 // возвращает живую ссылку. Выключить: VITE_VKS_AUTOBOT=0 в .env (тогда
 // фолбэк ниже вернёт локальную ссылку — комната не будет существовать).
+// Флаг вшивается в JS при сборке Dockerfile-аргументом VITE_VKS_AUTOBOT;
+// docker-compose передаёт его из .env со значением по умолчанию "1".
 const AUTOBOT_ENABLED = import.meta.env.VITE_VKS_AUTOBOT !== "0";
+
+/** Сколько раз подряд может не повезти с ботом, прежде чем фронт
+ *  «сдастся» и сохранит локальную ссылку (каждая попытка до ~75 c). */
+const BOT_ATTEMPTS = 2;
 
 export interface BotCreateResult {
   link: string;
@@ -40,6 +46,45 @@ export interface BotCreateResult {
  * тихо возвращаем локально сгенерированную ссылку в том же формате,
  * чтобы создание конференции никогда не блокировалось.
  */
+async function botAttempt(
+  title: string,
+  name: string,
+  timeoutMs: number,
+): Promise<BotCreateResult> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  // Секрет бота (заголовок X-Bot-Token) — то же значение, что BOT_TOKENS в .env.
+  // Без него сервер бота отвечает 401, если BOT_TOKENS настроены.
+  const botToken = (import.meta.env.VITE_VKS_BOT_TOKEN as string) || "";
+  let resp: Response;
+  try {
+    resp = await fetch(`${BOT_URL.replace(/\/$/, "")}/create`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(botToken ? { "X-Bot-Token": botToken } : {}),
+      },
+      body: JSON.stringify({ title, name }),
+      signal: ctrl.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!resp.ok) throw new Error(`bot http ${resp.status}`);
+  const data = await resp.json();
+  const link: string | undefined =
+    data?.ok && data?.link ? data.link : data?.fallback_link;
+  if (link && link.startsWith("https://salutejazz.ru/calls/")) {
+    return {
+      link,
+      room: data.room,
+      password: data.password,
+      real: !!(data.ok && data.link),
+    };
+  }
+  throw new Error(data?.error || "бот не вернул ссылку");
+}
+
 export async function createVksViaBot(
   title: string,
   name: string,
@@ -50,44 +95,24 @@ export async function createVksViaBot(
     // локальная генерация ссылки в эталонном формате платформы.
     return { link: generateVksLink(), real: false };
   }
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-    // Секрет бота (заголовок X-Bot-Token) — то же значение, что BOT_TOKENS в .env.
-    // Без него сервер бота отвечает 401, если BOT_TOKENS настроены.
-    const botToken = (import.meta.env.VITE_VKS_BOT_TOKEN as string) || "";
-    const resp = await fetch(`${BOT_URL.replace(/\/$/, "")}/create`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(botToken ? { "X-Bot-Token": botToken } : {}),
-      },
-      body: JSON.stringify({ title, name }),
-      signal: ctrl.signal,
-    });
-    clearTimeout(timer);
-    if (!resp.ok) throw new Error(`bot http ${resp.status}`);
-    const data = await resp.json();
-    const link: string | undefined =
-      data?.ok && data?.link ? data.link : data?.fallback_link;
-    if (link && link.startsWith("https://salutejazz.ru/calls/")) {
-      return {
-        link,
-        room: data.room,
-        password: data.password,
-        real: !!(data.ok && data.link),
-      };
+  // До BOT_ATTEMPTS попыток: Selenium-прогон на salutejazz.ru иногда
+  // спотыкается о временный оверлей/редирект — повтор обычно помогает.
+  let lastError = "";
+  for (let i = 0; i < BOT_ATTEMPTS; i++) {
+    try {
+      return await botAttempt(title, name, timeoutMs);
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : String(e);
+      // eslint-disable-next-line no-console
+      console.warn(`[vksBot] попытка ${i + 1}/${BOT_ATTEMPTS} не удалась:`, e);
     }
-    throw new Error(data?.error || "бот не вернул ссылку");
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn("[vksBot] бот недоступен, используется локальная генерация:", e);
-    return {
-      link: generateVksLink(),
-      real: false,
-      error: e instanceof Error ? e.message : String(e),
-    };
   }
+  // Все попытки исчерпаны — фолбэк, чтобы создание встречи не блокировалось.
+  return {
+    link: generateVksLink(),
+    real: false,
+    error: lastError || "бот недоступен",
+  };
 }
 
 /**
