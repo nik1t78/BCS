@@ -70,7 +70,19 @@ async function botAttempt(
   } finally {
     clearTimeout(timer);
   }
-  if (!resp.ok) throw new Error(`bot http ${resp.status}`);
+  if (!resp.ok) {
+    // Сохраняем текст ответа (FastAPI: {"detail": "..."} — напр.
+    // "Bad or missing X-Bot-Token" при 401) — иначе alert показывает
+    // только код статуса и причину сбоя невозможно определить.
+    let detail = "";
+    try {
+      const j = await resp.json();
+      detail = typeof j?.detail === "string" ? j.detail : JSON.stringify(j).slice(0, 200);
+    } catch {
+      /* не-json */
+    }
+    throw new Error(detail ? `bot http ${resp.status}: ${detail}` : `bot http ${resp.status}`);
+  }
   const data = await resp.json();
   const link: string | undefined =
     data?.ok && data?.link ? data.link : data?.fallback_link;
