@@ -29,8 +29,11 @@ class NotificationController extends Controller
             $query->unread();
         }
 
+        // Сортировка по id (автоинкремент) — надёжнее created_at: у уведомлений,
+        // созданных в одну транзакцию/секунду, created_at одинаковый и порядок
+        // «новых» плывёт, из-за чего фронт пропускал свежие уведомления.
         $notifications = $query->with(['meeting', 'user:id,name'])
-            ->orderBy('created_at', 'desc')
+            ->orderByDesc('id')
             ->paginate($request->get('per_page', $showAll ? 100 : 50));
 
         return response()->json($notifications);
