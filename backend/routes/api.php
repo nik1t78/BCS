@@ -28,6 +28,15 @@ Route::get('/health', function () {
     ]);
 });
 
+// Лёгкий эндпоинт «метки изменений» для клиентского кеша списка встреч:
+// фронт сверяет stamp и при отсутствии изменений отдаёт закэшированный
+// список, не выкачивая все страницы /meetings (главная причина лагов).
+Route::middleware('auth:sanctum')->get('/meta/stamps', function (\Illuminate\Http\Request $request) {
+    return response()->json(['data' => [
+        'meetings_changed' => \Illuminate\Support\Facades\Cache::get('meetings:changed', 0),
+    ]]);
+});
+
 // Realtime-канал уведомлений (Server-Sent Events) — ОБЯЗАТЕЛЬНО вне группы
 // auth:sanctum/throttle:api. Причина: у EventSource нет способа отправить
 // заголовок Authorization, токен передаётся только в query (?token=...).

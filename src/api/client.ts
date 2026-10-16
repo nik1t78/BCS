@@ -63,7 +63,7 @@ export function forceRelogin() {
 }
 
 // Базовая функция для запросов
-const apiRequest = async (endpoint: string, options: RequestInit = {}, _retried = false): Promise<any> => {
+export const apiRequest = async (endpoint: string, options: RequestInit = {}, _retried = false): Promise<any> => {
   const token = getToken();
 
   // Для multipart/FormData заголовок Content-Type не устанавливаем —

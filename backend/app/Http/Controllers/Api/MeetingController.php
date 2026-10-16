@@ -187,6 +187,8 @@ class MeetingController extends Controller
             'start_time' => $meeting->start_time,
         ]);
 
+        \Illuminate\Support\Facades\Cache::forever('meetings:changed', now()->timestamp);
+
         return response()->json($meeting->load(['organizer', 'tags']), 201);
     }
 
@@ -260,6 +262,8 @@ class MeetingController extends Controller
 
         AuditLog::log($request, 'meeting_updated', $meeting, $oldValues, $meeting->only($fields));
 
+        \Illuminate\Support\Facades\Cache::forever('meetings:changed', now()->timestamp);
+
         return response()->json($meeting->load(['organizer', 'tags']));
     }
 
@@ -294,6 +298,8 @@ class MeetingController extends Controller
         }
 
         $meeting->delete();
+
+        \Illuminate\Support\Facades\Cache::forever('meetings:changed', now()->timestamp);
 
         return response()->json(['message' => 'Конференция перемещена в корзину']);
     }
@@ -334,6 +340,8 @@ class MeetingController extends Controller
         }
 
         AuditLog::log($request, 'meeting_cancelled', $meeting, ['status' => $oldStatus], ['status' => 'cancelled', 'reason' => $validated['reason'] ?? null]);
+
+        \Illuminate\Support\Facades\Cache::forever('meetings:changed', now()->timestamp);
 
         return response()->json($meeting->load(['organizer', 'tags']));
     }

@@ -86,6 +86,8 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
     let cancelled = false;
     const loadData = async () => {
       try {
+        // Кеш в store-api: если встречи не менялись — один лёгкий запрос
+        // вместо полной постраничной выгрузки; список сотрудников тоже из кеша.
         const [m, u] = await Promise.all([getMeetings(), getUsersForDisplay(user.role)]);
         if (cancelled) return; // компонент мог размонтироваться за время запроса
         setMeetings(m);
@@ -103,7 +105,12 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
     // до последней (per_page=200) — сервер «лысил» и ответы тормозили.
     const startPolling = () => {
       if (dataTimer !== null) return;
-      dataTimer = window.setInterval(loadData, 60000);
+      // 5 минут вместо 60 секунд: уведомления о новых/изменённых встречах
+      // приходят мгновенно через SSE + toast-канал, поэтому тяжёлый полный
+      // перезагрузочный запрос нужен редко. Это главная разгрузка сервера:
+      // раньше N вкладок × M пользователей били по /meetings+персоналу
+      // каждые 60 с, и на слабом хосте весь сайт начинал «лагать».
+      dataTimer = window.setInterval(loadData, 300000);
     };
     const stopPolling = () => {
       if (dataTimer !== null) {

@@ -2,6 +2,7 @@
 
 import {
   authAPI,
+  apiRequest,
   usersAPI,
   meetingsAPI,
   notificationsAPI,
@@ -205,7 +206,18 @@ export async function getUsers(): Promise<User[]> {
 // участников). Обычные пользователи не имеют доступа к /admin/users (403),
 // поэтому сначала пробуем публичный GET /users, а для админа/модератора
 // используем расширенный список /admin/users.
-export async function getUsersForDisplay(currentRole?: string): Promise<User[]> {
+export async function getUsersForDisplay(currentRole?: string, cacheKey?: string): Promise<User[]> {
+  // Кеш списка сотрудников: sessionStorage + TTL. Инвалидируется при любой
+  // записи встреч/пользователей (см. invalidateMeetingsCache/bumpUsersCacheTtl).
+  const key = cacheKey ?? "default";
+  const cached = getCachedUsers(key);
+  if (cached) return cached;
+  const list = await fetchUsersForDisplay(currentRole);
+  if (list.length) setCachedUsers(key, list);
+  return list;
+}
+
+async function fetchUsersForDisplay(currentRole?: string): Promise<User[]> {
   if (currentRole === "admin" || currentRole === "moderator") {
     const adminList = await getUsers();
     if (adminList.length > 0) return adminList;
@@ -220,7 +232,6 @@ export async function getUsersForDisplay(currentRole?: string): Promise<User[]> 
     return getUsers();
   }
 }
-
 // Laravel Paginate::toArray() возвращает { data, current_page, ... } —
 // и для списка пользователей, и для созданной модели (она сериализуется в
 // {"data": {...}}). Достаём первую запись из возможной обёртки пагинации.
@@ -331,14 +342,71 @@ async function loadAllMeetingPages(params?: any): Promise<Meeting[]> {
   return all;
 }
 
+// ---- Серверный кеш / метка изменений ----
+// Если с момента последнего запроса не было ни одной изменённой встречи,
+// отдаём закэшированный ответ вместо тяжёлой постраничной выгрузки.
+// Инвалидация — локальная запись + серверная метка (Cache::get('meetings:changed')).
+const MEETINGS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 минут в localStorage
+let lastLocalWriteAt = 0;
+
+interface MeetingsCacheEntry {
+  savedAt: number;
+  serverStamp: number | null;
+  data: Meeting[];
+}
+
+function meetingsCacheKey(params?: any): string {
+  return "vks_meetings_cache:" + encodeURIComponent(JSON.stringify(params ?? {}));
+}
+
+async function getServerChangedStamp(): Promise<number | null> {
+  try {
+    const r = await apiRequest("/meta/stamps");
+    const v = Number(r?.data?.meetings_changed ?? r?.meetings_changed ?? 0);
+    return Number.isFinite(v) ? v : null;
+  } catch {
+    return null; // эндпоинт ещё не задеплоен — работаем без серверной метки
+  }
+}
+
 export async function getMeetings(params?: {
   status?: string;
   date?: string;
   my?: boolean;
   search?: string;
 }): Promise<Meeting[]> {
+  // Быстрый путь: свежий локальный кеш + подтверждение с сервера, что
+  // встречи не менялись (один ЛЁГКИЙ запрос вместо N страниц по 200).
+  if (!params || Object.keys(params).length === 0) {
+    try {
+      const raw = localStorage.getItem(meetingsCacheKey());
+      if (raw) {
+        const entry = JSON.parse(raw) as MeetingsCacheEntry;
+        if (Date.now() - entry.savedAt < MEETINGS_CACHE_TTL_MS && Date.now() > lastLocalWriteAt) {
+          const stamp = await getServerChangedStamp();
+          if (stamp === null || stamp === entry.serverStamp) {
+            return entry.data;
+          }
+        }
+      }
+    } catch {
+      /* кеш повреждён — идём медленным путём */
+    }
+  }
   try {
-    return await loadAllMeetingPages(params);
+    const data = await loadAllMeetingPages(params);
+    if (!params || Object.keys(params).length === 0) {
+      try {
+        const stamp = await getServerChangedStamp();
+        localStorage.setItem(
+          meetingsCacheKey(),
+          JSON.stringify({ savedAt: Date.now(), serverStamp: stamp, data } satisfies MeetingsCacheEntry),
+        );
+      } catch {
+        /* localStorage может быть переполнен — не критично */
+      }
+    }
+    return data;
   } catch (error: any) {
     // 401 — истёкший токен Sanctum: показываем понятный экран входа, а не пустой список
     if (error?.status === 401 || String(error?.message ?? "").includes("Unauthenticated")) forceRelogin();
@@ -353,11 +421,50 @@ export async function getMeetings(params?: {
 // запроса при неудачном refresh); здесь оставлен ре-экспорт для совместимости.
 export { forceRelogin };
 
+// Инвалидация кешей после ЛЮБОЙ записи встреч: локальный кеш + счётчик
+// изменений на сервере (Cache::increment('meetings:changed')) становятся
+// неактуальными — следующий getMeetings сходит на полный запрос.
+export function invalidateMeetingsCache() {
+  lastLocalWriteAt = Date.now();
+  bumpUsersCacheTtl();
+}
+
+// ---- Кеш списка сотрудников (справник для формы/аватарок) ----
+// Список меняется редко, а тянулся каждой активной вкладкой каждые 60 с.
+const USERS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 минут
+let usersCacheSavedAt = 0;
+
+function bumpUsersCacheTtl() {
+  usersCacheSavedAt = 0;
+}
+
+export function getCachedUsers(key: string): User[] | null {
+  if (Date.now() - usersCacheSavedAt > USERS_CACHE_TTL_MS) return null;
+  try {
+    const raw = sessionStorage.getItem("vks_users_cache:" + key);
+    if (!raw) return null;
+    const list = JSON.parse(raw) as User[];
+    return Array.isArray(list) && list.length ? list : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setCachedUsers(key: string, list: User[]) {
+  try {
+    usersCacheSavedAt = Date.now();
+    sessionStorage.setItem("vks_users_cache:" + key, JSON.stringify(list));
+  } catch {
+    /* переполнение хранилища не критично */
+  }
+}
+
 export async function createMeeting(data: any): Promise<Meeting | null> {
   try {
     // Бэкенд ждёт обязательные поля (priority, reminder_minutes, recurring и
     // формат времени H:i). Отправляем только валидные поля в snake_case.
     const response = await meetingsAPI.create(meetingToApi(data));
+    invalidateMeetingsCache();
     return mapMeeting(unwrapOne(response));
   } catch (error) {
     console.error("Create meeting error:", error);
@@ -368,6 +475,7 @@ export async function createMeeting(data: any): Promise<Meeting | null> {
 export async function updateMeeting(id: string, data: any): Promise<Meeting | null> {
   try {
     const response = await meetingsAPI.update(id, meetingToApi(data));
+    invalidateMeetingsCache();
     return mapMeeting(unwrapOne(response));
   } catch (error) {
     console.error("Update meeting error:", error);
@@ -378,6 +486,7 @@ export async function updateMeeting(id: string, data: any): Promise<Meeting | nu
 export async function deleteMeeting(id: string): Promise<boolean> {
   try {
     await meetingsAPI.delete(id);
+    invalidateMeetingsCache();
     return true;
   } catch (error) {
     console.error("Delete meeting error:", error);
@@ -389,6 +498,7 @@ export async function deleteMeeting(id: string): Promise<boolean> {
 export async function cancelMeeting(id: string, reason?: string): Promise<Meeting | null> {
   try {
     const response = await meetingsAPI.cancel(id, reason);
+    invalidateMeetingsCache();
     return mapMeeting(unwrapOne(response));
   } catch (error) {
     console.error("Cancel meeting error:", error);
@@ -409,6 +519,7 @@ export async function rescheduleMeeting(
       ...(data.notify !== undefined ? { notify: data.notify } : {}),
       ...(data.force !== undefined ? { force: data.force } : {}),
     });
+    invalidateMeetingsCache();
     return mapMeeting(unwrapOne(response));
   } catch (error: any) {
     // Помечаем ошибку конфликта, чтобы UI мог предложить повтор с force=true
@@ -691,6 +802,7 @@ export async function getTrashedMeetings(): Promise<Meeting[]> {
 export async function restoreMeetingFromTrash(id: string): Promise<Meeting | null> {
   try {
     const response = await trashAPI.restore(id);
+    invalidateMeetingsCache();
     return mapMeeting(unwrapOne(response));
   } catch (error) {
     console.error("Restore meeting error:", error);
@@ -701,6 +813,7 @@ export async function restoreMeetingFromTrash(id: string): Promise<Meeting | nul
 export async function deleteMeetingForever(id: string): Promise<boolean> {
   try {
     await trashAPI.destroyForever(id);
+    invalidateMeetingsCache();
     return true;
   } catch (error) {
     console.error("Delete meeting forever error:", error);
