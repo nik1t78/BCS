@@ -50,7 +50,7 @@ export default function RoomBookingModal({ open, date, startTime, roomName, endT
   const [error, setError] = useState<string | null>(null);
   const [startMin, setStartMin] = useState<number>(() => {
     const m = hmToMin(startTime || "09:00");
-    return Math.round(m / SNAP) * SNAP;
+    return Math.min(Math.round(m / SNAP) * SNAP, WORK_DAY_END_MIN - SNAP);
   });
   const [durMin, setDurMin] = useState(() => {
     if (!endTime) return 60;
@@ -75,7 +75,7 @@ export default function RoomBookingModal({ open, date, startTime, roomName, endT
   useEffect(() => {
     if (!open) return;
     setAvailDate(date || todayKey());
-    const s = Math.round(hmToMin(startTime || "09:00") / SNAP) * SNAP;
+    const s = Math.min(Math.round(hmToMin(startTime || "09:00") / SNAP) * SNAP, WORK_DAY_END_MIN - SNAP);
     setStartMin(s);
     if (endTime) {
       const d = hmToMin(endTime) - hmToMin(startTime || "00:00");

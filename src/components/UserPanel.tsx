@@ -21,6 +21,15 @@ import { exportMeetingToIcs } from "../utils/ics";
 import { getFavoriteIds, toggleFavorite, addFavorites } from "../utils/favorites";
 import { generateVksLink, normalizeVksLink, isVksLink, buildJoinUrl, extractPswFromAny, sanitizeVksLink, vksRoomCodeFromLink, vksPasswordFromLink } from "../utils/vksLink";
 import { createVksViaBot } from "../utils/vksBot";
+import { isLateTime, LATE_CREATE_LIMIT_HM } from "../utils/freeSlots";
+
+/** «Сегодня» по локальному времени устройства — НЕ через toISOString()
+ *  (UTC может сдвигать дату на день назад/вперёд → виджет показывал
+ *  «вчерашнюю» дату, а линия текущего времени расходилась с реальностью). */
+export const localTodayKey = (): string => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 /** Предзаполнение формы создания конференции (например, из блока «Свободные залы» на главной) */
 export interface MeetingPrefill {
@@ -251,6 +260,7 @@ function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, c
                 <input
                   type="time"
                   required
+                  max={LATE_CREATE_LIMIT_HM}
                   value={formData.startTime}
                   onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
@@ -551,7 +561,7 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
     id: "",
     title: "",
     description: "",
-    date: new Date().toISOString().split("T")[0],
+    date: localTodayKey(),
     startTime: "10:00",
     endTime: "11:00",
     organizerId: user.id,
@@ -648,7 +658,12 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
   const [sortMode, setSortMode] = useState<SortMode>("smart");
 
   // ===== Фильтры: статус / комната / тег / поиск по названию, описанию, участникам =====
-  const nowIso = () => new Date().toISOString().slice(0, 16);
+  // «Сейчас» в локальном времени (YYYY-MM-DDTHH:mm) — toISOString() даёт UTC
+  // и мог считать встречи прошедшими/будущими с ошибкой до нескольких часов.
+  const nowIso = () => {
+    const n = new Date();
+    return `${localTodayKey()}T${String(n.getHours()).padStart(2, "0")}:${String(n.getMinutes()).padStart(2, "0")}`;
+  };
   useEffect(() => {
     const mapRoom = (r: any) => ({
       name: r.name,
@@ -669,7 +684,7 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
         // 403/404 на справочнике GET /rooms (роль «user» или старый бэкенд):
         // каталог залов берём из агрегированного /meetings/rooms-availability.
         meetingsAPI
-          .roomsAvailability({ date: new Date().toISOString().slice(0, 10) })
+          .roomsAvailability({ date: localTodayKey() })
           .then((av: any) => {
             const list: any[] = av?.data ?? av ?? [];
             setRoomsCatalog(list.map(mapRoom));
@@ -836,7 +851,11 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
       alert("Время окончания должно быть позже времени начала");
       return;
     }
-
+    // Поздним вечером ВКС создавать нельзя: не позже 20:00.
+    if (isLateTime(formData.startTime)) {
+      alert(`Нельзя создать встречу позже ${LATE_CREATE_LIMIT_HM}. Выберите время начала до ${LATE_CREATE_LIMIT_HM}.`);
+      return;
+    }
     // Валидация пересечений у тех же участников (кроме принудительного сохранения)
     if (!conflictChecked && !forceSave) {
       const found = await runConflictCheck();
@@ -1297,6 +1316,7 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
                     <input
                       type="time"
                       required
+                      max={LATE_CREATE_LIMIT_HM}
                       value={formData.startTime}
                       onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"

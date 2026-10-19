@@ -11,7 +11,14 @@
 // но занятость (busy) приходит абсолютная — клиент пересчитывает свободные
 // слоты сам через computeFreeSlots, поэтому расширение шкалы безопасно.
 export const WORK_DAY_START_MIN = 0; // 00:00
-export const WORK_DAY_END_MIN = 24 * 60; // 24:00
+// Поздним вечером создавать ВКС нельзя — верхняя граница 20:00.
+export const WORK_DAY_END_MIN = 20 * 60; // 20:00
+/** Максимальное время начала встречи (включительно) */
+export const LATE_CREATE_LIMIT_HM = "20:00";
+/** Проверка: строка HH:mm позже 20:00 → создание запрещено */
+export function isLateTime(hm: string): boolean {
+  return hmToMin(hm || "00:00") > hmToMin(LATE_CREATE_LIMIT_HM);
+}
 export const MIN_SLOT_MIN = 30; // окна короче 30 минут не показываем
 
 /** "HH:MM" → минуты с полуночи */
