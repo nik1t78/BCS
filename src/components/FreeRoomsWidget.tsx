@@ -145,9 +145,12 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
           next.push({ room, slots, busy });
         });
         // Свободные залы — выше списка; внутри — по ближайшему слоту
+        // (прошедшие окна в расчёте сортировки не участвуют)
         next.sort((a, b) => {
-          if (a.slots.length !== b.slots.length) return b.slots.length - a.slots.length;
-          return (a.slots[0]?.startMin ?? 1e9) - (b.slots[0]?.startMin ?? 1e9);
+          const futureA = a.slots.filter((s) => !s.isPast);
+          const futureB = b.slots.filter((s) => !s.isPast);
+          if (futureA.length !== futureB.length) return futureB.length - futureA.length;
+          return (futureA[0]?.startMin ?? 1e9) - (futureB[0]?.startMin ?? 1e9);
         });
         setInfos(next);
       } catch (e: any) {
@@ -235,8 +238,22 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
                         title={`Занято ${minToHm(b.startMin)}–${minToHm(b.endMin)}${b.title ? `: ${b.title}` : ""}`}
                       />
                     ))}
-                    {/* свободные окна — кликабельные, с временем как в Outlook */}
+                    {/* свободные окна: будущие — кликабельные зелёные блоки,
+                        прошедшие — серые некликабельные (заявку создать нельзя) */}
                     {slots.map((s) => {
+                      if (s.isPast) {
+                        return (
+                          <div
+                            key={`p${s.startMin}-${s.endMin}`}
+                            title={`Прошедшее время ${minToHm(s.startMin)}–${minToHm(s.endMin)} — бронирование невозможно`}
+                            className="absolute top-1 bottom-1 rounded bg-gray-200/70 dark:bg-slate-600/50 border border-dashed border-gray-300 dark:border-slate-500 text-gray-400 dark:text-slate-400 text-[11px] px-1 overflow-hidden whitespace-nowrap pointer-events-none select-none"
+                            style={{ left: `${pct(s.startMin)}%`, width: `${Math.max(pct(s.endMin) - pct(s.startMin), 3)}%` }}
+                          >
+                            <i className="fas fa-ban mr-1 opacity-60" aria-hidden="true"></i>
+                            {minToHm(s.startMin)}–{minToHm(s.endMin)}
+                          </div>
+                        );
+                      }
                       const bookEnd = Math.min(s.endMin, s.startMin + 60);
                       return (
                         <button
@@ -265,6 +282,7 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
           {/* Легенда */}
           <div className="flex flex-wrap gap-4 mt-3 text-[11px] text-gray-500 dark:text-gray-400 min-w-[640px]">
             <span><span className="inline-block w-3 h-3 rounded bg-emerald-100 border border-emerald-300 align-middle mr-1" />Свободно (клик — создать ВКС)</span>
+            <span><span className="inline-block w-3 h-3 rounded bg-gray-200 border border-dashed border-gray-300 align-middle mr-1" />Прошло — бронь невозможна</span>
             <span><span className="inline-block w-3 h-3 rounded bg-gray-300 align-middle mr-1" />Занято</span>
             <span><span className="inline-block w-3 h-[2px] bg-red-500 align-middle mr-1" />Текущее время</span>
           </div>

@@ -48,6 +48,8 @@ export interface FreeSlot {
   endMin: number;
   /** Длительность в минутах */
   lengthMin: number;
+  /** true — окно начинается в прошлом (сегодня до «сейчас»). Бронировать нельзя! */
+  isPast?: boolean;
 }
 
 /**
@@ -69,12 +71,11 @@ export function computeFreeSlots(
     .filter((r) => r.e > r.s)
     .sort((a, b) => a.s - b.s);
 
+  // Шкала строится от начала рабочего дня — прошедшие окна тоже видны,
+  // но помечены isPast и забронировать их нельзя (как в Outlook).
   let from = WORK_DAY_START_MIN;
   const to = WORK_DAY_END_MIN;
-  if (opts.isToday) {
-    // старт не раньше «сейчас», округлённого вверх до 5 минут
-    from = Math.max(from, Math.ceil(opts.nowMin / 5) * 5);
-  }
+  const pastLimit = opts.isToday ? opts.nowMin : WORK_DAY_START_MIN;
   if (to <= from) return [];
 
   const slots: FreeSlot[] = [];
@@ -91,6 +92,10 @@ export function computeFreeSlots(
   if (cursor < to) slots.push({ startMin: cursor, endMin: to, lengthMin: 0 } as FreeSlot);
 
   return slots
-    .map((s) => ({ ...s, lengthMin: s.endMin - s.startMin }))
+    .map((s) => ({
+      ...s,
+      lengthMin: s.endMin - s.startMin,
+      isPast: s.startMin < pastLimit,
+    }))
     .filter((s) => s.lengthMin >= MIN_SLOT_MIN);
 }

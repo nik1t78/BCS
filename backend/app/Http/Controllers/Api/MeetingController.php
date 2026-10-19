@@ -153,6 +153,16 @@ class MeetingController extends Controller
 
         $this->validateRoomAccess($request, $validated["room"] ?? null);
 
+        // Заявки в прошедшее время создавать нельзя (как и на фронте):
+        // дата не раньше сегодня, а если сегодня — начало не раньше «сейчас».
+        $now = \Carbon\CarbonImmutable::now();
+        $startAt = \Carbon\CarbonImmutable::parse($validated['date'])->setTimeFromTimeString($validated['start_time']);
+        if ($startAt->lessThan($now)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'start_time' => ['Нельзя создать встречу в прошедшем времени. Выберите будущую дату или более поздний слот.'],
+            ]);
+        }
+
         $validated['organizer_id'] = $request->user()->id;
         
         $tags = $validated['tags'] ?? null;

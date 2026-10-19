@@ -229,6 +229,7 @@ function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, c
                 <input
                   type="date"
                   required
+                  min={localTodayKey()}
                   value={formData.date}
                   onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
@@ -856,6 +857,21 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
       alert(`Нельзя создать встречу позже ${LATE_CREATE_LIMIT_HM}. Выберите время начала до ${LATE_CREATE_LIMIT_HM}.`);
       return;
     }
+    // В прошедшее время заявки создавать нельзя: дата не раньше сегодня,
+    // а если сегодня — начало встречи не раньше текущего момента.
+    // (При редактировании существующей встречи проверка не применяется.)
+    if (!editingMeeting) {
+      const nowD = new Date();
+      const todayKey = `${nowD.getFullYear()}-${String(nowD.getMonth() + 1).padStart(2, "0")}-${String(nowD.getDate()).padStart(2, "0")}`;
+      if (formData.date < todayKey) {
+        alert("Нельзя создать встречу в прошедшую дату. Выберите сегодня или будущий день.");
+        return;
+      }
+      if (formData.date === todayKey && formData.startTime < `${String(nowD.getHours()).padStart(2, "0")}:${String(nowD.getMinutes()).padStart(2, "0")}`) {
+        alert("Это время уже прошло. Нельзя создать заявку на прошедшее время — выберите более поздний слот.");
+        return;
+      }
+    }
     // Валидация пересечений у тех же участников (кроме принудительного сохранения)
     if (!conflictChecked && !forceSave) {
       const found = await runConflictCheck();
@@ -1285,6 +1301,7 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
                     <input
                       type="date"
                       required
+                      min={editingMeeting ? undefined : localTodayKey()}
                       value={formData.date}
                       onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
