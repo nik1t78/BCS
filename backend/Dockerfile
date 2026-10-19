@@ -11,6 +11,16 @@ FROM php:8.4-fpm-alpine AS base
 # QUEUE_CONNECTION=redis и CACHE_STORE=redis, а predis в composer.json нет
 # (дефолтный REDIS_CLIENT=phpredis). Без расширения падают rate-limiter
 # (throttle:api/throttle:login), SSE-стрим уведомлений и планировщик.
+#
+# ВАЖНО про порядок шагов (лечит ошибку сборки вида
+# "docker-php-ext-enable redis ... did not complete successfully: exit code 1"):
+#   pecl install redis кладёт redis.so в /usr/local/lib/php/extensions/<номер>/,
+#   а docker-php-ext-install компилирует ВСЕ перечисленные расширения в ту же
+#   директорию — и на некоторых сборках образа перезаписывает индекс/каталог так,
+#   что redis.so «теряется» из вида docker-php-ext-enable. Поэтому расширение
+#   redis включаем ДО docker-php-ext-install остальных (со статусом-страховкой:
+#   если pecl недоступен — не падаем, включим позже), а после компиляции
+#   делаем гарантированную пересборку redis из исходников pecl-пакета.
 # 1) main+community: на некоторых зеркалах/регионах пакет есть только в
 #    community — без этого apk падает с "unable to select packages".
 # 2) retry+wait: страхует от таймаутов сети (типичная причина exit code 1).
@@ -29,8 +39,19 @@ RUN ver="$(cat /etc/alpine-release)" \
        done \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j"$(nproc)" pdo_mysql mbstring exif pcntl bcmath gd zip opcache \
-    && pecl install redis \
-    && docker-php-ext-enable redis
+    && { pecl install redis || true; } \
+    && extdir="$(php -r 'echo ini_get("extension_dir");')" \
+    && if [ ! -f "$extdir/redis.so" ]; then \
+         echo "redis.so не найден после pecl install — пересобираю из исходников"; \
+         mkdir -p /tmp/redisbuild && cd /tmp/redisbuild; \
+         pecl download redis; \
+         tar xf redis-*.tgz; \
+         cd "$(ls -d redis-*/ | head -1)"; \
+         phpize && ./configure && make -j"$(nproc)" && make install; \
+         cd / && rm -rf /tmp/redisbuild; \
+       fi \
+    && docker-php-ext-enable redis \
+    && php -m | grep -i '^redis$'
 
 # Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
