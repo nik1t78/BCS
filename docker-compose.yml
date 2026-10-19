@@ -125,6 +125,17 @@ services:
           echo "[vks] redis недоступен — переключаю кэш/очередь на file/database"
           sed -i 's/^CACHE_STORE=.*/CACHE_STORE=file/; s/^QUEUE_CONNECTION=.*/QUEUE_CONNECTION=database/' /var/www/html/.env 2>/dev/null || true
         fi
+        # Самолечение vendor: если ./backend/vendor (bind) или том backend_vendor
+        # содержат autoload, собранный под другую версию PHP (например, локально
+        # на Windows был запущен composer install), artisan падает с
+        # "Composer detected issues in your platform ... >= 8.4.1".
+        # Переустанавливаем зависимости внутри контейнера (PHP образа) в обход
+        # platform_check. Требуется интернет при первом запуске после git pull.
+        if ! php -r "require '/var/www/html/vendor/autoload.php';" >/dev/null 2>&1; then
+          echo "[vks] vendor несовместим с PHP этого образа — выполняю composer install ..."
+          (cd /var/www/html && composer install --no-dev --prefer-dist --no-interaction --no-scripts --ignore-platform-req=php+) || \
+            echo "[vks] ВНИМАНИЕ: composer install не удался (нет сети?) — проверьте вручную: docker compose exec backend composer install --no-dev --ignore-platform-req=php+"
+        fi
         # Самолечение TCP-listen: nginx стучится на backend:9000, а базовый
         # образ php-fpm-alpine по умолчанию слушает UNIX-сокет -> 502 refused.
         if ! grep -qs 'listen = 0.0.0.0:9000' /usr/local/etc/php-fpm.d/zz-listen.conf; then
