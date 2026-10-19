@@ -69,7 +69,8 @@ WORKDIR /var/www/html
 COPY composer.json composer.lock ./
 RUN --mount=type=cache,target=/var/www/.composer \
     set -eux; \
-    composer install --no-dev --prefer-dist --no-interaction --no-scripts; \
+    composer install --no-dev --prefer-dist --no-interaction --no-scripts \
+             --ignore-platform-req=php+; \
     mkdir -p storage/app/public storage/framework/cache/data storage/framework/sessions \
              storage/framework/testing storage/framework/views storage/logs bootstrap/cache; \
     chown -R www-data:www-data vendor storage bootstrap/cache; \
