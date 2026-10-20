@@ -20,7 +20,7 @@ coverage/
 htmlcov/
 .coverage
 *.zip
-*.gz
+# *.gz — разрешены (phpredis-6.3.0.tar.gz нужен для сборки Docker, см. backend/Dockerfile)
 *.tar
 *.tgz
 *.bz2
@@ -46,7 +46,9 @@ __pycache__/
 *.Z
 *.lz
 *.lzo
-*.tar.gz
+# phpredis-*.tar.gz ОБЯЗАТЕЛЬНО должен быть в git: backend/Dockerfile делает
+# COPY phpredis-6.3.0.tar.gz — без файла сборка образа падает с "not found".
+!phpredis-*.tar.gz
 *.tar.bz2
 *.tar.xz
 *.tar.zst
