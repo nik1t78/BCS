@@ -20,7 +20,8 @@ coverage/
 htmlcov/
 .coverage
 *.zip
-# *.gz — разрешены (phpredis-6.3.0.tar.gz нужен для сборки Docker, см. backend/Dockerfile)
+# *.gz более НЕ разрешены: phpredis скачивается с pecl.php.net внутри RUN,
+# COPY tar.gz из контекста убран (лечит «failed to compute cache key ... not found»)
 *.tar
 *.tgz
 *.bz2
@@ -46,9 +47,10 @@ __pycache__/
 *.Z
 *.lz
 *.lzo
-# phpredis-*.tar.gz ОБЯЗАТЕЛЬНО должен быть в git: backend/Dockerfile делает
-# COPY phpredis-6.3.0.tar.gz — без файла сборка образа падает с "not found".
-!phpredis-*.tar.gz
+# phpredis-*.tar.gz больше НЕ нужен в git (Dockerfile не делает его COPY).
 *.tar.bz2
 *.tar.xz
 *.tar.zst
+
+# phpredis-архив больше не нужен в git: Dockerfile скачивает redis с pecl.php.net
+backend/phpredis-6.3.0.tar.gz

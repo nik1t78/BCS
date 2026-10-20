@@ -14,3 +14,9 @@ storage/framework/cache/data/*
 storage/framework/sessions/*
 storage/framework/views/*
 *.log
+
+# tar/zip-архивы не должны когда-либо попадать в контекст сборки (лечит
+# «failed to compute cache key ... not found» на Windows/Docker Desktop).
+*.tar.gz
+*.tgz
+*.zip
