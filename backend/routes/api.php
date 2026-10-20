@@ -33,7 +33,9 @@ Route::get('/health', function () {
 // список, не выкачивая все страницы /meetings (главная причина лагов).
 Route::middleware('auth:sanctum')->get('/meta/stamps', function (\Illuminate\Http\Request $request) {
     return response()->json(['data' => [
-        'meetings_changed' => \Illuminate\Support\Facades\Cache::get('meetings:changed', 0),
+        // Cache::get не должен ронять эндпоинт: при недоступном кэш-хранилище
+        // (redis упал/не сконфигурирован) отдаём 0 — фронт просто сходит на полный запрос.
+        'meetings_changed' => \App\Support\SafeCache::get('meetings:changed', 0),
     ]]);
 });
 

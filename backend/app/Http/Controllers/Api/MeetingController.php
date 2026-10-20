@@ -178,26 +178,37 @@ class MeetingController extends Controller
             $meeting->tags()->sync($tags);
         }
 
-        // Создаём уведомления для участников
-        foreach ($validated['participants'] ?? [] as $participantId) {
-            if ($participantId !== $request->user()->id) {
-                Notification::create([
-                    'user_id' => $participantId,
-                    'meeting_id' => $meeting->id,
-                    'message' => "👤 Вас добавили в конференцию \"{$meeting->title}\"",
-                    'type' => 'user-added',
-                    'read' => false,
-                ]);
+        // Создаём уведомления для участников. Встреча уже сохранена в БД,
+        // поэтому сбой здесь (недоступная таблица notifications, некорректный
+        // id участника и т.п.) НЕ должен превращаться в 500 — иначе фронт
+        // показывает ошибку «Server Error», а встреча фактически создана.
+        try {
+            foreach ($validated['participants'] ?? [] as $participantId) {
+                if ((int) $participantId !== (int) $request->user()->id) {
+                    Notification::create([
+                        'user_id' => $participantId,
+                        'meeting_id' => $meeting->id,
+                        'message' => "👤 Вас добавили в конференцию \"{$meeting->title}\"",
+                        'type' => 'user-added',
+                        'read' => false,
+                    ]);
+                }
             }
+        } catch (\Throwable $e) {
+            report($e);
         }
 
-        AuditLog::log($request, 'meeting_created', $meeting, [], [
-            'title' => $meeting->title,
-            'date' => $meeting->date,
-            'start_time' => $meeting->start_time,
-        ]);
+        try {
+            AuditLog::log($request, 'meeting_created', $meeting, [], [
+                'title' => $meeting->title,
+                'date' => $meeting->date,
+                'start_time' => $meeting->start_time,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
-        \Illuminate\Support\Facades\Cache::forever('meetings:changed', now()->timestamp);
+        \App\Support\SafeCache::forever('meetings:changed', now()->timestamp);
 
         return response()->json($meeting->load(['organizer', 'tags']), 201);
     }
@@ -270,9 +281,13 @@ class MeetingController extends Controller
             $meeting->tags()->sync($tags);
         }
 
-        AuditLog::log($request, 'meeting_updated', $meeting, $oldValues, $meeting->only($fields));
+        try {
+            AuditLog::log($request, 'meeting_updated', $meeting, $oldValues, $meeting->only($fields));
+        } catch (\Throwable $e) {
+            report($e); // аудит не должен ломать уже выполненное обновление (500)
+        }
 
-        \Illuminate\Support\Facades\Cache::forever('meetings:changed', now()->timestamp);
+        \App\Support\SafeCache::forever('meetings:changed', now()->timestamp);
 
         return response()->json($meeting->load(['organizer', 'tags']));
     }
@@ -288,28 +303,36 @@ class MeetingController extends Controller
             return response()->json(['message' => 'Доступ запрещён'], 403);
         }
 
-        AuditLog::log($request, 'meeting_deleted', $meeting, [
-            'title' => $meeting->title,
-            'date' => $meeting->date,
-        ]);
+        try {
+            AuditLog::log($request, 'meeting_deleted', $meeting, [
+                'title' => $meeting->title,
+                'date' => $meeting->date,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         // Мягкое удаление: встреча попадает в корзину (MeetingTrashController),
         // откуда её можно восстановить. Уведомляем участников.
         $targets = array_unique(array_merge([$meeting->organizer_id], $meeting->participants ?? []));
         foreach ($targets as $userId) {
-            if ($userId === $user->id) continue;
-            Notification::create([
-                'user_id' => $userId,
-                'meeting_id' => $meeting->id,
-                'message' => "🗑 Конференция \"{$meeting->title}\" ({$meeting->date->format('d.m.Y')} {$meeting->start_time}) удалена организатором. Её можно восстановить из корзины.",
-                'type' => 'warning',
-                'read' => false,
-            ]);
+            if ((int) $userId === (int) $user->id) continue;
+            try {
+                Notification::create([
+                    'user_id' => $userId,
+                    'meeting_id' => $meeting->id,
+                    'message' => "🗑 Конференция \"{$meeting->title}\" ({$meeting->date->format('d.m.Y')} {$meeting->start_time}) удалена организатором. Её можно восстановить из корзины.",
+                    'type' => 'warning',
+                    'read' => false,
+                ]);
+            } catch (\Throwable $e) {
+                report($e); // уведомление — не критично для самого удаления
+            }
         }
 
         $meeting->delete();
 
-        \Illuminate\Support\Facades\Cache::forever('meetings:changed', now()->timestamp);
+        \App\Support\SafeCache::forever('meetings:changed', now()->timestamp);
 
         return response()->json(['message' => 'Конференция перемещена в корзину']);
     }
@@ -339,19 +362,27 @@ class MeetingController extends Controller
         $suffix = !empty($validated['reason']) ? " Причина: {$validated['reason']}" : '';
         $targets = array_unique(array_merge([$meeting->organizer_id], $meeting->participants ?? []));
         foreach ($targets as $userId) {
-            if ($userId === $user->id) continue; // инициатору уведомление не нужно
-            Notification::create([
-                'user_id' => $userId,
-                'meeting_id' => $meeting->id,
-                'message' => "❌ Конференция \"{$meeting->title}\" ({$meeting->date->format('d.m.Y')} {$meeting->start_time}) отменена.{$suffix}",
-                'type' => 'warning',
-                'read' => false,
-            ]);
+            if ((int) $userId === (int) $user->id) continue; // инициатору уведомление не нужно
+            try {
+                Notification::create([
+                    'user_id' => $userId,
+                    'meeting_id' => $meeting->id,
+                    'message' => "❌ Конференция \"{$meeting->title}\" ({$meeting->date->format('d.m.Y')} {$meeting->start_time}) отменена.{$suffix}",
+                    'type' => 'warning',
+                    'read' => false,
+                ]);
+            } catch (\Throwable $e) {
+                report($e); // отмена уже выполнена — уведомления не должны давать 500
+            }
         }
 
-        AuditLog::log($request, 'meeting_cancelled', $meeting, ['status' => $oldStatus], ['status' => 'cancelled', 'reason' => $validated['reason'] ?? null]);
+        try {
+            AuditLog::log($request, 'meeting_cancelled', $meeting, ['status' => $oldStatus], ['status' => 'cancelled', 'reason' => $validated['reason'] ?? null]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
-        \Illuminate\Support\Facades\Cache::forever('meetings:changed', now()->timestamp);
+        \App\Support\SafeCache::forever('meetings:changed', now()->timestamp);
 
         return response()->json($meeting->load(['organizer', 'tags']));
     }
