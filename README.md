@@ -159,6 +159,58 @@ php artisan schedule:run               # ручной запуск планир�
 php artisan migrate                    # применить миграции (включая новые таблицы)
 ```
 
+## Типичные ошибки Windows/PowerShell при деплое
+
+**1. `failed to read .env: unexpected character "\x00" in variable name "V\x00I\x00T..."`**
+
+Причина: в PowerShell 5.1 конструкция `echo "текст" >> .env` дописывает в файл
+кусок в кодировке **UTF-16LE** (каждый символ с нулевым байтом), а docker compose
+умеет читать `.env` только как UTF-8. Лечится перекодировкой всего файла — в репозитории
+есть готовый скрипт:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\fix-env.ps1   # чинит .env (UTF-8 + LF), делает бэкап
+```
+
+На будущее — не используйте `>>` и `Add-Content` для `.env`. Безопасные способы:
+
+```powershell
+Add-Content -Path .env -Value 'VITE_VKS_AUTOBOT=1' -Encoding UTF8   # PS 7+
+# либо через редактор (notepad++ / VS Code: сохранить как UTF-8 без BOM, LF)
+# либо одной командой:
+"VITE_VKS_AUTOBOT=1" | Out-File .env -Append -Encoding ascii        # только ASCII-значения!
+```
+
+**2. `Лексема "&&" не является допустимым разделителем операторов` (PowerShell 5.1)**
+
+Связка `cmd1 && cmd2` работает только в PowerShell 7+. В Windows PowerShell 5.1
+выполняйте команды по очереди или используйте `;`:
+
+```powershell
+docker compose build frontend
+docker compose up -d frontend
+# или одной строкой (без проверки кода возврата):
+docker compose build frontend ; docker compose up -d frontend
+```
+
+**3. `WARN The "s"/"e"/"m" variable is not set. Defaulting to a blank string`**
+
+Docker compose интерполирует `$s`, `$e`, `$m` внутри entrypoint-скрипта сервиса
+`backend` (это PHP-переменные в `php -r '$s=@fsockopen(...)'`). В compose-файле они
+экранированы как `$$s/$$e/$$m` — если предупреждения появились снова, проверьте, что
+в `docker-compose.yml` все «голые» `$` в shell/PHP-коде удвоены.
+
+**4. `laravel.log could not be opened in append mode: Permission denied` на шаге `views`**
+
+Каталог `backend/storage` смонтирован с хоста bind-маунтом; если на сервере он
+принадлежит root, php-fpm (www-data) не может писать лог. Entrypoint контейнера
+`backend` теперь сам чинит права при каждом старте; вручную (однократно):
+
+```bash
+docker compose exec backend sh -c "chown -R www-data:www-data storage bootstrap/cache"
+docker compose up -d backend   # пересоздаст laravel.log от имени www-data
+```
+
 ## Оптимизация Docker: память и диск
 
 Все контейнеры ограничены по RAM/CPU прямо в `docker-compose.yml`
