@@ -295,12 +295,15 @@ export default function OutlookCalendar({
 
         <div className="grid grid-cols-7 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
           {WEEKDAYS_SHORT.map((wd) => (
-            <div key={wd} className="py-1.5 text-center text-xs font-medium uppercase text-gray-500 dark:text-gray-400">
+            // hidden sm:flex — на очень узких экранах подписи дней скрыты, чтобы 7 колонок не «выезжали»
+            <div key={wd} className="hidden sm:flex py-1.5 justify-center text-xs font-medium uppercase text-gray-500 dark:text-gray-400">
               {wd}
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-7">
+        {/* min-w-[460px] + горизонтальный скролл: ячейки месяца не сжимаются ниже читаемого */}
+        <div className="overflow-x-auto max-w-full">
+        <div className="grid grid-cols-7 min-w-[460px]">
           {visibleDays.map((date, i) => {
             const key = toDateKey(date);
             const evts = eventsForDate(date);
@@ -373,6 +376,7 @@ export default function OutlookCalendar({
             );
           })}
         </div>
+        </div>{/* /overflow-x-auto month grid */}
       </div>
     );
   }

@@ -52,6 +52,34 @@ export interface FreeSlot {
   isPast?: boolean;
 }
 
+/** Шаг сетки времени для разбиения свободных окон на кликабельные блоки */
+export const SLOT_STEP_MIN = 30;
+
+/**
+ * Разбивает длинное свободное окно на равные блоки по SLOT_STEP_MIN минут,
+ * чтобы пользователь мог выбрать конкретное время начала, а не только
+ * начало большого окна. Последний блок может быть короче шага, но не менее
+ * MIN_SLOT_MIN минут (иначе он присоединяется к предыдущему).
+ * Прошедшие окна (isPast) возвращаются без разбиения.
+ */
+export function splitSlotIntoBlocks(slot: FreeSlot, step: number = SLOT_STEP_MIN): FreeSlot[] {
+  if (slot.isPast) return [slot];
+  const total = slot.endMin - slot.startMin;
+  if (total <= step) return [slot];
+  // Явная защита от бесконечного цикла при некорректном шаге (< 1 минуты)
+  if (!Number.isFinite(step) || step < 1) return [slot];
+  const blocks: FreeSlot[] = [];
+  let cur = slot.startMin;
+  while (cur < slot.endMin) {
+    let end = Math.min(cur + step, slot.endMin);
+    // хвост короче минимального окна — присоединяем к последнему блоку
+    if (slot.endMin - end < MIN_SLOT_MIN && end < slot.endMin) end = slot.endMin;
+    blocks.push({ startMin: cur, endMin: end, lengthMin: end - cur });
+    cur = end;
+  }
+  return blocks;
+}
+
 /**
  * Из списка занятых интервалов (строки ISO или HH:MM) получить свободные окна
  * в пределах рабочего дня. Для todayFrom — обрезаем всё, что уже прошло.
@@ -73,7 +101,7 @@ export function computeFreeSlots(
 
   // Шкала строится от начала рабочего дня — прошедшие окна тоже видны,
   // но помечены isPast и забронировать их нельзя (как в Outlook).
-  let from = WORK_DAY_START_MIN;
+  const from = WORK_DAY_START_MIN;
   const to = WORK_DAY_END_MIN;
   const pastLimit = opts.isToday ? opts.nowMin : WORK_DAY_START_MIN;
   if (to <= from) return [];
