@@ -1,21 +1,12 @@
-# syntax=docker/dockerfile:1
-# ВАЖНО: контекст сборки этого Dockerfile — каталог backend/ (см. build.context в
-# docker-compose.yml), поэтому COPY здесь видит только файлы внутри backend/.
-
-# ЛОКАЛЬНЫЙ архив phpredis (обязателен для сборки без доступа к pecl.php.net):
-# backend/phpredis-6.3.0.tar.gz лежит в git (см. исключение в .gitignore).
-# ВАЖНО: COPY должен идти ПОСЛЕ FROM — до базового образа контекст не доступен.
-# Если файла нет (например, старый клон без него) — сборка НЕ падает на COPY,
-# а скачивает архив с pecl во время компиляции расширения (страховка ниже).
-ARG PHPREDIS_VERSION=6.3.0
-FROM scratch AS phpredis-bundle
-# Wildcard: если файла нет в контексте — COPY создаёт пустой слой вместо ошибки
-# «failed to compute cache key ... not found»; ниже есть страховка-скачивание с pecl.
-COPY phpredis-*.tar.gz /phpredis.tar.gz
+# phpredis: расширение собирается БЕЗ COPY-архива из контекста сборки.
+# Ошибка «failed to compute cache key ... "/phpredis-6.3.0.tar.gz": not found»
+# возникает, когда Docker Desktop пересылает неполный build-контекст (кэш
+# синхронизации файлов). Поэтому архив redis-6.3.0.tgz скачивается напрямую с
+# pecl.php.net внутри RUN (с retry), а локальный backend/phpredis-6.3.0.tar.gz
+# остаётся только ручной страховкой: если он есть в контексте — используется он.
+# Никаких COPY зависимостей от бинарных файлов в Dockerfile больше нет.
 
 FROM php:8.4-fpm-alpine AS base
-COPY --from=phpredis-bundle / /tmp/
-RUN test -f /tmp/phpredis.tar.gz && echo "phpredis bundle найден в контексте" || echo "phpredis bundle отсутствует — при необходимости скачаем с pecl"
 
 # Системные зависимости (alpine — образ в ~3 раза меньше debian-варианта)
 # mariadb-client (mysqldump) обязателен: команда `php artisan db:backup`
@@ -56,11 +47,13 @@ RUN ver="$(cat /etc/alpine-release)" \
     && { pecl install redis || true; } \
     && extdir="$(php -r 'echo ini_get("extension_dir");')" \
     && if [ ! -f "$extdir/redis.so" ]; then \
-         echo "redis.so не найден после pecl install — пересобираю из ЛОКАЛЬНОГО архива (без сети)"; \
+         echo "redis.so не найден после pecl install — беру архив: локальный файл (если передан в контекст) или скачиваю с pecl.php.net"; \
          mkdir -p /tmp/redisbuild && cd /tmp/redisbuild; \
-         if [ ! -f /tmp/phpredis.tar.gz ]; then \
-           echo "Локального архива нет — скачиваю phpredis с pecl.php.net (страховка)"; \
-           curl -fsSL --retry 3 "https://pecl.php.net/get/redis-6.3.0.tgz" -o /tmp/phpredis.tar.gz; \
+         if ls phpredis-*.tar.gz >/dev/null 2>&1 || ls /var/www/context-marker >/dev/null 2>&1; then :; fi; \
+         if [ -f "$(pwd)/phpredis-6.3.0.tar.gz" ]; then \
+           cp phpredis-6.3.0.tar.gz /tmp/phpredis.tar.gz; \
+         else \
+           curl -fsSL --retry 5 --retry-delay 3 "https://pecl.php.net/get/redis-6.3.0.tgz" -o /tmp/phpredis.tar.gz; \
          fi; \
          tar xf /tmp/phpredis.tar.gz; \
          cd "$(ls -d redis-*/ | head -1)"; \
