@@ -913,18 +913,36 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
       try {
         const botRes = await createVksViaBot(payload.title || "Встреча", user.name);
         payload.link = botRes.link;
-        if (!botRes.real) {
+        // skipped=true — автосоздание через бота ВЫКЛЮЧЕНО (VITE_VKS_AUTOBOT=0,
+        // штатный режим экономии RAM): предупреждать пользователя не нужно.
+        // Alert ниже — только при РЕАЛЬНОЙ попытке обратиться к боту, которая
+        // не удалась (контейнер vks-bot не запущен / 401 из-за BOT_TOKENS /
+        // таймаут Selenium).
+        if (!botRes.real && !botRes.skipped) {
+          // Бот был ВКЛЮЧЁН (VITE_VKS_AUTOBOT=1), но реально не смог создать
+          // встречу — это сбой, о котором пользователя надо предупредить.
+          // ВАЖНО: предупреждение адресовано администратору сервера, а НЕ
+          // пользователю встречи — встреча всё равно сохранится и работать
+          // будет (организатор создаёт комнату вручную по кнопке «Создать
+          // вручную» на salutejazz.ru). Команда ниже — для запуска на сервере
+          // 10.48.4.235 в папке проекта, а не в браузере.
+          const NL2 = String.fromCharCode(10);
           alert(
             "Внимание: Selenium-бот не смог создать встречу на salutejazz.ru" +
               (botRes.error ? ` (${botRes.error})` : "") +
-              ". Ссылка сгенерирована локально — такой комнаты на платформе ещё нет, вход может потребовать создания встречи организатором. Проверьте, что контейнер vks-bot запущен (docker compose --profile bot up -d vks-bot)."
+              "." + NL2 + NL2 +
+              "Ссылка сгенерирована локально — такой комнаты на платформе ещё нет, вход может потребовать создания встречи организатором." +
+              NL2 + NL2 +
+              "Администратору сервера: проверить контейнер vks-bot командой (в папке проекта на сервере):" +
+              NL2 +
+              "docker compose --profile bot up -d vks-bot"
           );
         }
       } catch {
         payload.link = generateVksLink();
         alert(
           "Не удалось создать ссылку через бота — ссылка сгенерирована локально. " +
-            "Проверьте запуск vks-bot: docker compose --profile bot up -d vks-bot"
+            "Администратору сервера: docker compose --profile bot up -d vks-bot"
         );
       } finally {
         setSavingNote(null);
@@ -934,10 +952,9 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
       try {
         const botRes = await createVksViaBot(payload.title || "Встреча", user.name);
         payload.link = botRes.link;
-        if (!botRes.real) {
+        if (!botRes.real && !botRes.skipped) {
           alert(
-            "Бот недоступен — ссылка сгенерирована локально (комнаты на платформе ещё нет). " +
-              "Проверьте vks-bot: docker compose --profile bot up -d vks-bot"
+            "Бот недоступен — ссылка сгенерирована локально (комнаты на платформе ещё нет)."
           );
         }
       } catch {

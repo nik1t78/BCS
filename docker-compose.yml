@@ -15,9 +15,10 @@ x-defaults: &container-defaults
     - no-new-privileges:true
 
 services:
-# ВАЖНО: интерполяция ${VAR:-default} выполняется docker compose при ЗАПУСКЕ/СБОРКЕ,
-# поэтому `docker compose build` работает даже без заполненного .env. Реальные секреты
-# (APP_KEY, пароли MySQL/Redis) берутся из ./backend/.env внутри контейнеров — см. README.
+# ВАЖНО: все переменные окружения в этом файле записаны как ${VAR:-default}, т.е.
+# с дефолтом — docker compose не выдаёт предупреждений даже без заполненного .env,
+# и `docker compose build` работает «из коробки». Реальные секреты (APP_KEY, пароли
+# MySQL/Redis) берутся из ./backend/.env внутри контейнеров — см. README.
   # Frontend (React)
   frontend:
     <<: *container-defaults
@@ -118,8 +119,11 @@ services:
       - sh
       - -c
       - |
+        # ВНИМАНИЕ: переменные в коде PHP ниже экранированы как $$ — иначе
+        # docker compose принимает их за свои подстановки и печатает
+        # WARN[0000] The "s" variable is not set. Defaulting to a blank string.
         check_redis() {
-          php -r '$s=@fsockopen("redis",6379,$e,$m,2); if($s){fwrite(STDOUT,"OK\n");exit(0);} fwrite(STDOUT,"FAIL\n");exit(1);' 2>/dev/null
+          php -r '$$s=@fsockopen("redis",6379,$$e,$$m,2); if($$s){fwrite(STDOUT,"OK\n");exit(0);} fwrite(STDOUT,"FAIL\n");exit(1);' 2>/dev/null
         }
         if [ "$$(check_redis)" != "OK" ]; then
           echo "[vks] redis недоступен — переключаю кэш/очередь на file/database"
@@ -135,6 +139,38 @@ services:
           echo "[vks] vendor несовместим с PHP этого образа — выполняю composer install ..."
           (cd /var/www/html && composer install --no-dev --prefer-dist --no-interaction --no-scripts --ignore-platform-req=php+) || \
             echo "[vks] ВНИМАНИЕ: composer install не удался (нет сети?) — проверьте вручную: docker compose exec backend composer install --no-dev --ignore-platform-req=php+"
+        fi
+        # .env для Laravel лежит ВНУТРИ контейнера по пути /var/www/html/.env
+        # (bind ./backend -> /var/www/html). На свежем клоне репозитория его нет
+        # (файл в .gitignore — секреты не коммитятся): без него APP_KEY берётся
+        # из env-контейнера как заглушка, и artisan key:generate не запускался.
+        # Создаём .env из backend/.env.example и генерируем настоящий APP_KEY.
+        if [ ! -f /var/www/html/.env ]; then
+          echo "[vks] /var/www/html/.env отсутствует — создаю из .env.example"
+          cp /var/www/html/.env.example /var/www/html/.env 2>/dev/null || : > /var/www/html/.env
+          grep -q '^APP_KEY=' /var/www/html/.env 2>/dev/null || echo 'APP_KEY=' >> /var/www/html/.env
+          sed -i 's/^APP_KEY=.*/APP_KEY=$$(head -c 32 /dev/urandom | base64)/' /var/www/html/.env
+        fi
+        # Самолечение прав storage/: ./backend/storage смонтирован с хоста bind-маунтом.
+        # На Linux-сервере каталог может принадлежать root (после git clone / rsync),
+        # тогда php-fpm (www-data) не может открыть storage/logs/laravel.log и
+        # `php artisan optimize` падает с "Failed to open stream: Permission denied"
+        # ровно на шаге views. Создаём каркас и чиним владельца/права при каждом старте.
+        mkdir -p storage/app/public storage/app/tmp storage/app/backups \
+                 storage/framework/cache/data storage/framework/sessions \
+                 storage/framework/testing storage/framework/views \
+                 storage/logs bootstrap/cache 2>/dev/null || true
+        touch storage/logs/laravel.log 2>/dev/null || true
+        chown -R www-data:www-data storage bootstrap/cache 2>/dev/null || \
+          echo '[vks] ВНИМАНИЕ: chown storage не удался (bind-mount только для чтения?)'
+        chmod -R ug+rwX,o+rX storage 2>/dev/null || true
+        # Если файл laravel.log уже создан другим пользователем (например, root из
+        # прошлых `docker compose exec`), append от www-data будет отвергнут ядром —
+        # удаляем и пересоздаём его от имени www-data.
+        if ! su -s /bin/sh www-data -c 'test -w storage/logs/laravel.log' 2>/dev/null; then
+          echo '[vks] storage/logs/laravel.log недоступен для записи www-data — пересоздаю'
+          rm -f storage/logs/laravel.log 2>/dev/null || true
+          touch storage/logs/laravel.log && chown www-data:www-data storage/logs/laravel.log
         fi
         # Самолечение TCP-listen: nginx стучится на backend:9000, а базовый
         # образ php-fpm-alpine по умолчанию слушает UNIX-сокет -> 502 refused.
@@ -173,8 +209,8 @@ services:
     ports:
       # Наружный порт ЗАФИКСИРОВАН = 80 (стандартный HTTP), поэтому сайт всегда
       # открывается БЕЗ порта в адресе: http://10.48.4.235/
-      # listen_ip задайте в .env как 127.0.0.1, если доступ нужен только с этой машины.
-      - "${listen_ip:-0.0.0.0}:80:80"
+      # LISTEN_IP задайте в .env как 127.0.0.1, если доступ нужен только с этой машины.
+      - "${LISTEN_IP:-0.0.0.0}:80:80"
     volumes:
       # Long (explicit) syntax — immune to the legacy docker-compose v1
       # "too many colons" parser bug triggered by Windows drive paths.
