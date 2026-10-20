@@ -102,7 +102,9 @@
 падает с `curl error 28 ... Connection timed out`.
 
 ```bash
-cp .env.example .env      # задать DB_PASSWORD, DB_ROOT_PASSWORD, REDIS_PASSWORD, APP_KEY
+cp .env.example .env      # задать DB_PASSWORD, DB_ROOT_PASSWORD, REDIS_PASSWORD; APP_KEY — по желанию
+# backend/.env создавать НЕ нужно: при первом `docker compose up` контейнер
+# сам создаст его из backend/.env.example и сгенерирует настоящий APP_KEY.
 docker compose up -d --build
 docker compose exec backend php artisan migrate --force
 docker compose exec backend php artisan storage:link   # картинки/вложения
