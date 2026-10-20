@@ -280,3 +280,31 @@ backend — `composer install → php artisan test`.
 Вся документация — в одном файле **[DOCS.md](DOCS.md)**: запуск (Windows/Linux/Docker/dev),
 демо-доступы, уведомления MAX, безопасность, рестарт/обновление/бэкапы, диагностика
 «не открывается по IP», развёртывание на Linux-сервере, история исправлений, roadmap.
+
+### Чеклист: полная переустановка проекта с нуля (клонирование с GitHub)
+
+Перед удалением старой папки **сохраните данные** — они не лежат в гите:
+
+```powershell
+# 1. Бэкап (на сервере Linux; на Windows PowerShell — те же команды без sudo)
+cp .env .env.backup                      # секреты/пароли корневой конфигурации
+cp backend/.env backend/.env.backup      # если создавали вручную
+docker compose exec -T mysql mysqldump -uvks_user -p"$DB_PASSWORD" vks_schedule > backup.sql
+tar czf storage-backup.tgz backend/storage   # загруженные картинки/вложения
+
+# 2. Удалить старую копию и клонировать заново
+git clone https://github.com/nik1t78/BCS.git BCS && cd BCS
+
+# 3. Вернуть своё
+copy .env.backup .env                    # PowerShell: Copy-Item
+unzip/restore: docker compose up -d mysql ; docker compose exec -T mysql sh -c 'mysql -uvks_user -p"$MYSQL_PASSWORD" vks_schedule' < ../backup.sql
+tar xzf storage-backup.tgz               # каркас backend/storage теперь есть в гите (.gitkeep)
+
+# 4. Запуск (контейнер backend сам создаст backend/.env + APP_KEY при их отсутствии)
+docker compose up -d --build
+docker compose exec backend php artisan migrate --force
+docker compose exec backend php artisan optimize
+```
+
+Проверка чистоты перед `up`: `docker compose config --quiet` — если команда
+молчит, compose-файл и `.env` в порядке (ни WARN, ни `\x00`).
