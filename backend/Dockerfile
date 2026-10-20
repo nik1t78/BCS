@@ -3,6 +3,12 @@
 # docker-compose.yml), поэтому COPY здесь видит только файлы внутри backend/.
 FROM php:8.4-fpm-alpine AS base
 
+# Копируем ЛОКАЛЬНЫЙ архив phpredis в образ ДО компиляции расширений.
+# Это убирает зависимость сборки от pecl.php.net и github.com: если
+# `pecl install redis` недоступен, redis.so собирается из этого архива.
+# Файл backend/phpredis-6.3.0.tar.gz ОБЯЗАТЕЛЕН и лежит в git (см. .gitignore).
+COPY phpredis-6.3.0.tar.gz /tmp/phpredis.tar.gz
+
 # Системные зависимости (alpine — образ в ~3 раза меньше debian-варианта)
 # mariadb-client (mysqldump) обязателен: команда `php artisan db:backup`
 # (ежедневный бэкап БД в 02:30) вызывает mysqldump внутри контейнера.
@@ -42,10 +48,9 @@ RUN ver="$(cat /etc/alpine-release)" \
     && { pecl install redis || true; } \
     && extdir="$(php -r 'echo ini_get("extension_dir");')" \
     && if [ ! -f "$extdir/redis.so" ]; then \
-         echo "redis.so не найден после pecl install — пересобираю из исходников"; \
+         echo "redis.so не найден после pecl install — пересобираю из ЛОКАЛЬНОГО архива (без сети)"; \
          mkdir -p /tmp/redisbuild && cd /tmp/redisbuild; \
-         pecl download redis; \
-         tar xf redis-*.tgz; \
+         tar xf /tmp/phpredis.tar.gz; \
          cd "$(ls -d redis-*/ | head -1)"; \
          phpize && ./configure && make -j"$(nproc)" && make install; \
          cd / && rm -rf /tmp/redisbuild; \
