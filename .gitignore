@@ -28,6 +28,15 @@ htmlcov/
 *.7z
 *.rar
 *.zst
+*.bundle
+
+# Node_modules никогда не должен попадать в git — это раздувает репозиторий
+# в ~200 МБ. Ставится командой: npm ci / npm install
+node_modules/
+backend/node_modules/
+vks-bot/__pycache__/
+__pycache__/
+*.pyc
 *.lz4
 *.lzh
 *.cab

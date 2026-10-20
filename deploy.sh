@@ -59,6 +59,14 @@ else
 fi
 docker compose exec -T backend php artisan config:cache || true
 docker compose exec -T backend php artisan route:cache   || true
+# Пересборка статических кешей после деплоя (views/events) + перезапуск fpm,
+# т.к. opcache.validate_timestamps=0 — байткод перечитывается только при старте.
+docker compose exec -T backend php artisan view:cache    || true
+docker compose exec -T backend php artisan event:cache   || true
+docker compose restart backend                           || true
+# Рабочие очередей кэшируют классы в памяти процесса — перезапускаем, чтобы
+# подхватили новый код после git pull.
+docker compose restart queue                             || true
 
 # Полная чистка Docker: контейнер бота, неиспользуемые образы, кеш сборки.
 # Безопасно: данные mysql (bind ./docker/mysql/data) и volume frontend_build не трогаются.
