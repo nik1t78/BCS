@@ -118,15 +118,61 @@ RUN set -eux; \
     chown -R www-data:www-data storage bootstrap/cache; \
     chmod -R 777 storage bootstrap/cache
 
+# ================= Каркас Laravel (лечит «Dockerfile не работает») =================
+# В git-репозитории намеренно нет config/*.php (кроме services.php), .env.example
+# и database/migrations — они в .gitignore. На свежем клоне контейнер собирался,
+# запускался, но `php artisan` падал («No application encryption key», отсутствие
+# config/app.php и т.п.), а healthcheck не проходил — docker помечал сервис как
+# unhealthy и весь стек считался нерабочим. Здесь недостающий каркас создаётся
+# автоматически (только если файлов НЕТ — локальные файлы разработчика не
+# затираются; в bind-mount ./backend эти пути перекрываются хостом, поэтому
+# такой же блок продублирован в entrypoint сервиса backend в docker-compose.yml).
+RUN set -eux; \
+    if [ ! -f .env ]; then \
+      printf 'APP_NAME=BCS\nAPP_ENV=production\nAPP_KEY=\nAPP_DEBUG=false\nAPP_URL=http://localhost\nLOG_CHANNEL=stack\nDB_CONNECTION=mysql\nDB_HOST=mysql\nDB_PORT=3306\nDB_DATABASE=vks_schedule\nDB_USERNAME=vks_user\nDB_PASSWORD=vks_2026\nCACHE_STORE=file\nQUEUE_CONNECTION=database\nSESSION_DRIVER=cookie\n' > .env; \
+    fi; \
+    if [ ! -f config/app.php ]; then \
+      mkdir -p config; \
+      printf '<?php return [\n    "name" => getenv("APP_NAME") ?: "BCS",\n    "env" => getenv("APP_ENV") ?: "production",\n    "debug" => filter_var(getenv("APP_DEBUG") ?: "false", FILTER_VALIDATE_BOOLEAN),\n    "url" => rtrim(getenv("APP_URL") ?: "http://localhost", "/"),\n    "front_controller" => "index.php",\n    "key" => getenv("APP_KEY") ?: "",\n    "cipher" => "AES-256-CBC",\n];\n\n' > config/app.php; \
+    fi; \
+    if [ ! -f config/database.php ]; then \
+      printf '<?php return [\n    "default" => getenv("DB_CONNECTION") ?: "mysql",\n    "connections" => [\n        "sqlite" => ["driver" => "sqlite", "url" => env("DB_URL"), "database" => database_path("database.sqlite"), "prefix" => "", "foreign_key_constraints" => true],\n        "mysql" => ["driver" => "mysql", "url" => env("DB_URL"), "host" => getenv("DB_HOST") ?: "127.0.0.1", "port" => getenv("DB_PORT") ?: "3306", "database" => getenv("DB_DATABASE") ?: "vks_schedule", "username" => getenv("DB_USERNAME") ?: "root", "password" => getenv("DB_PASSWORD") ?: "", "charset" => "utf8mb4", "collation" => "utf8mb4_unicode_ci", "prefix" => "",],\n        "mariadb" => ["driver" => "mariadb", "url" => env("DB_URL"), "host" => getenv("DB_HOST") ?: "127.0.0.1", "port" => getenv("DB_PORT") ?: "3306", "database" => getenv("DB_DATABASE") ?: "vks_schedule", "username" => getenv("DB_USERNAME") ?: "root", "password" => getenv("DB_PASSWORD") ?: "", "charset" => "utf8mb4", "collation" => "utf8mb4_unicode_ci", "prefix" => "",],\n        "pgsql" => ["driver" => "pgsql", "url" => env("DB_URL"), "host" => getenv("DB_HOST") ?: "127.0.0.1", "port" => getenv("DB_PORT") ?: "5432", "database" => getenv("DB_DATABASE") ?: "vks_schedule", "username" => getenv("DB_USERNAME") ?: "root", "password" => getenv("DB_PASSWORD") ?: "", "charset" => "utf8", "prefix" => "", "schema_search_path" => "public",],\n    ],\n    "migrations" => ["table" => "migrations", "update_date_on_publish" => true,],\n];\n' > config/database.php; \
+    fi; \
+    if [ ! -f config/cache.php ]; then \
+      printf '<?php return [\n    "default" => getenv("CACHE_STORE") ?: "file",\n    "stores" => [\n        "array" => ["driver" => "array", "serialize" => false,],\n        "file" => ["driver" => "file", "path" => storage_path("framework/cache/data"), "serialized" => false,],\n        "redis" => ["driver" => "redis", "connection" => getenv("REDIS_CLIENT") ?: "phpredis", "options" => [], "key" => getenv("REDIS_DB") ?: "0",],\n    ],\n    "prefix" => null,\n];\n' > config/cache.php; \
+    fi; \
+    if [ ! -f config/session.php ]; then \
+      printf '<?php return [\n    "driver" => getenv("SESSION_DRIVER") ?: "cookie",\n    "lifetime" => 120,\n    "expire_on_close" => false,\n    "encrypt" => false,\n    "files" => storage_path("framework/sessions"),\n    "cookie" => "vks_session",\n    "path" => "/",\n    "domain" => null,\n    "secure" => false,\n    "http_only" => true,\n    "same_site" => "lax",\n];\n' > config/session.php; \
+    fi; \
+    if [ ! -f config/queue.php ]; then \
+      printf '<?php return [\n    "default" => getenv("QUEUE_CONNECTION") ?: "database",\n    "connections" => [\n        "sync" => ["driver" => "sync"],\n        "database" => ["driver" => "database", "connection" => getenv("DB_CONNECTION") ?: "mysql", "table" => "jobs", "queue" => getenv("QUEUE_QUEUE") ?: "default",],\n        "redis" => ["driver" => "redis", "connection" => "default", "queue" => "default", "retry_after" => 90, "block_for" => null,],\n    ],\n    "failed" => ["table" => "failed_jobs"],\n];\n' > config/queue.php; \
+    fi; \
+    if [ ! -f config/logging.php ]; then \
+      printf '<?php return [\n    "default" => getenv("LOG_CHANNEL") ?: "stack",\n    "channels" => [\n        "stack" => ["driver" => "stack", "channels" => ["single"],],\n        "single" => ["driver" => "single", "path" => storage_path("logs/laravel.log"), "level" => "debug",],\n    ],\n];\n' > config/logging.php; \
+    fi; \
+    if [ ! -d database/migrations ] || [ -z "$(ls -A database/migrations 2>/dev/null)" ]; then \
+      mkdir -p database/migrations; \
+      printf '%s\n' '<?php' '' 'use Illuminate\Database\Migrations\Migration;' 'use Illuminate\Database\Schema\Blueprint;' 'use Illuminate\Support\Facades\Schema;' '' 'return new class extends Migration' '{' '    public function up(): void' '    {' '        Schema::create("users", function (Blueprint $table) {' '            $table->id();' '            $table->string("name");' '            $table->string("email")->unique();' '            $table->timestamp("email_verified_at")->nullable();' '            $table->string("password");' '            $table->rememberToken();' '            $table->timestamps();' '        });' '    }' '' '    public function down(): void' '    {' '        Schema::dropIfExists("users");' '    }' '};' > database/migrations/0001_01_01_000000_create_users_table.php; \
+    fi; \
+    if ! grep -q '^APP_KEY=base64:' .env 2>/dev/null; then \
+      php artisan key:generate --force --ansi || true; \
+    fi
+
 # ================= OPcache: быстрый и лёгкий PHP =================
+# ВАЖНО: opcache.validate_timestamps=0 здесь НЕ ставим. Код приложения
+# монтируется с хоста (bind ./backend -> /var/www/html) и меняется без
+# пересборки образа — при отключённых таймстампах правки PHP «не применялись»
+# (типичная жалоба «докер не работает»). Инкрементальная проверка файлов стоит
+# ~2 мкс на файл — незаметно, зато изменения вступают сразу.
 RUN cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
     && { \
         echo 'opcache.enable=1'; \
         echo 'opcache.enable_cli=0'; \
         echo 'opcache.memory_consumption=96'; \
         echo 'opcache.interned_strings_buffer=16'; \
-        echo 'opcache.max_accelerated_files=10000'; \
-        echo 'opcache.validate_timestamps=0'; \
+        echo 'opcache.max_accelerated_files=20000'; \
+        echo 'opcache.validate_timestamps=1'; \
+        echo 'opcache.revalidate_freq=2'; \
         echo 'expose_php=Off'; \
         echo 'memory_limit=192M'; \
         echo 'upload_max_filesize=20M'; \
@@ -139,10 +185,15 @@ RUN cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
 # По умолчанию php-fpm-alpine слушает UNIX-сокет /proc/self/fd/2, а nginx
 # стучится к нам по TCP backend:9000 — отсюда стабильные 502
 # "connect() failed (111: Connection refused) ... upstream fastcgi://...:9000".
+# pm=static: фиксированные 6 процессов (~60 МБ каждый) вместо dynamic —
+# предсказуемая латентность под нагрузкой при лимите контейнера 512M.
 RUN { \
         echo '[www]'; \
         echo 'listen = 0.0.0.0:9000'; \
         echo 'clear_env = no'; \
+        echo 'pm = static'; \
+        echo 'pm.max_children = 6'; \
+        echo 'pm.max_requests = 500'; \
     } > /usr/local/etc/php-fpm.d/zz-listen.conf
 
 EXPOSE 9000

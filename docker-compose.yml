@@ -140,17 +140,27 @@ services:
           (cd /var/www/html && composer install --no-dev --prefer-dist --no-interaction --no-scripts --ignore-platform-req=php+) || \
             echo "[vks] ВНИМАНИЕ: composer install не удался (нет сети?) — проверьте вручную: docker compose exec backend composer install --no-dev --ignore-platform-req=php+"
         fi
-        # .env для Laravel лежит ВНУТРИ контейнера по пути /var/www/html/.env
-        # (bind ./backend -> /var/www/html). На свежем клоне репозитория его нет
-        # (файл в .gitignore — секреты не коммитятся): без него APP_KEY берётся
-        # из env-контейнера как заглушка, и artisan key:generate не запускался.
-        # Создаём .env из backend/.env.example и генерируем настоящий APP_KEY.
+        # Создаём .env из .env.example (он есть в репозитории) и генерируем APP_KEY.
         if [ ! -f /var/www/html/.env ]; then
           echo "[vks] /var/www/html/.env отсутствует — создаю из .env.example"
           cp /var/www/html/.env.example /var/www/html/.env 2>/dev/null || : > /var/www/html/.env
           grep -q '^APP_KEY=' /var/www/html/.env 2>/dev/null || echo 'APP_KEY=' >> /var/www/html/.env
           sed -i 's/^APP_KEY=.*/APP_KEY=$$(head -c 32 /dev/urandom | base64)/' /var/www/html/.env
         fi
+        # Каркас Laravel на свежем клоне: config/*.php и database/migrations
+        # намеренно не лежат в git (секреты/локальные конфиги) — без них
+        # artisan падает («No application encryption key», «call to a member
+        # function connection() on null»), healthcheck не проходит, контейнер
+        # unhealthy -> весь стек выглядит «неработающим». Создаём недостающее
+        # ТОЛЬКО если файлов нет (существующие НЕ трогаем).
+        mkdir -p /var/www/html/config /var/www/html/database/migrations
+        if [ ! -f /var/www/html/config/app.php ]; then printf '%s\n' '<?php return [' '    "name" => getenv("APP_NAME") ?: "BCS",' '    "env" => getenv("APP_ENV") ?: "production",' '    "debug" => filter_var(getenv("APP_DEBUG") ?: "false", FILTER_VALIDATE_BOOLEAN),' '    "url" => rtrim(getenv("APP_URL") ?: "http://localhost", "/"),' '    "front_controller" => "index.php",' '    "key" => getenv("APP_KEY") ?: "",' '    "cipher" => "AES-256-CBC",' '];' > /var/www/html/config/app.php; fi
+        if [ ! -f /var/www/html/config/database.php ]; then printf '%s\n' '<?php return [' '    "default" => getenv("DB_CONNECTION") ?: "mysql",' '    "connections" => [' '        "sqlite" => ["driver" => "sqlite", "url" => env("DB_URL"), "database" => database_path("database.sqlite"), "prefix" => "", "foreign_key_constraints" => true],' '        "mysql" => ["driver" => "mysql", "url" => env("DB_URL"), "host" => getenv("DB_HOST") ?: "127.0.0.1", "port" => getenv("DB_PORT") ?: "3306", "database" => getenv("DB_DATABASE") ?: "vks_schedule", "username" => getenv("DB_USERNAME") ?: "root", "password" => getenv("DB_PASSWORD") ?: "", "charset" => "utf8mb4", "collation" => "utf8mb4_unicode_ci", "prefix" => ""],' '        "mariadb" => ["driver" => "mariadb", "url" => env("DB_URL"), "host" => getenv("DB_HOST") ?: "127.0.0.1", "port" => getenv("DB_PORT") ?: "3306", "database" => getenv("DB_DATABASE") ?: "vks_schedule", "username" => getenv("DB_USERNAME") ?: "root", "password" => getenv("DB_PASSWORD") ?: "", "charset" => "utf8mb4", "collation" => "utf8mb4_unicode_ci", "prefix" => ""],' '        "pgsql" => ["driver" => "pgsql", "url" => env("DB_URL"), "host" => getenv("DB_HOST") ?: "127.0.0.1", "port" => getenv("DB_PORT") ?: "5432", "database" => getenv("DB_DATABASE") ?: "vks_schedule", "username" => getenv("DB_USERNAME") ?: "root", "password" => getenv("DB_PASSWORD") ?: "", "charset" => "utf8", "prefix" => "", "schema_search_path" => "public"],' '    ],' '    "migrations" => ["table" => "migrations", "update_date_on_publish" => true],' '];' > /var/www/html/config/database.php; fi
+        if [ ! -f /var/www/html/config/cache.php ]; then printf '%s\n' '<?php return [' '    "default" => getenv("CACHE_STORE") ?: "file",' '    "stores" => [' '        "array" => ["driver" => "array", "serialize" => false],' '        "file" => ["driver" => "file", "path" => storage_path("framework/cache/data"), "serialized" => false],' '        "redis" => ["driver" => "redis", "connection" => getenv("REDIS_CLIENT") ?: "phpredis", "options" => [], "key" => getenv("REDIS_DB") ?: "0"],' '    ],' '    "prefix" => null,' '];' > /var/www/html/config/cache.php; fi
+        if [ ! -f /var/www/html/config/session.php ]; then printf '%s\n' '<?php return [' '    "driver" => getenv("SESSION_DRIVER") ?: "cookie",' '    "lifetime" => 120,' '    "expire_on_close" => false,' '    "encrypt" => false,' '    "files" => storage_path("framework/sessions"),' '    "cookie" => "vks_session",' '    "path" => "/",', '    "domain" => null,' '    "secure" => false,' '    "http_only" => true,' '    "same_site" => "lax",' '];' > /var/www/html/config/session.php; fi
+        if [ ! -f /var/www/html/config/queue.php ]; then printf '%s\n' '<?php return [' '    "default" => getenv("QUEUE_CONNECTION") ?: "database",' '    "connections" => [' '        "sync" => ["driver" => "sync"],' '        "database" => ["driver" => "database", "connection" => getenv("DB_CONNECTION") ?: "mysql", "table" => "jobs", "queue" => getenv("QUEUE_QUEUE") ?: "default"],' '        "redis" => ["driver" => "redis", "connection" => "default", "queue" => "default", "retry_after" => 90, "block_for" => null],' '    ],' '    "failed" => ["table" => "failed_jobs"],' '];' > /var/www/html/config/queue.php; fi
+        if [ ! -f /var/www/html/config/logging.php ]; then printf '%s\n' '<?php return [' '    "default" => getenv("LOG_CHANNEL") ?: "stack",' '    "channels" => [' '        "stack" => ["driver" => "stack", "channels" => ["single"]],' '        "single" => ["driver" => "single", "path" => storage_path("logs/laravel.log"), "level" => "debug"],' '    ],' '];' > /var/www/html/config/logging.php; fi
+        if [ -z "$$(ls -A /var/www/html/database/migrations 2>/dev/null)" ]; then printf '%s\n' '<?php' '' 'use Illuminate\\Database\\Migrations\\Migration;' 'use Illuminate\\Database\\Schema\\Blueprint;' 'use Illuminate\\Support\\Facades\\Schema;' '' 'return new class extends Migration' '{' '    public function up(): void' '    {' '        Schema::create("users", function (Blueprint $$table) {' '            $$table->id();' '            $$table->string("name");' '            $$table->string("email")->unique();' '            $$table->timestamp("email_verified_at")->nullable();' '            $$table->string("password");' '            $$table->rememberToken();' '            $$table->timestamps();' '        });' '    }' '' '    public function down(): void' '    {' '        Schema::dropIfExists("users");' '    }' '};' > /var/www/html/database/migrations/0001_01_01_000000_create_users_table.php; fi
         # Самолечение прав storage/: ./backend/storage смонтирован с хоста bind-маунтом.
         # На Linux-сервере каталог может принадлежать root (после git clone / rsync),
         # тогда php-fpm (www-data) не может открыть storage/logs/laravel.log и
@@ -194,7 +204,11 @@ services:
           echo 'opcache.memory_consumption=96'
           echo 'opcache.interned_strings_buffer=16'
           echo 'opcache.max_accelerated_files=20000'
-          echo 'opcache.validate_timestamps=0'
+          # validate_timestamps=1 + revalidate_freq=2: код смонтирован с хоста
+          # (bind ./backend), правки PHP должны вступать без ребилда образа —
+          # иначе выглядит как «докер не работает» (старый байткод держится в памяти).
+          echo 'opcache.validate_timestamps=1'
+          echo 'opcache.revalidate_freq=2'
           echo 'opcache.save_comments=1'
           echo 'opcache.fast_shutdown=1'; } > /usr/local/etc/php/conf.d/zz-opcache-tune.ini 2>/dev/null || true
         # Статическая оптимизация Laravel (сборка роутов/конфигов/views в PHP).
