@@ -15,9 +15,10 @@ x-defaults: &container-defaults
     - no-new-privileges:true
 
 services:
-# ВАЖНО: интерполяция ${VAR:-default} выполняется docker compose при ЗАПУСКЕ/СБОРКЕ,
-# поэтому `docker compose build` работает даже без заполненного .env. Реальные секреты
-# (APP_KEY, пароли MySQL/Redis) берутся из ./backend/.env внутри контейнеров — см. README.
+# ВАЖНО: все переменные окружения в этом файле записаны как ${VAR:-default}, т.е.
+# с дефолтом — docker compose не выдаёт предупреждений даже без заполненного .env,
+# и `docker compose build` работает «из коробки». Реальные секреты (APP_KEY, пароли
+# MySQL/Redis) берутся из ./backend/.env внутри контейнеров — см. README.
   # Frontend (React)
   frontend:
     <<: *container-defaults
@@ -208,8 +209,8 @@ services:
     ports:
       # Наружный порт ЗАФИКСИРОВАН = 80 (стандартный HTTP), поэтому сайт всегда
       # открывается БЕЗ порта в адресе: http://10.48.4.235/
-      # listen_ip задайте в .env как 127.0.0.1, если доступ нужен только с этой машины.
-      - "${listen_ip:-0.0.0.0}:80:80"
+      # LISTEN_IP задайте в .env как 127.0.0.1, если доступ нужен только с этой машины.
+      - "${LISTEN_IP:-0.0.0.0}:80:80"
     volumes:
       # Long (explicit) syntax — immune to the legacy docker-compose v1
       # "too many colons" parser bug triggered by Windows drive paths.

@@ -5,8 +5,19 @@
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-$p = Join-Path (Get-Location) '.env'
-if (-not (Test-Path $p)) { Write-Host "[fix-env] .env not found in $(Get-Location)" -ForegroundColor Red; exit 1 }
+# Search order: .\.env, then .\backend\.env (the file actually used by compose).
+$candidates = @((Join-Path (Get-Location) '.env'), (Join-Path (Get-Location) 'backend\.env'))
+$p = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $p) {
+    # Fresh clone without .env yet -> create it from the example and exit OK.
+    if (Test-Path 'backend\.env.example') {
+        Copy-Item 'backend\.env.example' 'backend\.env'
+        Write-Host "[fix-env] backend\.env was missing - created from backend\.env\.example" -ForegroundColor Yellow
+        exit 0
+    }
+    Write-Host "[fix-env] .env not found in $(Get-Location) (checked .\ and .\backend\)" -ForegroundColor Red
+    exit 1
+}
 
 $bak = "$p.bak.$([DateTimeOffset]::Now.ToUnixTimeSeconds())"
 Copy-Item $p $bak
