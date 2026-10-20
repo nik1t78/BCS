@@ -63,6 +63,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      # multi-stage в backend/Dockerfile: собираем только стадию base,
+      # composer-бинарник берётся из стадии composer-stage через COPY --from.
+      target: base
     container_name: vks-backend
     restart: unless-stopped
     volumes:
@@ -334,6 +337,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      # multi-stage в backend/Dockerfile: собираем только стадию base,
+      # composer-бинарник берётся из стадии composer-stage через COPY --from.
+      target: base
     container_name: vks-queue
     restart: unless-stopped
     command: php artisan queue:work --sleep=3 --tries=3 --max-time=3600
@@ -379,6 +385,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      # multi-stage в backend/Dockerfile: собираем только стадию base,
+      # composer-бинарник берётся из стадии composer-stage через COPY --from.
+      target: base
     container_name: vks-scheduler
     restart: unless-stopped
     command: >
