@@ -2,11 +2,31 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ============================================================================
+   Адаптивность «на всех мониторах» (Tailwind v4 — кастомные брейкпоинты):
+   по умолчанию у Tailwind максимум xl=1280px / 2xl=1536px, поэтому на FullHD
+   (1920), 2K (2560) и ultrawide (3440+) интерфейс не перестраивался.
+   Добавляем собственные брейкпоинты — классы 3k:, 4k:, uwd: становятся
+   доступны во всех компонентах без правок существующих sm:/md:/lg:/xl:.
+   ========================================================================== */
+@theme {
+  --breakpoint-3k: 1920px;  /* FullHD и выше */
+  --breakpoint-4k: 2560px;  /* 2K/QuadHD */
+  --breakpoint-uwd: 3440px; /* Ultrawide (21:9) */
+}
+
 @layer base {
+  html {
+    /* Плавный зум типографики на очень широких экранах без поломки сетки */
+    text-size-adjust: 100%;
+  }
+
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* На мобильных не допускаем горизонтального «переезда» контента */
+    overflow-x: hidden;
   }
 
   .dark body {

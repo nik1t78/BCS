@@ -286,7 +286,7 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
       />
 
       {/* Stats — нули показываем прочерком, чтобы не мозолили глаза */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 3k:grid-cols-8 gap-4">
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
           <p className="text-sm text-gray-500 dark:text-gray-400">Сегодня</p>
           <p className={`text-2xl font-bold ${todayMeetings.length ? "text-gray-800 dark:text-gray-100" : "text-gray-300 dark:text-gray-600"}`}>
@@ -342,7 +342,7 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
                         </p>
                       )}
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 3k:grid-cols-5 gap-4 mb-4">
                         <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
                           <p className="text-sm text-blue-600 dark:text-blue-400 font-medium">Название</p>
                           <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">

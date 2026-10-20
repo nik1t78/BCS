@@ -1,13 +1,21 @@
 # syntax=docker/dockerfile:1
 # ВАЖНО: контекст сборки этого Dockerfile — каталог backend/ (см. build.context в
 # docker-compose.yml), поэтому COPY здесь видит только файлы внутри backend/.
-FROM php:8.4-fpm-alpine AS base
 
-# Копируем ЛОКАЛЬНЫЙ архив phpredis в образ ДО компиляции расширений.
-# Это убирает зависимость сборки от pecl.php.net и github.com: если
-# `pecl install redis` недоступен, redis.so собирается из этого архива.
-# Файл backend/phpredis-6.3.0.tar.gz ОБЯЗАТЕЛЕН и лежит в git (см. .gitignore).
-COPY phpredis-6.3.0.tar.gz /tmp/phpredis.tar.gz
+# ЛОКАЛЬНЫЙ архив phpredis (обязателен для сборки без доступа к pecl.php.net):
+# backend/phpredis-6.3.0.tar.gz лежит в git (см. исключение в .gitignore).
+# ВАЖНО: COPY должен идти ПОСЛЕ FROM — до базового образа контекст не доступен.
+# Если файла нет (например, старый клон без него) — сборка НЕ падает на COPY,
+# а скачивает архив с pecl во время компиляции расширения (страховка ниже).
+ARG PHPREDIS_VERSION=6.3.0
+FROM scratch AS phpredis-bundle
+# Wildcard: если файла нет в контексте — COPY создаёт пустой слой вместо ошибки
+# «failed to compute cache key ... not found»; ниже есть страховка-скачивание с pecl.
+COPY phpredis-*.tar.gz /phpredis.tar.gz
+
+FROM php:8.4-fpm-alpine AS base
+COPY --from=phpredis-bundle / /tmp/
+RUN test -f /tmp/phpredis.tar.gz && echo "phpredis bundle найден в контексте" || echo "phpredis bundle отсутствует — при необходимости скачаем с pecl"
 
 # Системные зависимости (alpine — образ в ~3 раза меньше debian-варианта)
 # mariadb-client (mysqldump) обязателен: команда `php artisan db:backup`
@@ -50,6 +58,10 @@ RUN ver="$(cat /etc/alpine-release)" \
     && if [ ! -f "$extdir/redis.so" ]; then \
          echo "redis.so не найден после pecl install — пересобираю из ЛОКАЛЬНОГО архива (без сети)"; \
          mkdir -p /tmp/redisbuild && cd /tmp/redisbuild; \
+         if [ ! -f /tmp/phpredis.tar.gz ]; then \
+           echo "Локального архива нет — скачиваю phpredis с pecl.php.net (страховка)"; \
+           curl -fsSL --retry 3 "https://pecl.php.net/get/redis-6.3.0.tgz" -o /tmp/phpredis.tar.gz; \
+         fi; \
          tar xf /tmp/phpredis.tar.gz; \
          cd "$(ls -d redis-*/ | head -1)"; \
          phpize && ./configure && make -j"$(nproc)" && make install; \
