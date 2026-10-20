@@ -119,7 +119,7 @@ services:
       - -c
       - |
         # ВНИМАНИЕ: переменные в коде PHP ниже экранированы как $$ — иначе
-        # docker compose интерполирует $s/$e/$m из строки php -r и ругается
+        # docker compose принимает их за свои подстановки и печатает
         # WARN[0000] The "s" variable is not set. Defaulting to a blank string.
         check_redis() {
           php -r '$$s=@fsockopen("redis",6379,$$e,$$m,2); if($$s){fwrite(STDOUT,"OK\n");exit(0);} fwrite(STDOUT,"FAIL\n");exit(1);' 2>/dev/null
@@ -138,6 +138,17 @@ services:
           echo "[vks] vendor несовместим с PHP этого образа — выполняю composer install ..."
           (cd /var/www/html && composer install --no-dev --prefer-dist --no-interaction --no-scripts --ignore-platform-req=php+) || \
             echo "[vks] ВНИМАНИЕ: composer install не удался (нет сети?) — проверьте вручную: docker compose exec backend composer install --no-dev --ignore-platform-req=php+"
+        fi
+        # .env для Laravel лежит ВНУТРИ контейнера по пути /var/www/html/.env
+        # (bind ./backend -> /var/www/html). На свежем клоне репозитория его нет
+        # (файл в .gitignore — секреты не коммитятся): без него APP_KEY берётся
+        # из env-контейнера как заглушка, и artisan key:generate не запускался.
+        # Создаём .env из backend/.env.example и генерируем настоящий APP_KEY.
+        if [ ! -f /var/www/html/.env ]; then
+          echo "[vks] /var/www/html/.env отсутствует — создаю из .env.example"
+          cp /var/www/html/.env.example /var/www/html/.env 2>/dev/null || : > /var/www/html/.env
+          grep -q '^APP_KEY=' /var/www/html/.env 2>/dev/null || echo 'APP_KEY=' >> /var/www/html/.env
+          sed -i 's/^APP_KEY=.*/APP_KEY=$$(head -c 32 /dev/urandom | base64)/' /var/www/html/.env
         fi
         # Самолечение прав storage/: ./backend/storage смонтирован с хоста bind-маунтом.
         # На Linux-сервере каталог может принадлежать root (после git clone / rsync),
