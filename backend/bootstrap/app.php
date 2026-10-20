@@ -49,6 +49,13 @@ return Application::configure(basePath: dirname(__DIR__))
                  ->daily()
                  ->at('00:15');
 
+        // Гигиена токенов Sanctum: таблица personal_access_tokens растёт с
+        // каждым входом (access + refresh на каждую сессию), а выборка по
+        // LIKE 'refresh_token:%' без чистки деградирует — «сайт долго логает».
+        // Встроенная команда sanctum:prune-expired удаляет истёкшие токены.
+        $schedule->command('sanctum:prune-expired --hours=24')
+                 ->daily();
+
         $schedule->command('db:backup --keep=14')
                  ->dailyAt('02:30')
                  ->withoutOverlapping();

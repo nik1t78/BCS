@@ -32,6 +32,10 @@ return new class extends Migration
             $table->id();
             $table->morphs('tokenable');
             $table->string('name');
+            // Индекс по name: Sanctum/refresh выбирают токены по
+            // LIKE 'refresh_token:%' — без него каждый вход сканирует всю
+            // таблицу (растёт с каждым логином) и «сайт долго логает».
+            $table->index('name');
             $table->string('token', 64)->unique();
             $table->text('abilities')->nullable();
             $table->timestamp('last_used_at')->nullable();

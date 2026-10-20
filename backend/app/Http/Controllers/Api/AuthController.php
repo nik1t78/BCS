@@ -55,10 +55,31 @@ class AuthController extends Controller
      * (двойной bcrypt-хэш). Такой хэш криптографически непроверяем — вход
      * падал с 422 даже при верном пароле. Лечится перезаписью паролей:
      * php artisan vks:reset-passwords (или db:seed VksDatabaseSeeder).
+     *
+     * Производительность: на слабых/VPS-серверах один bcrypt-хеш может быть
+     * выставлен с завышенным «cost» ($2y$12… и выше) — проверка такого хеша
+     * занимает секунды, и пользователь видит «сайт долго логает». Если хеш
+     * корректный, но слишком тяжёлый, пересчитываем его до стандартного
+     * cost=10 и сохраняем: следующий вход будет мгновенным.
      */
-    private function verifyPassword(string $plain, string $storedHash): bool
+    private function verifyPassword(User $user, string $plain): bool
     {
-        return Hash::check($plain, $storedHash);
+        if (!Hash::check($plain, $user->password)) {
+            return false;
+        }
+
+        try {
+            $cost = (int) (explode('$', (string) $user->password)[2] ?? 10);
+            if ($cost > 10 || Hash::needsRehash($user->password)) {
+                // Каст 'password' => 'hashed' в модели User защитит от
+                // двойного хеширования: кладём в БД ровно один новый bcrypt.
+                $user->forceFill(['password' => $plain])->saveQuietly();
+            }
+        } catch (\Throwable $e) {
+            // авто-ренеш не должен ломать успешный вход
+        }
+
+        return true;
     }
 
     /**
@@ -76,6 +97,27 @@ class AuthController extends Controller
         // «Неверный логин или пароль» даже при правильном пароле.
         $user = User::whereRaw('LOWER(login) = ?', [mb_strtolower(trim($request->login))])->first();
 
+        // Гигиена токенов: каждое создание токена Sanctum выполняет SELECT с
+        // LIKE 'refresh_token:%' по всей таблице personal_access_tokens (без
+        // индекса по name). Со временем таблица разрастается «мусором»:
+        // истёкшие access-токены и неиспользованные refresh-токены (у каждого
+        // входа их пара, а старые аннулируются только при refresh/logout).
+        // Удаляем их в фоне (Queue::afterResponse — НЕ блокирует ответ): иначе
+        // именно этот запрос превращал каждый вход в «сайт долго логает».
+        \Illuminate\Support\Facades\Queue::afterResponse(function () {
+            $cutoff = now()->subDays(30);
+            \DB::table('personal_access_tokens')
+                ->where(function ($q) use ($cutoff) {
+                    $q->whereNotNull('expires_at')->where('expires_at', '<', $cutoff)
+                      ->orWhere(function ($q2) {
+                          $q2->where('name', 'refresh_token:%')
+                             ->where('created_at', '<', now()->subDays(30));
+                      });
+                })
+                ->limit(5000)
+                ->delete();
+        });
+
         // Самодиагностика «вечного» бага: старые аккаунты (созданные версиями
         // кода с двойным bcrypt-хэшированием) имеют хэш длиной > 60 символов —
         // такой пароль проверить невозможно НИКОГДА, даже если пользователь
@@ -86,7 +128,7 @@ class AuthController extends Controller
             ]);
         }
 
-        if (!$user || !$this->verifyPassword($request->password, $user->password)) {
+        if (!$user || !$this->verifyPassword($user, $request->password)) {
             throw ValidationException::withMessages([
                 'login' => ['Неверный логин или пароль'],
             ]);
