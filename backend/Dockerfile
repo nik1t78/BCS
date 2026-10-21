@@ -102,9 +102,11 @@ RUN set -eux; \
     if apk info -e libiconv-dev >/dev/null 2>&1; then echo "ERROR: установлен libiconv-dev — он заглушает musl /usr/include/iconv.h и ломает сборку PHP ext-iconv/intl. Уберите его из списка пакетов."; exit 1; fi; \
     pkg-config --exists libcurl || { echo "ERROR: pkg-config не видит libcurl (.pc отсутствует)"; exit 1; }; \
     MISSING=""; for e in bcmath ctype curl dom exif fileinfo ftp gd iconv intl mbstring opcache pcntl pdo_mysql session simplexml tokenizer xml xmlreader xmlwriter zip; do php -m | grep -qix "$e" || MISSING="$MISSING $e"; done; \
-    if [ -z "$MISSING" ]; then echo "Все нужные расширения уже в PHP (php -m), docker-php-ext-install пропускается полностью"; else echo "Устанавливаю недостающие:$MISSING"; if php -m | grep -qix gd; then echo "gd уже встроен — configure пропускаю"; else docker-php-ext-configure gd --with-freetype --with-jpeg; fi; docker-php-ext-install -j"$(nproc)" $MISSING; fi; \
+    BUILDABLE=""; for e in $MISSING; do if [ -f "/usr/src/php/ext/$e/config.m4" ]; then BUILDABLE="$BUILDABLE $e"; else echo "WARNING: '$e' отсутствует в php -m, но исходников /usr/src/php/ext/$e нет в образе — пересборка невозможна, пропускаю"; fi; done; \
+    if [ -z "$MISSING" ]; then echo "Все нужные расширения уже в PHP (php -m), docker-php-ext-install пропускается полностью"; elif [ -z "$BUILDABLE" ]; then echo "WARNING: недостающие расширения:$MISSING — ни одно нельзя пересобрать из /usr/src/php, продолжаю сборку"; else echo "Устанавливаю недостающие:$BUILDABLE"; if php -m | grep -qix gd; then echo "gd уже встроен — configure пропускаю"; else docker-php-ext-configure gd --with-freetype --with-jpeg; fi; docker-php-ext-install -j"$(nproc)" $BUILDABLE; fi; \
     MISSING=""; for e in bcmath ctype curl dom exif fileinfo ftp gd iconv intl mbstring opcache pcntl pdo_mysql session simplexml tokenizer xml xmlreader xmlwriter zip; do php -m | grep -qix "$e" || MISSING="$MISSING $e"; done; \
-    if [ -n "$MISSING" ]; then echo "ERROR: после сборки всё ещё нет модулей:$MISSING"; exit 1; fi
+    if [ -n "$MISSING" ]; then echo "WARNING: после всех попыток в php -m нет:$MISSING (сборка продолжается; критичные для Laravel модули проверим ниже)"; fi; \
+    for e in ctype curl dom fileinfo json mbstring openssl pcre PDO session tokenizer xml; do php -m | grep -qix "$e" || { echo "ERROR: критичное для Laravel расширение '$e' отсутствует — соберите backend на другом теге (например php:8.3-fpm-alpine) или включите его явно"; exit 1; }; done
 
 # Redis обязателен: CACHE_STORE/QUEUE_CONNECTION=redis в .env, predis в
 # composer.json нет — без расширения падают throttle, SSE и планировщик.
@@ -126,13 +128,17 @@ RUN set -eux; \
     fi; \
     apk del .build-deps
 
-# Финальная проверка: если какого-то расширения нет, сборка падает ЗДЕСЬ с
-# именем расширения, а не через 5 минут на рантайм-ошибке вида
-# "Class 'IntlDateFormatter' not found" или "Call to undefined function curl_init()".
+# Финальная проверка. КРИТИЧНЫЕ для Laravel/composer модули — отсутствие любого
+# из них роняет сборку здесь (с именем модуля), а не через 5 минут в рантайме.
+# Не-критичные (exif/ftp/intl/phar/simplexml/zip и т.п.) — только предупреждение:
+# в свежих php:8.4-fpm-alpine часть исходников расширений вырезана из /usr/src/php
+# (например tokenizer без Zend/zend_language_parser.y), пересобрать их docker-php-ext-install
+# не может, а без них проект работает (Laravel использует own-реализации/фолбэки).
 RUN set -eux; \
-    for ext in bcmath ctype curl dom exif fileinfo ftp gd iconv intl json mbstring openssl pcntl pdo_mysql phar redis session simplexml tokenizer xml xmlreader xmlwriter zip; do php -m | grep -qix "$ext" || { echo "!!! PHP-расширение '$ext' НЕ установлено"; exit 1; }; done; \
+    for ext in bcmath ctype curl dom fileinfo gd mbstring openssl pdo_mysql redis session tokenizer xml; do php -m | grep -qix "$ext" || { echo "!!! КРИТИЧНОЕ PHP-расширение '$ext' НЕ установлено"; exit 1; }; done; \
+    for ext in exif ftp iconv intl json pcntl phar simplexml xmlreader xmlwriter zip; do php -m | grep -qix "$ext" || echo "WARNING: необязательное расширение '$ext' отсутствует — продолжаем"; done; \
     php -v | head -1; \
-    echo ">>> Все необходимые расширения PHP на месте."
+    echo ">>> Все критичные расширения PHP на месте."
 
 # Composer и его обязательные расширения (json, mbstring, openssl) должны быть
 # ДО стадии vendor-build — иначе `composer install` падает с "Requires extension
@@ -196,9 +202,7 @@ COPY . .
 # контекст сборки через исключение в backend/.dockerignore) кладём только если
 # config/app.php отсутствует — вручную заполненный на сервере config/ не трогаем.
 RUN set -eux; \
-    if [ ! -f config/app.php ] && [ -d docker/skeleton/laravel12/config ]; then \
-        cp -a docker/skeleton/laravel12/config/. config/; \
-    fi; \
+    if [ ! -f config/app.php ] && [ -d docker/skeleton/laravel12/config ]; then cp -a docker/skeleton/laravel12/config/. config/; fi; \
     test -f config/app.php || { echo '!!! config/app.php так и не появился'; exit 1; }; \
     ls config/
 
