@@ -110,21 +110,30 @@ RUN set -eux; \
 
 # Redis обязателен: CACHE_STORE/QUEUE_CONNECTION=redis в .env, predis в
 # composer.json нет — без расширения падают throttle, SSE и планировщик.
-# Сначала пробуем pecl; если он недоступен — ручная сборка: архив скачивается
-# ВНУТРИ RUN (никакого COPY *.tgz из контекста сборки, см. боль 1 в шапке).
+# pecl.php.net часто недоступен (в логах сервера: "Failed to connect to
+# pecl.php.net:443", exit 7) — поэтому источник архива перебирается: pecl ->
+# GitHub (codeload) -> gitee-зеркало. Первая успешная загрузка прерывает цикл.
+# Никакого COPY *.tgz из контекста сборки (см. боль 1 в шапке).
 RUN set -eux; \
     { pecl channel-update pecl.php.net && pecl install redis && docker-php-ext-enable redis; } || true; \
     if ! php -m | grep -qix redis; then \
         apk add --no-cache autoconf linux-headers >/dev/null 2>&1 || true; \
         mkdir -p /tmp/redisbuild; \
         cd /tmp/redisbuild; \
-        curl -fsSL --retry 5 --retry-delay 3 https://pecl.php.net/get/redis-6.3.0.tgz -o redis.tgz; \
-        tar xf redis.tgz; \
-        cd redis-*/; \
+        for url in "https://pecl.php.net/get/redis-6.3.0.tgz" "https://github.com/phpredis/phpredis/archive/refs/tags/6.3.0.tar.gz" "https://gitee.com/mirrors/phpredis/repository/archive/6.3.0.tar.gz"; do echo "Пробую скачать redis с $url"; if curl -fsSL --connect-timeout 15 --max-time 180 --retry 2 --retry-delay 3 "$url" -o redis-src; then echo "Загрузка OK с $url"; break; fi; done; \
+        test -s redis-src || { echo "ERROR: не удалось скачать исходники phpredis ни с одного зеркала (pecl/GitHub/gitee) — проверьте сеть/DNS контейнера сборки"; exit 1; }; \
+        tar xf redis-src; \
+        SRC_DIR="$(find . -maxdepth 1 -type d \( -name 'redis-*' -o -name 'phpredis-*' \) | head -1)"; \
+        test -d "$SRC_DIR" || { echo "ERROR: в архиве не найдена директория исходников redis"; exit 1; }; \
+        cd "$SRC_DIR"; \
+        [ -f package.xml ] || printf '<?xml version="1.0"?>\n<package><name>redis</name><version>%s</version><stability>stable</stability><license>PHP</license><date>2024-01-01</date><notes>local build</notes><contents><dir name="/">.</dir></contents></package>\n' "6.3.0" > package.xml; \
         phpize && ./configure && make -j"$(nproc)" && make install; \
+        EXTDIR="$(php-config --extension-dir)"; \
+        if [ -f "$EXTDIR/modules/redis.so" ] && [ ! -f "$EXTDIR/redis.so" ]; then mv "$EXTDIR/modules/redis.so" "$EXTDIR/redis.so"; fi; \
         cd /; \
         rm -rf /tmp/redisbuild; \
         docker-php-ext-enable redis; \
+        php -m | grep -qix redis || { echo "ERROR: redis собран, но php -m его не видит — модуль не загрузился"; exit 1; }; \
     fi; \
     apk del .build-deps
 
