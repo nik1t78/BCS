@@ -107,9 +107,16 @@ RUN set -eux; \
         echo "ERROR: в образе появился libiconv (заглушает musl iconv.h) — проверьте список apk-пакетов"; exit 1; \
     fi; \
     pkg-config --exists libcurl || { echo "ERROR: pkg-config не видит libcurl (.pc отсутствует)"; exit 1; }; \
+    # НЕ передаём iconv/intl в docker-php-ext-install: на Alpine PHP уже собран
+    # с этими расширениями (модули лежат в /usr/local/lib/php/extensions/*/),
+    # а пересборка «из /usr/src/php/ext» их затирает и ломает ABI. Проверяем,
+    # что они на месте, и при отсутствии ставим через docker-php-ext-enable.
+    for e in iconv intl; do \
+        php -m | grep -qix "$e" || docker-php-ext-enable "$e"; \
+    done; \
     docker-php-ext-configure gd --with-freetype --with-jpeg; \
     docker-php-ext-install -j"$(nproc)" \
-        bcmath ctype curl dom exif fileinfo ftp gd iconv intl \
+        bcmath ctype curl dom exif fileinfo ftp gd \
         mbstring opcache openssl pcntl pdo_mysql session simplexml tokenizer \
         xml xmlreader xmlwriter zip
 
