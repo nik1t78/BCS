@@ -84,21 +84,29 @@ FROM php:8.4-fpm-alpine AS base
 # "cannot find headers", ставим их ещё раз через тот же apk (idempotent).
 # ВАЖНО (новая боль): в свежих alpine-3.22+ пакет curl — только рантайм-бинарник,
 # его .pc-файла нет, а docker-php-ext-install curl вызывает `pkg-config libcurl`
-# → "Package 'libcurl' not found". Нужен отдельный dev-пакет: libcurl-dev
-# (в edge/newer) или curl-dev (старые ветки) — пробуем оба.
+# → "Package 'libcurl' not found". Нужен dev-пакет: curl-dev (alpine 3.20-3.23)
+# или libcurl-dev (edge/будущие) — перебираем оба.
+# ВАЖНО (грабли предыдущей сборки): НЕ ставьте standalone libiconv/libiconv-dev!
+# В php-образах на musl-alpine PHP уже собран против системного iconv из libc,
+# а libiconv-dev перекрывает /usr/include/iconv.h своим заголовком
+# (там нет символа _libiconv_version) и сборка ext-iconv падает с:
+#   iconv.c:71: error: '_libiconv_version' undeclared
+# Поэтому проверка после установки пакетов: если кто-то тянет libiconv — выходим
+# с понятной ошибкой вместо дебри компиляции.
 RUN set -eux; \
-    apk add --no-cache git curl icu-dev libpng-dev libjpeg-turbo-dev \
+    apk add --no-cache git curl curl-dev icu-dev libpng-dev libjpeg-turbo-dev \
+        freetype-dev libxml2-dev libzip-dev zip unzip mariadb-client 2>/dev/null \
+    || apk add --no-cache git curl libcurl-dev icu-dev libpng-dev libjpeg-turbo-dev \
         freetype-dev libxml2-dev libzip-dev zip unzip mariadb-client; \
     apk add --no-cache oniguruma-dev || apk add --no-cache oniguruma || true; \
-    # dev-пакет libcurl: в разных версиях alpine он называется по-разному.
-    # Без него configure PHP ext-curl падает с "Package 'libcurl' not found".
-    CURL_DEV=""; \
-    for cand in libcurl-dev curl-dev; do \
-        if apk add --no-cache "$cand" 2>/dev/null; then CURL_DEV="$cand"; break; fi; \
-    done; \
-    [ -n "$CURL_DEV" ] || { echo "ERROR: не найден dev-пакет libcurl (libcurl-dev/curl-dev)"; exit 1; }; \
     BUILD_DEPS="${PHPIZE_DEPS:-autoconf dpkg-dev dpkg file g++ gcc libc-dev make pkgconf re2c}"; \
     apk add --no-cache --virtual .build-deps ${BUILD_DEPS}; \
+    command -v pkg-config >/dev/null || apk add --no-cache pkgconfig; \
+    # страховка: libiconv в образе = почти гарантированный провал ext-iconv
+    if apk info -e libiconv >/dev/null 2>&1; then \
+        echo "ERROR: в образе появился libiconv (заглушает musl iconv.h) — проверьте список apk-пакетов"; exit 1; \
+    fi; \
+    pkg-config --exists libcurl || { echo "ERROR: pkg-config не видит libcurl (.pc отсутствует)"; exit 1; }; \
     docker-php-ext-configure gd --with-freetype --with-jpeg; \
     docker-php-ext-install -j"$(nproc)" \
         bcmath ctype curl dom exif fileinfo ftp gd iconv intl \
