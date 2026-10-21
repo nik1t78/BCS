@@ -94,23 +94,19 @@ FROM php:8.4-fpm-alpine AS base
 # Поэтому проверка после установки пакетов: если кто-то тянет libiconv — выходим
 # с понятной ошибкой вместо дебри компиляции.
 RUN set -eux; \
-    # ВАЖНО: внутри RUN docker склеивает строки в одну команду, поэтому
-    # перенос "|| ..." на новую строку ломает синтаксис sh — пишем одной строкой.
     apk add --no-cache git curl curl-dev icu-dev libpng-dev libjpeg-turbo-dev freetype-dev libxml2-dev libzip-dev zip unzip mariadb-client 2>/dev/null || apk add --no-cache git curl libcurl-dev icu-dev libpng-dev libjpeg-turbo-dev freetype-dev libxml2-dev libzip-dev zip unzip mariadb-client; \
     apk add --no-cache oniguruma-dev || apk add --no-cache oniguruma || true; \
     BUILD_DEPS="${PHPIZE_DEPS:-autoconf dpkg-dev dpkg file g++ gcc libc-dev make pkgconf re2c}"; \
     apk add --no-cache --virtual .build-deps ${BUILD_DEPS}; \
     command -v pkg-config >/dev/null || apk add --no-cache pkgconfig; \
-    # ВАЖНО: docker склеивает continuation-строки, но строку, начинающуюся с '#',
-    # вырезает из shell-команды целиком — поэтому переносов "|| ..." и "... ; \"
-    # перед комментарием быть не должно. Все if/for ниже — одной физической строкой.
-    if apk info -e libiconv >/dev/null 2>&1; then echo "ERROR: в образе появился libiconv (заглушает musl iconv.h) — проверьте список apk-пакетов"; exit 1; fi; \
+    if apk info -e libiconv-dev >/dev/null 2>&1; then echo "ERROR: установлен libiconv-dev — он заглушает musl /usr/include/iconv.h и ломает сборку PHP ext-iconv/intl. Уберите его из списка пакетов."; exit 1; fi; \
     pkg-config --exists libcurl || { echo "ERROR: pkg-config не видит libcurl (.pc отсутствует)"; exit 1; }; \
-    for e in iconv intl; do php -m | grep -qix "$e" || docker-php-ext-enable "$e"; done; \
+    php -m | grep -qix iconv || { echo "ERROR: расширение iconv пропало из базового образа PHP"; exit 1; }; \
+    php -m | grep -qix intl || { echo "ERROR: расширение intl пропало из базового образа PHP"; exit 1; }; \
     docker-php-ext-configure gd --with-freetype --with-jpeg; \
     docker-php-ext-install -j"$(nproc)" \
         bcmath ctype curl dom exif fileinfo ftp gd \
-        mbstring opcache openssl pcntl pdo_mysql session simplexml tokenizer \
+        mbstring opcache pcntl pdo_mysql session tokenizer \
         xml xmlreader xmlwriter zip
 
 # Redis обязателен: CACHE_STORE/QUEUE_CONNECTION=redis в .env, predis в
