@@ -101,12 +101,10 @@ RUN set -eux; \
     command -v pkg-config >/dev/null || apk add --no-cache pkgconfig; \
     if apk info -e libiconv-dev >/dev/null 2>&1; then echo "ERROR: установлен libiconv-dev — он заглушает musl /usr/include/iconv.h и ломает сборку PHP ext-iconv/intl. Уберите его из списка пакетов."; exit 1; fi; \
     pkg-config --exists libcurl || { echo "ERROR: pkg-config не видит libcurl (.pc отсутствует)"; exit 1; }; \
-    docker-php-ext-configure gd --with-freetype --with-jpeg; \
-    docker-php-ext-install -j"$(nproc)" \
-        bcmath ctype curl dom exif fileinfo ftp gd \
-        mbstring opcache pcntl pdo_mysql session simplexml tokenizer \
-        xml xmlreader xmlwriter zip; \
-    for e in iconv intl; do php -m | grep -qix "$e" || { echo "!!! '$e' нет в php -m после установки остальных — включаю как shared"; docker-php-ext-enable "$e" || true; }; done
+    MISSING=""; for e in bcmath ctype curl dom exif fileinfo ftp gd iconv intl mbstring opcache pcntl pdo_mysql session simplexml tokenizer xml xmlreader xmlwriter zip; do php -m | grep -qix "$e" || MISSING="$MISSING $e"; done; \
+    if [ -z "$MISSING" ]; then echo "Все нужные расширения уже в PHP (php -m), docker-php-ext-install пропускается полностью"; else echo "Устанавливаю недостающие:$MISSING"; if php -m | grep -qix gd; then echo "gd уже встроен — configure пропускаю"; else docker-php-ext-configure gd --with-freetype --with-jpeg; fi; docker-php-ext-install -j"$(nproc)" $MISSING; fi; \
+    MISSING=""; for e in bcmath ctype curl dom exif fileinfo ftp gd iconv intl mbstring opcache pcntl pdo_mysql session simplexml tokenizer xml xmlreader xmlwriter zip; do php -m | grep -qix "$e" || MISSING="$MISSING $e"; done; \
+    if [ -n "$MISSING" ]; then echo "ERROR: после сборки всё ещё нет модулей:$MISSING"; exit 1; fi
 
 # Redis обязателен: CACHE_STORE/QUEUE_CONNECTION=redis в .env, predis в
 # composer.json нет — без расширения падают throttle, SSE и планировщик.
