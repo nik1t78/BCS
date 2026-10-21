@@ -72,11 +72,22 @@ FROM php:8.4-fpm-alpine AS base
 # отдельными аргументами обрывает сборку ("cannot find /usr/local/include/libxml"
 # либо "The following extension require the following extensions: xml").
 # То же касается проверочного цикла ниже (php -m никогда не печатает "libxml").
+# ВАЖНО (грабли новых alpine-образов php): в свежих тегах php:8.4-fpm-alpine
+# переменная окружения PHPIZE_DEPS больше НЕ определена (или пуста). Строка
+# `apk add --virtual .build-deps "${PHPIZE_DEPS}"` превращалась в
+# `apk add ... ""` и обрывала сборку ошибкой:
+#   ERROR: '' is not a valid package dependency, format is name([<>~=]version)
+# РЕШЕНИЕ: список пакетов для сборки расширений задаём ЯВНО со fallback из
+# PHPIZE_DEPS, если он вдруг снова появится в образе.
+# Второй момент: ext-dom/ext-simplexml/ext-xml на Alpine требуют dev-пакеты
+# libxml2/зависимости — они уже стоят выше, но чтобы configure не падал с
+# "cannot find headers", ставим их ещё раз через тот же apk (idempotent).
 RUN set -eux; \
     apk add --no-cache git curl icu-dev libpng-dev libjpeg-turbo-dev \
         freetype-dev libxml2-dev libzip-dev zip unzip mariadb-client; \
     apk add --no-cache oniguruma-dev || apk add --no-cache oniguruma || true; \
-    apk add --no-cache --virtual .build-deps "${PHPIZE_DEPS}"; \
+    BUILD_DEPS="${PHPIZE_DEPS:-autoconf dpkg-dev dpkg file g++ gcc libc-dev make pkgconf re2c}"; \
+    apk add --no-cache --virtual .build-deps ${BUILD_DEPS}; \
     docker-php-ext-configure gd --with-freetype --with-jpeg; \
     docker-php-ext-install -j"$(nproc)" \
         bcmath ctype curl dom exif fileinfo ftp gd iconv intl \
