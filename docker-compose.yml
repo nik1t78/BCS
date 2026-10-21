@@ -65,24 +65,21 @@ services:
       dockerfile: Dockerfile
       # multi-stage в backend/Dockerfile: собираем только стадию base,
       # composer-бинарник берётся из стадии composer-stage через COPY --from.
-      target: base
+      target: runtime
     container_name: vks-backend
     restart: unless-stopped
     volumes:
-      # Длинный (explicit) синтаксис — не зависит от пути с диском (D:\)
-      - type: bind
-        source: ./backend
-        target: /var/www/html
-      - type: bind
-        source: ./backend/storage
-        target: /var/www/html/storage
-      # vendor смонтирован из именованного volume: в ./backend/vendor лежат
-      # dev-пакеты (faker), а bind-mount целиком перекрывал бы prod-vendor
-      # из образа. При создании volume docker копирует в него содержимое
-      # образа по этому пути — там уже правильный --no-dev набор.
+      # ВСЁ ПРИЛОЖЕНИЕ ЖИВЁТ В ОБРАЗЕ (backend/Dockerfile, стадии app/runtime):
+      # код, vendor и каркас storage доезжают до контейнера только через слои
+      # образа — bind-mount ./backend УДАЛЁН намеренно (см. "боль 7" в шапке
+      # Dockerfile). В volumes — исключительно runtime-данные:
+      #  * backend_storage — uploads (/storage/app/*), логи, кэш файловый;
+      #  * backend_bootstrap_cache — packages.php/services.php/config cache.
+      # Пустой volume при первом `up` наполняется содержимым образа по той же
+      # точке монтирования, поэтому рантайму не нужны ни сеть, ни composer.
       - type: volume
-        source: backend_vendor
-        target: /var/www/html/vendor
+        source: backend_storage
+        target: /var/www/html/storage
       - type: volume
         source: backend_bootstrap_cache
         target: /var/www/html/bootstrap/cache
@@ -122,9 +119,17 @@ services:
       - sh
       - -c
       - |
+        # Архитектура «всё в образе»: код, vendor и config/*.php доезжают до
+        # контейнера ТОЛЬКО слоями образа (backend/Dockerfile, стадии app ->
+        # runtime). Bind-mount ./backend из compose удалён, поэтому самолечение
+        # вида «composer install на живую» / «чиним listen из entrypoint» больше
+        # не нужно — всё это гарантирует сборка образа. Здесь остаётся только
+        # то, что нельзя решить при build: секреты (.env/APP_KEY), права
+        # runtime-volumes и деградация при недоступном redis.
         # ВНИМАНИЕ: переменные в коде PHP ниже экранированы как $$ — иначе
         # docker compose принимает их за свои подстановки и печатает
         # WARN[0000] The "s" variable is not set. Defaulting to a blank string.
+        cd /var/www/html
         check_redis() {
           php -r '$$s=@fsockopen("redis",6379,$$e,$$m,2); if($$s){fwrite(STDOUT,"OK\n");exit(0);} fwrite(STDOUT,"FAIL\n");exit(1);' 2>/dev/null
         }
@@ -132,91 +137,39 @@ services:
           echo "[vks] redis недоступен — переключаю кэш/очередь на file/database"
           sed -i 's/^CACHE_STORE=.*/CACHE_STORE=file/; s/^QUEUE_CONNECTION=.*/QUEUE_CONNECTION=database/' /var/www/html/.env 2>/dev/null || true
         fi
-        # Самолечение vendor: если ./backend/vendor (bind) или том backend_vendor
-        # содержат autoload, собранный под другую версию PHP (например, локально
-        # на Windows был запущен composer install), artisan падает с
-        # "Composer detected issues in your platform ... >= 8.4.1".
-        # Переустанавливаем зависимости внутри контейнера (PHP образа) в обход
-        # platform_check. Требуется интернет при первом запуске после git pull.
-        if ! php -r "require '/var/www/html/vendor/autoload.php';" >/dev/null 2>&1; then
-          echo "[vks] vendor несовместим с PHP этого образа — выполняю composer install ..."
-          (cd /var/www/html && composer install --no-dev --prefer-dist --no-interaction --no-scripts --ignore-platform-req=php+) || \
-            echo "[vks] ВНИМАНИЕ: composer install не удался (нет сети?) — проверьте вручную: docker compose exec backend composer install --no-dev --ignore-platform-req=php+"
-        fi
-        # Создаём .env из .env.example (он есть в репозитории) и генерируем APP_KEY.
+        # .env из .env.example + APP_KEY (секреты в образ НЕ попадают по определению).
         if [ ! -f /var/www/html/.env ]; then
           echo "[vks] /var/www/html/.env отсутствует — создаю из .env.example"
           cp /var/www/html/.env.example /var/www/html/.env 2>/dev/null || : > /var/www/html/.env
           grep -q '^APP_KEY=' /var/www/html/.env 2>/dev/null || echo 'APP_KEY=' >> /var/www/html/.env
           sed -i 's/^APP_KEY=.*/APP_KEY=$$(head -c 32 /dev/urandom | base64)/' /var/www/html/.env
         fi
-        # Каркас Laravel на свежем клоне: config/*.php и database/migrations
-        # намеренно не лежат в git (секреты/локальные конфиги) — без них
-        # artisan падает («No application encryption key», «call to a member
-        # function connection() on null»), healthcheck не проходит, контейнер
-        # unhealthy -> весь стек выглядит «неработающим». Создаём недостающее
-        # ТОЛЬКО если файлов нет (существующие НЕ трогаем).
-        mkdir -p /var/www/html/config /var/www/html/database/migrations
-        if [ ! -f /var/www/html/config/app.php ]; then printf '%s\n' '<?php return [' '    "name" => getenv("APP_NAME") ?: "BCS",' '    "env" => getenv("APP_ENV") ?: "production",' '    "debug" => filter_var(getenv("APP_DEBUG") ?: "false", FILTER_VALIDATE_BOOLEAN),' '    "url" => rtrim(getenv("APP_URL") ?: "http://localhost", "/"),' '    "front_controller" => "index.php",' '    "key" => getenv("APP_KEY") ?: "",' '    "cipher" => "AES-256-CBC",' '];' > /var/www/html/config/app.php; fi
-        if [ ! -f /var/www/html/config/database.php ]; then printf '%s\n' '<?php return [' '    "default" => getenv("DB_CONNECTION") ?: "mysql",' '    "connections" => [' '        "sqlite" => ["driver" => "sqlite", "url" => env("DB_URL"), "database" => database_path("database.sqlite"), "prefix" => "", "foreign_key_constraints" => true],' '        "mysql" => ["driver" => "mysql", "url" => env("DB_URL"), "host" => getenv("DB_HOST") ?: "127.0.0.1", "port" => getenv("DB_PORT") ?: "3306", "database" => getenv("DB_DATABASE") ?: "vks_schedule", "username" => getenv("DB_USERNAME") ?: "root", "password" => getenv("DB_PASSWORD") ?: "", "charset" => "utf8mb4", "collation" => "utf8mb4_unicode_ci", "prefix" => ""],' '        "mariadb" => ["driver" => "mariadb", "url" => env("DB_URL"), "host" => getenv("DB_HOST") ?: "127.0.0.1", "port" => getenv("DB_PORT") ?: "3306", "database" => getenv("DB_DATABASE") ?: "vks_schedule", "username" => getenv("DB_USERNAME") ?: "root", "password" => getenv("DB_PASSWORD") ?: "", "charset" => "utf8mb4", "collation" => "utf8mb4_unicode_ci", "prefix" => ""],' '        "pgsql" => ["driver" => "pgsql", "url" => env("DB_URL"), "host" => getenv("DB_HOST") ?: "127.0.0.1", "port" => getenv("DB_PORT") ?: "5432", "database" => getenv("DB_DATABASE") ?: "vks_schedule", "username" => getenv("DB_USERNAME") ?: "root", "password" => getenv("DB_PASSWORD") ?: "", "charset" => "utf8", "prefix" => "", "schema_search_path" => "public"],' '    ],' '    "migrations" => ["table" => "migrations", "update_date_on_publish" => true],' '];' > /var/www/html/config/database.php; fi
-        if [ ! -f /var/www/html/config/cache.php ]; then printf '%s\n' '<?php return [' '    "default" => getenv("CACHE_STORE") ?: "file",' '    "stores" => [' '        "array" => ["driver" => "array", "serialize" => false],' '        "file" => ["driver" => "file", "path" => storage_path("framework/cache/data"), "serialized" => false],' '        "redis" => ["driver" => "redis", "connection" => getenv("REDIS_CLIENT") ?: "phpredis", "options" => [], "key" => getenv("REDIS_DB") ?: "0"],' '    ],' '    "prefix" => null,' '];' > /var/www/html/config/cache.php; fi
-        if [ ! -f /var/www/html/config/session.php ]; then printf '%s\n' '<?php return [' '    "driver" => getenv("SESSION_DRIVER") ?: "cookie",' '    "lifetime" => 120,' '    "expire_on_close" => false,' '    "encrypt" => false,' '    "files" => storage_path("framework/sessions"),' '    "cookie" => "vks_session",' '    "path" => "/",', '    "domain" => null,' '    "secure" => false,' '    "http_only" => true,' '    "same_site" => "lax",' '];' > /var/www/html/config/session.php; fi
-        if [ ! -f /var/www/html/config/queue.php ]; then printf '%s\n' '<?php return [' '    "default" => getenv("QUEUE_CONNECTION") ?: "database",' '    "connections" => [' '        "sync" => ["driver" => "sync"],' '        "database" => ["driver" => "database", "connection" => getenv("DB_CONNECTION") ?: "mysql", "table" => "jobs", "queue" => getenv("QUEUE_QUEUE") ?: "default"],' '        "redis" => ["driver" => "redis", "connection" => "default", "queue" => "default", "retry_after" => 90, "block_for" => null],' '    ],' '    "failed" => ["table" => "failed_jobs"],' '];' > /var/www/html/config/queue.php; fi
-        if [ ! -f /var/www/html/config/logging.php ]; then printf '%s\n' '<?php return [' '    "default" => getenv("LOG_CHANNEL") ?: "stack",' '    "channels" => [' '        "stack" => ["driver" => "stack", "channels" => ["single"]],' '        "single" => ["driver" => "single", "path" => storage_path("logs/laravel.log"), "level" => "debug"],' '    ],' '];' > /var/www/html/config/logging.php; fi
-        if [ -z "$$(ls -A /var/www/html/database/migrations 2>/dev/null)" ]; then printf '%s\n' '<?php' '' 'use Illuminate\\Database\\Migrations\\Migration;' 'use Illuminate\\Database\\Schema\\Blueprint;' 'use Illuminate\\Support\\Facades\\Schema;' '' 'return new class extends Migration' '{' '    public function up(): void' '    {' '        Schema::create("users", function (Blueprint $$table) {' '            $$table->id();' '            $$table->string("name");' '            $$table->string("email")->unique();' '            $$table->timestamp("email_verified_at")->nullable();' '            $$table->string("password");' '            $$table->rememberToken();' '            $$table->timestamps();' '        });' '    }' '' '    public function down(): void' '    {' '        Schema::dropIfExists("users");' '    }' '};' > /var/www/html/database/migrations/0001_01_01_000000_create_users_table.php; fi
-        # Самолечение прав storage/: ./backend/storage смонтирован с хоста bind-маунтом.
-        # На Linux-сервере каталог может принадлежать root (после git clone / rsync),
-        # тогда php-fpm (www-data) не может открыть storage/logs/laravel.log и
-        # `php artisan optimize` падает с "Failed to open stream: Permission denied"
-        # ровно на шаге views. Создаём каркас и чиним владельца/права при каждом старте.
+        # Права runtime-data: каталоги storage/ и bootstrap/cache смонтированы
+        # named-volume'ами; их содержимое принадлежит root после автокопирования
+        # образа — возвращаем владельца www-data при каждом старте.
         mkdir -p storage/app/public storage/app/tmp storage/app/backups \
                  storage/framework/cache/data storage/framework/sessions \
                  storage/framework/testing storage/framework/views \
                  storage/logs bootstrap/cache 2>/dev/null || true
         touch storage/logs/laravel.log 2>/dev/null || true
         chown -R www-data:www-data storage bootstrap/cache 2>/dev/null || \
-          echo '[vks] ВНИМАНИЕ: chown storage не удался (bind-mount только для чтения?)'
-        chmod -R ug+rwX,o+rX storage 2>/dev/null || true
-        # Если файл laravel.log уже создан другим пользователем (например, root из
-        # прошлых `docker compose exec`), append от www-data будет отвергнут ядром —
-        # удаляем и пересоздаём его от имени www-data.
-        if ! su -s /bin/sh www-data -c 'test -w storage/logs/laravel.log' 2>/dev/null; then
-          echo '[vks] storage/logs/laravel.log недоступен для записи www-data — пересоздаю'
-          rm -f storage/logs/laravel.log 2>/dev/null || true
-          touch storage/logs/laravel.log && chown www-data:www-data storage/logs/laravel.log
-        fi
-        # Самолечение TCP-listen: nginx стучится на backend:9000, а базовый
-        # образ php-fpm-alpine по умолчанию слушает UNIX-сокет -> 502 refused.
-        if ! grep -qs 'listen = 0.0.0.0:9000' /usr/local/etc/php-fpm.d/zz-listen.conf; then
-          echo '[vks] чиню php-fpm listen -> 0.0.0.0:9000'
-          { echo '[www]'
-            echo 'listen = 0.0.0.0:9000'
-            echo 'clear_env = no'
-            # pm = static: при 512M лимите контейнера dynamic пул неэффективен —
-            # сразу держим фиксированное число процессов (каждый ~50-70MB RAM).
-            echo 'pm = static'
-            echo 'pm.max_children = 6'
-            echo 'pm.max_requests = 500'
-            echo 'php_admin_value[memory_limit] = 128M'; } > /usr/local/etc/php-fpm.d/zz-listen.conf
-        fi
-        # OPcache: JIT tracing выключен намеренно — на alpine/musl он нестабилен
-        # и даёт прирост только на CPU-тяжёлых циклах; для I/O-bound Laravel
-        # достаточно кеша байткода + статического кеша классов/конфигов/роутов.
-        { echo 'opcache.enable=1'
-          echo 'opcache.enable_cli=0'
-          echo 'opcache.memory_consumption=96'
-          echo 'opcache.interned_strings_buffer=16'
-          echo 'opcache.max_accelerated_files=20000'
-          # validate_timestamps=1 + revalidate_freq=2: код смонтирован с хоста
-          # (bind ./backend), правки PHP должны вступать без ребилда образа —
-          # иначе выглядит как «докер не работает» (старый байткод держится в памяти).
-          echo 'opcache.validate_timestamps=1'
-          echo 'opcache.revalidate_freq=2'
-          echo 'opcache.save_comments=1'
-          echo 'opcache.fast_shutdown=1'; } > /usr/local/etc/php/conf.d/zz-opcache-tune.ini 2>/dev/null || true
-        # Статическая оптимизация Laravel (сборка роутов/конфигов/views в PHP).
-        # Выполняется в фоне после старта fpm, чтобы не задерживать healthcheck;
-        # deploy.sh пересобирает кеш после git pull, здесь — первичный прогрев.
+          echo '[vks] ВНИМАНИЕ: chown storage не удался (volume только для чтения?)'
+        chmod -R 777 storage bootstrap/cache 2>/dev/null || true
+        # Самолечение каркаса приложения. Обычно НЕ нужно (всё лежит в образе),
+        # но защищает от двух реальных случаев: (а) volume backend_bootstrap_cache
+        # создан на СТАРОМ образе и пуст; (б) разработчик временно вернул bind
+        # ./backend из dev-оверрида и config/ там нет. Существующие файлы НЕ
+        # трогаем — создаём только отсутствующие.
+        mkdir -p config database/migrations public 2>/dev/null || true
+        if [ ! -f config/app.php ]; then printf '%s\n' '<?php return [' '    "name" => getenv("APP_NAME") ?: "BCS",' '    "env" => getenv("APP_ENV") ?: "production",' '    "debug" => filter_var(getenv("APP_DEBUG") ?: "false", FILTER_VALIDATE_BOOLEAN),' '    "url" => rtrim(getenv("APP_URL") ?: "http://localhost", "/"),' '    "front_controller" => "index.php",' '    "key" => getenv("APP_KEY") ?: "",' '    "cipher" => "AES-256-CBC",' '];' > config/app.php; fi
+        if [ ! -f config/database.php ]; then printf '%s\n' '<?php return [' '    "default" => getenv("DB_CONNECTION") ?: "mysql",' '    "connections" => [' '        "sqlite" => ["driver" => "sqlite", "database" => database_path("database.sqlite"), "prefix" => "", "foreign_key_constraints" => true],' '        "mysql" => ["driver" => "mysql", "host" => getenv("DB_HOST") ?: "127.0.0.1", "port" => getenv("DB_PORT") ?: "3306", "database" => getenv("DB_DATABASE") ?: "vks_schedule", "username" => getenv("DB_USERNAME") ?: "root", "password" => getenv("DB_PASSWORD") ?: "", "charset" => "utf8mb4", "collation" => "utf8mb4_unicode_ci", "prefix" => ""],' '    ],' '    "migrations" => ["table" => "migrations", "update_date_on_publish" => true],' '];' > config/database.php; fi
+        if [ ! -f config/cache.php ]; then printf '%s\n' '<?php return [' '    "default" => getenv("CACHE_STORE") ?: "file",' '    "stores" => [' '        "array" => ["driver" => "array", "serialize" => false],' '        "file" => ["driver" => "file", "path" => storage_path("framework/cache/data"), "serialized" => false],' '        "redis" => ["driver" => "redis", "connection" => getenv("REDIS_CLIENT") ?: "phpredis", "options" => [], "key" => getenv("REDIS_DB") ?: 0],' '    ],' '    "prefix" => null,' '];' > config/cache.php; fi
+        if [ ! -f config/session.php ]; then printf '%s\n' '<?php return [' '    "driver" => getenv("SESSION_DRIVER") ?: "cookie",' '    "lifetime" => 120,' '    "expire_on_close" => false,' '    "encrypt" => false,' '    "files" => storage_path("framework/sessions"),' '    "cookie" => "vks_session",' '    "path" => "/",' '    "domain" => null,' '    "secure" => false,' '    "http_only" => true,' '    "same_site" => "lax",' '];' > config/session.php; fi
+        if [ ! -f config/queue.php ]; then printf '%s\n' '<?php return [' '    "default" => getenv("QUEUE_CONNECTION") ?: "database",' '    "connections" => [' '        "sync" => ["driver" => "sync"],' '        "database" => ["driver" => "database", "connection" => getenv("DB_CONNECTION") ?: "mysql", "table" => "jobs", "queue" => getenv("QUEUE_QUEUE") ?: "default"],' '        "redis" => ["driver" => "redis", "connection" => "default", "queue" => "default", "retry_after" => 90, "block_for" => null],' '    ],' '    "failed" => ["table" => "failed_jobs"],' '];' > config/queue.php; fi
+        if [ ! -f config/logging.php ]; then printf '%s\n' '<?php return [' '    "default" => getenv("LOG_CHANNEL") ?: "stack",' '    "channels" => [' '        "stack" => ["driver" => "stack", "channels" => ["single"]],' '        "single" => ["driver" => "single", "path" => storage_path("logs/laravel.log"), "level" => "debug"],' '    ],' '];' > config/logging.php; fi
+
+        # Статическая оптимизация Laravel (роуты/конфиги/views/events в PHP-кеш).
+        # В фоне после старта fpm, чтобы не задерживать healthcheck.
         ( sleep 5
           cd /var/www/html
           php artisan config:cache >/dev/null 2>&1 || true
@@ -229,7 +182,10 @@ services:
       - mysql
       - redis
     healthcheck:
-      test: ["CMD-SHELL", "php artisan tinker --execute='echo ok;' >/dev/null 2>&1 || exit 1"]
+      # Лёгкая TCP-проверка порта fpm вместо `artisan tinker`: tinker каждый
+      # цикл поднимает полный бутстрап Laravel (~0.5с CPU + RAM на контейнер),
+      # что «съедает» ресурсы у реальных запросов пользователей.
+      test: ["CMD-SHELL", "pidof php-fpm >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -259,9 +215,20 @@ services:
         source: frontend_build
         target: /var/www/frontend
         read_only: true
-      - type: bind
-        source: ./backend/public
+      # static-файлы Laravel public/ — из volume backend_public, наполненного
+      # содержимым ОБРАЗА backend (сервис backend-assets, profile "tools").
+      # Bind ./backend/public с хоста удалён: приложение целиком живёт в образе.
+      - type: volume
+        source: backend_public
         target: /var/www/backend/public
+        read_only: true
+      # Загрузки приложения (/storage/...): nginx отдаёт их напрямую из того же
+      # named-volume backend_storage, который пишет php-fpm (контейнер backend).
+      # Bind-mount ./backend с хоста удалён — приложение целиком живёт в образе,
+      # runtime-данные в volumes; без этого монтирования /storage отдавал 404.
+      - type: volume
+        source: backend_storage
+        target: /var/www/backend-storage
         read_only: true
       # Опциональная Basic-защита /vks-bot/create: создайте файл
       # docker/nginx/htpasswd (команда — в комментарии default.conf) и
@@ -274,6 +241,34 @@ services:
     depends_on:
       - frontend
       - backend
+    networks:
+      - vks-network
+
+  # Извлечение статики Laravel (public/) из ОБРАЗА backend в volume
+  # backend_public, который читает nginx. Раньше nginx монтировал ./backend/public
+  # с хоста; теперь весь бэкенд живёт только в образе (bind-mount удалены).
+  # Запускать после каждой пересборки backend-образа:
+  #   docker compose run --rm backend-assets
+  # (либо один раз при первом деплое; содержимое volume переживает `down`).
+  # В дефолтный `up` НЕ входит (profiles) — это одноразовый экспортёр, как
+  # frontend выше, но без держания RAM.
+  backend-assets:
+    profiles: ["tools"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: vks-backend-assets
+    restart: "no"
+    command:
+      - sh
+      - -c
+      - |
+        cp -a /var/www/html/public/. /mnt/public/ && echo ">>> backend public extracted"
+    volumes:
+      - type: volume
+        source: backend_public
+        target: /mnt/public
     networks:
       - vks-network
 
@@ -339,20 +334,17 @@ services:
       dockerfile: Dockerfile
       # multi-stage в backend/Dockerfile: собираем только стадию base,
       # composer-бинарник берётся из стадии composer-stage через COPY --from.
-      target: base
+      target: runtime
     container_name: vks-queue
     restart: unless-stopped
     command: php artisan queue:work --sleep=3 --tries=3 --max-time=3600
     volumes:
-      # Длинный (explicit) синтаксис — не зависит от пути с диском (D:\)
-      - type: bind
-        source: ./backend
-        target: /var/www/html
-      # Общие с backend сервисы должны видеть ОДИН и тот же vendor, иначе
-      # queue будет работать по коду/autoloader'у из ./backend/vendor (dev).
+      # Код и vendor — только из образа (bind-mount ./backend удалён, см.
+      # комментарий у сервиса backend). Очереди пишут те же runtime-данные,
+      # что и php-fpm, поэтому том storage общий.
       - type: volume
-        source: backend_vendor
-        target: /var/www/html/vendor
+        source: backend_storage
+        target: /var/www/html/storage
       - type: volume
         source: backend_bootstrap_cache
         target: /var/www/html/bootstrap/cache
@@ -387,21 +379,18 @@ services:
       dockerfile: Dockerfile
       # multi-stage в backend/Dockerfile: собираем только стадию base,
       # composer-бинарник берётся из стадии composer-stage через COPY --from.
-      target: base
+      target: runtime
     container_name: vks-scheduler
     restart: unless-stopped
     command: >
       sh -c "while true; do php artisan schedule:run --verbose --no-interaction & sleep 60; done"
     volumes:
-      # Длинный (explicit) синтаксис — не зависит от пути с диском (D:\)
-      - type: bind
-        source: ./backend
-        target: /var/www/html
-      # Общие с backend сервисы должны видеть ОДИН и тот же vendor, иначе
-      # queue будет работать по коду/autoloader'у из ./backend/vendor (dev).
+      # Код и vendor — только из образа (bind-mount ./backend удалён, см.
+      # комментарий у сервиса backend). Очереди пишут те же runtime-данные,
+      # что и php-fpm, поэтому том storage общий.
       - type: volume
-        source: backend_vendor
-        target: /var/www/html/vendor
+        source: backend_storage
+        target: /var/www/html/storage
       - type: volume
         source: backend_bootstrap_cache
         target: /var/www/html/bootstrap/cache
@@ -464,7 +453,9 @@ networks:
 
 volumes:
   frontend_build:
-  # Единый prod-vendor для backend/queue/scheduler (не пересобирается при
-  # `docker compose down`, обновляется `composer install` внутри vks-backend)
-  backend_vendor:
+  # Runtime-данные бэкенда (uploads/logs/framework cache) — переживают
+  # `down`/пересборку образов; код и vendor в них НЕ хранятся (они в образе).
+  backend_storage:
   backend_bootstrap_cache:
+  # Копия backend/public из образа — её читает nginx (static-ресурсы Laravel).
+  backend_public:

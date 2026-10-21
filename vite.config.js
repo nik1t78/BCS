@@ -77,12 +77,24 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        // Разделяем тяжёлые vendor-библиотеки на отдельные кэшируемые чанки
+        // Разделяем тяжёлые vendor-библиотеки на отдельные кэшируемые чанки:
+        // первый экран скачивает только свой маленький чанк + react, остальное
+        // подгружается параллельно/по требованию — страницы открываются быстрее.
         manualChunks(id) {
           if (id.includes("node_modules")) {
             // exceljs (~1 МБ) — отдельным ленивым чанком: подгружается только
             // при экспорте в Excel (см. utils/export.ts), не тормозит старт.
             if (id.includes("exceljs")) return "xlsx";
+            // Font Awesome CSS вынесен из entry в отдельный immutable-чанк:
+            // меняется редко -> переиспользуется браузером между релизами.
+            if (id.includes("fontawesome") || id.includes("/vendor/")) {
+              return "fa";
+            }
+            // Тяжёлые утилиты — своими чанками (кэшируются независимо от кода).
+            if (id.includes("jspdf") || id.includes("html2canvas")) return "pdf";
+            if (id.includes("react-dom") || /[\\/]node_modules[\\/]react[\\/]/.test(id)) {
+              return "react";
+            }
             return "vendor";
           }
         },

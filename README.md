@@ -105,7 +105,13 @@
 cp .env.example .env      # задать DB_PASSWORD, DB_ROOT_PASSWORD, REDIS_PASSWORD; APP_KEY — по желанию
 # backend/.env создавать НЕ нужно: при первом `docker compose up` контейнер
 # сам создаст его из backend/.env.example и сгенерирует настоящий APP_KEY.
+# ВАЖНО: весь бэкенд (код + vendor composer) живёт ВНУТРИ docker-образа —
+# bind-mount ./backend в docker-compose.yml удалён. Правки кода на хосте
+# применяются после `docker compose up -d --build backend queue scheduler`.
 docker compose up -d --build
+# Статика backend/public/ для nginx извлекается из ОБРАЗА в volume
+# backend_public (bind с хоста больше не используется):
+docker compose run --rm --no-deps backend-assets
 docker compose exec backend php artisan migrate --force
 docker compose exec backend php artisan storage:link   # картинки/вложения
 docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder --force

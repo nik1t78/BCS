@@ -17,8 +17,9 @@
 #     been terminated unexpectedly" при composer install в bind-mount'd каталоге
 #     на Windows — lock-файлы flock() на drvfs работают неверно. РЕШЕНИЕ: сборка
 #     зависимостей идёт в отдельном каталоге /opt/build (не смонтирован с хоста),
-#     в образе остаётся готовый прод-vendor; рантайм подхватывает его через
-#     volume backend_vendor (см. docker-compose.yml).
+#     в образе остаётся готовый прод-vendor; с ним же собирается финальное
+#     дерево приложения (volume backend_vendor УДАЛЁН — vendor теперь только
+#     в образе, см. "боль 7").
 #  4) "Your requirements could not be resolved to an installable set of packages
 #     ... ext-curl required" — раньше ставился только набор из composer.json без
 #     расширений, нужных самим кодом (curl для Guzzle, intl, dom/libxml, fileinfo
@@ -33,6 +34,15 @@
 #     --ignore-platform-req=php+ (он меняет expectations lock-файла). РЕШЕНИЕ:
 #     никаких ignore-platform-req: образ собран ровно на PHP 8.4 и со ВСЕМИ
 #     расширениями из lock, поэтому проверка платформ не нужна и вредна.
+#  7) bind-mount ./backend с хоста (Windows/Linux) перекрывал /var/www/html и
+#     приложение работало с файлов хоста, а не с образа — любая недостача или
+#     «битый» файл на хосте ломал запуск. РЕШЕНИЕ (нынешняя архитектура):
+#     В docker-compose.yml у backend/queue/scheduler НЕТ bind-mount кода. Всё
+#     приложение (код + vendor + storage-каркас) живёт ТОЛЬКО внутри образа;
+#     runtime-данные (uploads, кэш bootstrap) — в именованных docker volumes.
+#     Хост больше ничего не «одалживает»; при изменении кода достаточно
+#     `docker compose build backend` (или --no-cache), данные БД/uploads в
+#     volumes сохраняются.
 # =============================================================================
 
 # ---------------------------------------------------------------------------
@@ -41,10 +51,10 @@
 # ---------------------------------------------------------------------------
 FROM composer:2 AS composer-stage
 
-# Стадия 2: рабочий образ PHP-FPM.
-# Имя стадии ВАЖНО: docker-compose.yml собирает backend/queue/scheduler из одной
-# папки (context: ./backend), и target: base гарантирует, что билд остановится
-# на этой стадии и НЕ будет тащить composer-стадию в финальный образ.
+# Стадия 2: рабочий образ PHP-FPM (только PHP + расширения, БЕЗ кода).
+# Используется как базис для стадий vendor-build/app; саму её compose больше
+# не собирает — target: runtime (финальная стадия ниже), чтобы приложение
+# целиком жило в образе (см. "боль 7" в шапке).
 FROM php:8.4-fpm-alpine AS base
 
 # Системные пакеты + PHP-расширения одним слоем.
@@ -138,54 +148,48 @@ RUN set -eux; \
     test -f /opt/build/vendor/autoload.php; \
     echo ">>> vendor собран, пакетов:" $(ls /opt/build/vendor | wc -l)
 
+# Стадия 4: полная сборка приложения (код + vendor) ВНУТРИ образа.
+# С этой стадии docker-compose больше ничего не монтирует с хоста: весь код,
+# vendor и каркас storage живут только в образе (см. "боль 7" в шапке).
+FROM base AS app
 WORKDIR /var/www/html
 
-# Готовый prod-vendor в путь рантайма. Именно он попадает в пустой volume
-# backend_vendor при первом `docker compose up` (Docker копирует содержимое
-# образа по точке монтирования volume), поэтому в рантайме не нужны ни сеть, ни
-# composer install «на живую». Проверка autoload подтверждает, что слой цел.
-COPY --from=vendor-build --chown=www-data:www-data /opt/build/vendor /var/www/html/vendor
-RUN set -eux; \
-    test -f /var/www/html/vendor/autoload.php; \
-    php -r 'require "/var/www/html/vendor/autoload.php"; exit(class_exists("Illuminate\Foundation\Application") ? 0 : 1);' \
-        || { echo "!!! autoload не загружает Laravel — слой vendor повреждён"; exit 1; }; \
-    echo ">>> autoload OK: Illuminate\\Foundation\\Application загружается."
-
-# Composer оставляем в образе только для пересборки зависимостей внутри
-# контейнера (`docker compose exec backend composer update`). Никакого
-# COPY composer.phar из контекста сборки (боль 1) — берём из официальной стадии.
+# Composer нужен и здесь (пересборка зависимостей внутри контейнера:
+# `docker compose exec backend composer update`). Никакого COPY composer.phar
+# из контекста сборки (боль 1) — бинарь берётся из официальной стадии.
 COPY --from=composer-stage /usr/bin/composer /usr/bin/composer
 RUN set -eux; \
     chmod +x /usr/bin/composer; \
     composer --version
 
-# Код приложения.
-# ВАЖНО про порядок слоёв: COPY . . идёт ПОСЛЕ vendor и специально не затирает
-# его — vendor в образе нужен как источник для первоначального наполнения
-# volume backend_vendor (docker копирует содержимое образа в пустой volume).
+# Готовый prod-vendor (--no-dev) кладём ПЕРЕД копированием кода: слой vendor
+# инвалидируется только при изменении composer.json/lock, частые правки PHP-кода
+# не пересобирают зависимости. Проверка autoload подтверждает целостность слоя.
+COPY --from=vendor-build --chown=www-data:www-data /opt/build/vendor /var/www/html/vendor
+RUN set -eux; \
+    test -f /var/www/html/vendor/autoload.php; \
+    php -r 'require "/var/www/html/vendor/autoload.php"; exit(class_exists("Illuminate\\Foundation\\Application") ? 0 : 1);' \
+        || { echo "!!! autoload не загружает Laravel — слой vendor повреждён"; exit 1; }; \
+    echo ">>> autoload OK: Illuminate\\Foundation\\Application загружается."
+
+# Код приложения (контекст сборки = ./backend, см. backend/.dockerignore).
 COPY . .
 
-# Список автопровайдеров генерируем после COPY . . отдельным шагом: bind-mount
-# ./backend затирает bootstrap/cache из образа, поэтому packages.php должен
-# уметь пересоздаваться и на хосте (см. entrypoint в docker-compose.yml).
+# Список автопровайдеров генерируем после COPY . . отдельным шагом.
 # Скрипт лежит в backend/, потому что контекст сборки = ./backend
 # (COPY docker/... падал с "failed to compute cache key ... not found").
 COPY docker-package-discovery.php /tmp/package-discovery.php
 RUN set -eux; \
-    mkdir -p storage/app/public storage/app/tmp storage/app/backups \
-             storage/framework/cache/data storage/framework/sessions \
-             storage/framework/testing storage/framework/views storage/logs \
-             bootstrap/cache; \
+    mkdir -p storage/app/public storage/framework/cache/data \
+             storage/framework/sessions storage/framework/testing \
+             storage/framework/views storage/logs bootstrap/cache; \
     if [ -f artisan ] && php artisan package:discover --ansi; then :; \
     else php /tmp/package-discovery.php; fi; \
-    rm -f /tmp/package-discovery.php; \
-    chown -R www-data:www-data storage bootstrap/cache; \
-    chmod -R 777 storage bootstrap/cache
+    rm -f /tmp/package-discovery.php
 
-# PHP-конфиг. OPcache: validate_timestamps=1 ОБЯЗАТЕЛЬНО — код монтируется с
-# хоста, при =0 правки PHP «не применяются» (классическая жалоба «докер не
-# работает»). JIT выключен: на alpine/musl он нестабилен, профита I/O-bound
-# Laravel не даёт.
+# PHP-конфиг. validate_timestamps=1 оставлен намеренно: если разработчик
+# временно вернёт bind-mount ./backend (dev-override), правки PHP вступают без
+# ребилда образа. JIT выключен: на alpine/musl он нестабилен.
 RUN set -eux; \
     cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"; \
     printf '%s\n' \
@@ -208,19 +212,111 @@ RUN set -eux; \
 
 # php-fpm слушает TCP 0.0.0.0:9000 (иначе nginx даёт 502 Connection refused —
 # docker/nginx/default.conf использует fastcgi_pass backend:9000).
-# pm=static — фиксированные процессы, предсказуемая латентность под лимитом RAM.
+# pm=dynamic + request_terminate_timeout: при пиковой нагрузке (много вкладок)
+# воркеры создаются по требованию вместо очереди на 6 статичных процессах;
+# зависший запрос убивается через 120с, а не держит воркера вечно.
 RUN set -eux; \
     printf '%s\n' \
       '[www]' \
       'listen = 0.0.0.0:9000' \
+      'listen.backlog = 512' \
       'clear_env = no' \
-      'pm = static' \
-      'pm.max_children = 6' \
+      'pm = dynamic' \
+      'pm.max_children = 12' \
+      'pm.start_servers = 4' \
+      'pm.min_spare_servers = 3' \
+      'pm.max_spare_servers = 6' \
       'pm.max_requests = 500' \
+      'request_terminate_timeout = 120s' \
       'catch_workers_output = yes' \
       'decorate_worker_output = no' \
       'php_admin_value[memory_limit] = 128M' \
       > /usr/local/etc/php-fpm.d/zz-listen.conf
+
+# ---------------------------------------------------------------------------
+# Стадия 5 (ФИНАЛЬНАЯ, target по умолчанию в docker-compose.yml): чистый
+# рантайм. Наследует app «как есть» — то же окружение PHP-FPM Alpine, но теперь
+# это независимая стадия, и compose ссылается именно на неё. Точки монтирования
+# named-volumes (backend_storage, backend_bootstrap_cache) совпадают с путями в
+# образе, поэтому при первом `up` пустой volume наполняется содержимым образа,
+# а дальше хранит только runtime-данные (uploads, кэш, логи).
+# ---------------------------------------------------------------------------
+FROM app AS runtime
+
+# Runtime-права + самодостаточность образа. Контейнер больше НЕ получает код с
+# хоста (bind-mount удалены из docker-compose.yml), поэтому конфиги Laravel,
+# которых намеренно нет в git (секреты), дораспаковываются прямо здесь — из
+# ENV-значений, которые задаёт compose. Ветки выполняются только если файла
+# нет; существующие (например, смонтированный dev-оверридом config/) не трогаем.
+RUN set -eux; \
+    mkdir -p storage/app/public storage/app/tmp storage/app/backups \
+             storage/framework/cache/data storage/framework/sessions \
+             storage/framework/testing storage/framework/views storage/logs \
+             bootstrap/cache config; \
+    chown -R www-data:www-data storage bootstrap/cache; \
+    chmod -R 777 storage bootstrap/cache; \
+    if [ ! -f config/app.php ]; then printf '%s\n' '<?php return [' \
+        '    "name" => getenv("APP_NAME") ?: "BCS",' \
+        '    "env" => getenv("APP_ENV") ?: "production",' \
+        '    "debug" => filter_var(getenv("APP_DEBUG") ?: "false", FILTER_VALIDATE_BOOLEAN),' \
+        '    "url" => rtrim(getenv("APP_URL") ?: "http://localhost", "/"),' \
+        '    "front_controller" => "index.php",' \
+        '    "key" => getenv("APP_KEY") ?: "",' \
+        '    "cipher" => "AES-256-CBC",' \
+        '];' > config/app.php; fi; \
+    if [ ! -f config/database.php ]; then printf '%s\n' '<?php return [' \
+        '    "default" => getenv("DB_CONNECTION") ?: "mysql",' \
+        '    "connections" => [' \
+        '        "sqlite" => ["driver" => "sqlite", "database" => database_path("database.sqlite"), "prefix" => "", "foreign_key_constraints" => true],' \
+        '        "mysql" => ["driver" => "mysql", "host" => getenv("DB_HOST") ?: "127.0.0.1", "port" => getenv("DB_PORT") ?: "3306", "database" => getenv("DB_DATABASE") ?: "vks_schedule", "username" => getenv("DB_USERNAME") ?: "root", "password" => getenv("DB_PASSWORD") ?: "", "charset" => "utf8mb4", "collation" => "utf8mb4_unicode_ci", "prefix" => ""],' \
+        '    ],' \
+        '    "migrations" => ["table" => "migrations", "update_date_on_publish" => true],' \
+        '];' > config/database.php; fi; \
+    if [ ! -f config/cache.php ]; then printf '%s\n' '<?php return [' \
+        '    "default" => getenv("CACHE_STORE") ?: "file",' \
+        '    "stores" => [' \
+        '        "array" => ["driver" => "array", "serialize" => false],' \
+        '        "file" => ["driver" => "file", "path" => storage_path("framework/cache/data"), "serialized" => false],' \
+        '        "redis" => ["driver" => "redis", "connection" => getenv("REDIS_CLIENT") ?: "phpredis", "options" => [], "key" => getenv("REDIS_DB") ?: 0],' \
+        '    ],' \
+        '    "prefix" => null,' \
+        '];' > config/cache.php; fi; \
+    if [ ! -f config/session.php ]; then printf '%s\n' '<?php return [' \
+        '    "driver" => getenv("SESSION_DRIVER") ?: "cookie",' \
+        '    "lifetime" => (int) (getenv("SESSION_LIFETIME") ?: 120),' \
+        '    "expire_on_close" => false,' \
+        '    "encrypt" => false,' \
+        '    "files" => storage_path("framework/sessions"),' \
+        '    "cookie" => "vks_session",' \
+        '    "path" => "/", "domain" => null, "secure" => false,' \
+        '    "http_only" => true, "same_site" => "lax",' \
+        '];' > config/session.php; fi; \
+    if [ ! -f config/queue.php ]; then printf '%s\n' '<?php return [' \
+        '    "default" => getenv("QUEUE_CONNECTION") ?: "database",' \
+        '    "connections" => [' \
+        '        "sync" => ["driver" => "sync"],' \
+        '        "database" => ["driver" => "database", "connection" => getenv("DB_CONNECTION") ?: "mysql", "table" => "jobs", "queue" => getenv("QUEUE_QUEUE") ?: "default"],' \
+        '        "redis" => ["driver" => "redis", "connection" => "default", "queue" => "default", "retry_after" => 90, "block_for" => null],' \
+        '    ],' \
+        '    "failed" => ["table" => "failed_jobs"],' \
+        '];' > config/queue.php; fi; \
+    if [ ! -f config/logging.php ]; then printf '%s\n' '<?php return [' \
+        '    "default" => getenv("LOG_CHANNEL") ?: "stack",' \
+        '    "channels" => [' \
+        '        "stack" => ["driver" => "stack", "channels" => ["single"]],' \
+        '        "single" => ["driver" => "single", "path" => storage_path("logs/laravel.log"), "level" => "debug"],' \
+        '    ],' \
+        '];' > config/logging.php; fi
+
+# Финальная самопроверка образа: если чего-то нет — сборка падает ЗДЕСЬ,
+# а не через 5 минут на странной рантайм-ошибке.
+RUN set -eux; \
+    test -f artisan; \
+    test -f public/index.php; \
+    test -f vendor/autoload.php; \
+    test -f config/app.php; \
+    php artisan --version >/dev/null; \
+    echo ">>> Образ backend самодостаточен: код+vendor+config внутри образа."
 
 EXPOSE 9000
 

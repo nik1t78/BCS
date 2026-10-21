@@ -56,6 +56,9 @@ if git diff --quiet HEAD@{1} HEAD -- backend/ 2>/dev/null; then
 else
   echo "[deploy] изменения в backend/ — пересобираю и обновляю конфиг..."
   docker compose up -d --build backend queue scheduler
+  # Статика public/ для nginx живёт в volume backend_public — обновляем её
+  # из свежего образа (сервис backend-assets в docker-compose.yml).
+  docker compose run --rm --no-deps backend-assets || true
 fi
 docker compose exec -T backend php artisan config:cache || true
 docker compose exec -T backend php artisan route:cache   || true
@@ -67,6 +70,11 @@ docker compose restart backend                           || true
 # Рабочие очередей кэшируют классы в памяти процесса — перезапускаем, чтобы
 # подхватили новый код после git pull.
 docker compose restart queue                             || true
+
+# nginx читает Laravel public/ из volume backend_public (сервис backend-assets).
+# Тихо перезаливаем том из образа и при «backend не менялся» тоже: гарантирует,
+# что /api отдаёт свежий index.php даже после частичного деплоя.
+docker compose run --rm --no-deps backend-assets >/dev/null 2>&1 || true
 
 # Полная чистка Docker: контейнер бота, неиспользуемые образы, кеш сборки.
 # Безопасно: данные mysql (bind ./docker/mysql/data) и volume frontend_build не трогаются.
