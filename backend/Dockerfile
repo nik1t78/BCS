@@ -82,9 +82,15 @@ FROM php:8.4-fpm-alpine AS base
 # Второй момент: ext-dom/ext-simplexml/ext-xml на Alpine требуют dev-пакеты
 # libxml2/зависимости — они уже стоят выше, но чтобы configure не падал с
 # "cannot find headers", ставим их ещё раз через тот же apk (idempotent).
+# ВАЖНО (новая боль): в свежих alpine-3.22+ пакет curl — только рантайм-бинарник,
+# его .pc-файла нет, а docker-php-ext-install curl вызывает `pkg-config libcurl`
+# → "Package 'libcurl' not found". Нужен отдельный dev-пакет: libcurl-dev
+# (в edge/newer) или curl-dev (старые ветки) — пробуем оба.
 RUN set -eux; \
-    apk add --no-cache git curl icu-dev libpng-dev libjpeg-turbo-dev \
-        freetype-dev libxml2-dev libzip-dev zip unzip mariadb-client; \
+    apk add --no-cache git curl libcurl-dev icu-dev libpng-dev libjpeg-turbo-dev \
+        freetype-dev libxml2-dev libzip-dev zip unzip mariadb-client \
+        || apk add --no-cache git curl curl-dev icu-dev libpng-dev libjpeg-turbo-dev \
+           freetype-dev libxml2-dev libzip-dev zip unzip mariadb-client; \
     apk add --no-cache oniguruma-dev || apk add --no-cache oniguruma || true; \
     BUILD_DEPS="${PHPIZE_DEPS:-autoconf dpkg-dev dpkg file g++ gcc libc-dev make pkgconf re2c}"; \
     apk add --no-cache --virtual .build-deps ${BUILD_DEPS}; \
