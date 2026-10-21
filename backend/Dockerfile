@@ -87,11 +87,16 @@ FROM php:8.4-fpm-alpine AS base
 # → "Package 'libcurl' not found". Нужен отдельный dev-пакет: libcurl-dev
 # (в edge/newer) или curl-dev (старые ветки) — пробуем оба.
 RUN set -eux; \
-    apk add --no-cache git curl libcurl-dev icu-dev libpng-dev libjpeg-turbo-dev \
-        freetype-dev libxml2-dev libzip-dev zip unzip mariadb-client \
-        || apk add --no-cache git curl curl-dev icu-dev libpng-dev libjpeg-turbo-dev \
-           freetype-dev libxml2-dev libzip-dev zip unzip mariadb-client; \
+    apk add --no-cache git curl icu-dev libpng-dev libjpeg-turbo-dev \
+        freetype-dev libxml2-dev libzip-dev zip unzip mariadb-client; \
     apk add --no-cache oniguruma-dev || apk add --no-cache oniguruma || true; \
+    # dev-пакет libcurl: в разных версиях alpine он называется по-разному.
+    # Без него configure PHP ext-curl падает с "Package 'libcurl' not found".
+    CURL_DEV=""; \
+    for cand in libcurl-dev curl-dev; do \
+        if apk add --no-cache "$cand" 2>/dev/null; then CURL_DEV="$cand"; break; fi; \
+    done; \
+    [ -n "$CURL_DEV" ] || { echo "ERROR: не найден dev-пакет libcurl (libcurl-dev/curl-dev)"; exit 1; }; \
     BUILD_DEPS="${PHPIZE_DEPS:-autoconf dpkg-dev dpkg file g++ gcc libc-dev make pkgconf re2c}"; \
     apk add --no-cache --virtual .build-deps ${BUILD_DEPS}; \
     docker-php-ext-configure gd --with-freetype --with-jpeg; \
@@ -105,9 +110,9 @@ RUN set -eux; \
 # Сначала пробуем pecl; если он недоступен — ручная сборка: архив скачивается
 # ВНУТРИ RUN (никакого COPY *.tgz из контекста сборки, см. боль 1 в шапке).
 RUN set -eux; \
-    { pecl channel-update pecl.php.net || true; pecl install redis; } || true; \
-    docker-php-ext-enable redis || true; \
+    { pecl channel-update pecl.php.net && pecl install redis && docker-php-ext-enable redis; } || true; \
     if ! php -m | grep -qix redis; then \
+        apk add --no-cache autoconf linux-headers >/dev/null 2>&1 || true; \
         mkdir -p /tmp/redisbuild; \
         cd /tmp/redisbuild; \
         curl -fsSL --retry 5 --retry-delay 3 https://pecl.php.net/get/redis-6.3.0.tgz -o redis.tgz; \
