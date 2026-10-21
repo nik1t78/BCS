@@ -20,3 +20,9 @@ storage/framework/views/*
 *.tar.gz
 *.tgz
 *.zip
+
+# Каркасы Laravel-конфигов (в git намеренно нет backend/config/* — там секреты).
+# Кладём их в контекст сборки из docker/skeleton/laravel12/config/, чтобы стадия
+# app (`COPY . .`) получила полный каркас и php artisan package:discover работал
+# прямо из образа (без сети и без composer на рантайме).
+!docker/skeleton/laravel12/config/**

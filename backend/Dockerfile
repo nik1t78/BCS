@@ -186,6 +186,16 @@ RUN set -eux; \
 # Код приложения (контекст сборки = ./backend, см. backend/.dockerignore).
 COPY . .
 
+# Каркас config/*.php (лежит в docker/skeleton/laravel12/config/, попадает в
+# контекст сборки через исключение в backend/.dockerignore) кладём только если
+# config/app.php отсутствует — вручную заполненный на сервере config/ не трогаем.
+RUN set -eux; \
+    if [ ! -f config/app.php ] && [ -d docker/skeleton/laravel12/config ]; then \
+        cp -a docker/skeleton/laravel12/config/. config/; \
+    fi; \
+    test -f config/app.php || { echo '!!! config/app.php так и не появился'; exit 1; }; \
+    ls config/
+
 # Список автопровайдеров генерируем после COPY . . отдельным шагом.
 # Скрипт лежит в backend/, потому что контекст сборки = ./backend
 # (COPY docker/... падал с "failed to compute cache key ... not found").
