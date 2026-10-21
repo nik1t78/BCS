@@ -110,7 +110,11 @@ RUN set -eux; \
     command -v pkg-config >/dev/null || apk add --no-cache pkgconfig; \
     if apk info -e libiconv-dev >/dev/null 2>&1; then echo "ERROR: установлен libiconv-dev — он заглушает musl /usr/include/iconv.h и ломает сборку PHP ext-iconv/intl. Уберите его из списка пакетов."; exit 1; fi; \
     pkg-config --exists libcurl || { echo "ERROR: pkg-config не видит libcurl (.pc отсутствует)"; exit 1; }; \
-    EXTLIST="bcmath ctype curl dom exif fileinfo ftp gd intl mbstring opcache pcntl pdo_mysql session simplexml tokenizer xml zip"; \
+    # ВАЖНО: в EXTLIST НЕТ iconv — на musl-alpine он встроен в ядро PHP и просто
+    # не печатается в php -m; попытка пересобрать его (в т.ч. из tarball) цепляет
+    # чужой libiconv.h и падает "_libiconv_version undeclared". intl тоже убран:
+    # без нормального ICU-dev на alpine не собирается, Laravel прикрывает polyfill.
+    EXTLIST="bcmath ctype curl dom exif fileinfo ftp gd mbstring opcache pcntl pdo_mysql session simplexml tokenizer xml zip"; \
     MEASURE() { M=""; for e in $EXTLIST; do m="$e"; [ "$e" = pdo_mysql ] && m="PDO"; php -m | grep -qx "$m" || M="$M $e"; done; }; \
     MEASURE; \
     if [ -n "$M" ]; then echo "НЕ ХВАТАЕТ (старт):$M — включаю трёхступенчатый каскад: apk -> /usr/src/php -> tarball php.net"; fi; \
