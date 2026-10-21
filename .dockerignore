@@ -26,3 +26,10 @@ deploy.sh
 *.tar.gz
 *.tgz
 *.zip
+
+# Каркас Laravel-конфигов для стадии skeleton-stage (backend/Dockerfile,
+# COPY --from=repo). По умолчанию всё содержимое docker/ уходит вместе с
+# бинарниками/данными; возвращаем ТОЛЬКО *.php каркаса. Правила идут последними:
+# в dockerignore "last match wins", перенос этих строк выше глобальных
+# исключений молча выкинет каркас из контекста repo.
+!docker/skeleton/laravel12/config/*.php

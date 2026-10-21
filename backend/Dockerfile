@@ -176,6 +176,28 @@ RUN set -eux; \
 # ... not installed". Стадия ниже наследует base (со ВСЕМИ расширениями), так что
 # порядок слоёв здесь критичен: не переносите vendor-build выше этих RUN.
 
+# Стадия 2b: каркас config/ из КОРНЯ репозитория (docker/skeleton/laravel12).
+# Контекст сборки backend = ./backend, а выходить из контекста вверх Docker не
+# умеет — поэтому compose (build.additional_contexts) передаёт корень репо
+# именованным контекстом `repo`, и эта стадия забирает оттуда каркас.
+# ВАЖНО про .dockerignore в КОРНЕ репо: он фильтрует контекст `repo` и уже
+# содержит точечные инверсии `!docker/skeleton/laravel12/config/*.php` (иначе
+# COPY молча копирует НОЛЬ файлов и сборка падает на проверке config/app.php).
+# Поэтому здесь копится КОНКРЕТНЫЙ список файлов, а не директория целиком.
+# Если кто-то запускает `docker build` без compose (именованного контекста нет),
+# стадия остаётся пустой — app-стадия это терпит и генерирует конфиги из ENV
+# (см. блок "Каркас config/*.php" в стадии app).
+FROM scratch AS skeleton-stage
+COPY --from=repo \
+    docker/skeleton/laravel12/config/app.php \
+    docker/skeleton/laravel12/config/auth.php \
+    docker/skeleton/laravel12/config/cache.php \
+    docker/skeleton/laravel12/config/database.php \
+    docker/skeleton/laravel12/config/filesystems.php \
+    docker/skeleton/laravel12/config/queue.php \
+    docker/skeleton/laravel12/config/session.php \
+    /skeleton/
+
 # Стадия 3: сборка production-зависимостей в чистом окружении.
 # Вынесено в отдельную стадию по двум причинам:
 #  (а) Docker выполняет независимые стадии параллельно — слой vendor строится
@@ -229,11 +251,87 @@ RUN set -eux; \
 # Код приложения (контекст сборки = ./backend, см. backend/.dockerignore).
 COPY . .
 
-# Каркас config/*.php (лежит в docker/skeleton/laravel12/config/, попадает в
-# контекст сборки через исключение в backend/.dockerignore) кладём только если
-# config/app.php отсутствует — вручную заполненный на сервере config/ не трогаем.
+# Каркас config/*.php. В git намеренно нет backend/config/* (секреты), а каркас
+# лежит в КОРНЕ репозитория docker/skeleton/laravel12/config/ — но контекст
+# сборки = ./backend, и Docker НЕ умеет выходить из контекста вверх
+# (`COPY ../docker/...` -> "failed to prepare extraction layer ... path ...
+# is outside the build context"). Поэтому каркас копится ПОСЛЕДОВАТЕЛЬНО из
+# трёх источников: (1) docker/skeleton внутри контекста (для тех, кто положил
+# его в backend/ руками или скриптом), (2) /tmp/skeleton-stage — отдельная
+# стадия skeleton-build, ей контекстом указан корень репо (см.
+# docker-compose.yml: build.additional_contexts + --from=skeleton-stage),
+# (3) если файлов нет вообще (сборка `docker build` без compose) — генерируем
+# минимальный набор конфигов из ENV прямо здесь (тот же код, что в стадии
+# runtime). Существующие config/*.php НЕ перезаписываем — вручную заполненный
+# на сервере config/ не трогаем.
+# Отсутствие каркаса (например, `docker build` без compose) не ломает сборку:
+# если /tmp/skeleton-stage пуст, недостающие конфиги генерируются из ENV
+# ветками "if [ ! -f config/... ]" в этом же RUN ниже.
+COPY --from=skeleton-stage /skeleton/ /tmp/skeleton-stage/
 RUN set -eux; \
-    if [ ! -f config/app.php ] && [ -d docker/skeleton/laravel12/config ]; then cp -a docker/skeleton/laravel12/config/. config/; fi; \
+    mkdir -p config; \
+    for SRC in "docker/skeleton/laravel12/config" "/tmp/skeleton-stage"; do \
+        if [ -d "$SRC" ]; then \
+            for f in "$SRC"/*.php; do \
+                [ -e "$f" ] || continue; \
+                T="config/$(basename "$f")"; \
+                [ -f "$T" ] || cp -a "$f" "$T"; \
+            done; \
+        fi; \
+    done; \
+    rm -rf /tmp/skeleton-stage docker/skeleton; \
+    if [ ! -f config/app.php ]; then printf '%s\n' '<?php return [' \
+        '    "name" => getenv("APP_NAME") ?: "BCS",' \
+        '    "env" => getenv("APP_ENV") ?: "production",' \
+        '    "debug" => filter_var(getenv("APP_DEBUG") ?: "false", FILTER_VALIDATE_BOOLEAN),' \
+        '    "url" => rtrim(getenv("APP_URL") ?: "http://localhost", "/"),' \
+        '    "front_controller" => "index.php",' \
+        '    "key" => getenv("APP_KEY") ?: "",' \
+        '    "cipher" => "AES-256-CBC",' \
+        '];' > config/app.php; fi; \
+    if [ ! -f config/database.php ]; then printf '%s\n' '<?php return [' \
+        '    "default" => getenv("DB_CONNECTION") ?: "mysql",' \
+        '    "connections" => [' \
+        '        "sqlite" => ["driver" => "sqlite", "database" => database_path("database.sqlite"), "prefix" => "", "foreign_key_constraints" => true],' \
+        '        "mysql" => ["driver" => "mysql", "host" => getenv("DB_HOST") ?: "127.0.0.1", "port" => getenv("DB_PORT") ?: "3306", "database" => getenv("DB_DATABASE") ?: "vks_schedule", "username" => getenv("DB_USERNAME") ?: "root", "password" => getenv("DB_PASSWORD") ?: "", "charset" => "utf8mb4", "collation" => "utf8mb4_unicode_ci", "prefix" => ""]' \
+        '    ],' \
+        '    "migrations" => ["table" => "migrations", "update_date_on_publish" => true],' \
+        '];' > config/database.php; fi; \
+    if [ ! -f config/cache.php ]; then printf '%s\n' '<?php return [' \
+        '    "default" => getenv("CACHE_STORE") ?: "file",' \
+        '    "stores" => [' \
+        '        "array" => ["driver" => "array", "serialize" => false],' \
+        '        "file" => ["driver" => "file", "path" => storage_path("framework/cache/data"), "serialized" => false],' \
+        '        "redis" => ["driver" => "redis", "connection" => getenv("REDIS_CLIENT") ?: "phpredis", "options" => [], "key" => getenv("REDIS_DB") ?: 0]' \
+        '    ],' \
+        '    "prefix" => null,' \
+        '];' > config/cache.php; fi; \
+    if [ ! -f config/session.php ]; then printf '%s\n' '<?php return [' \
+        '    "driver" => getenv("SESSION_DRIVER") ?: "cookie",' \
+        '    "lifetime" => (int) (getenv("SESSION_LIFETIME") ?: 120),' \
+        '    "expire_on_close" => false,' \
+        '    "encrypt" => false,' \
+        '    "files" => storage_path("framework/sessions"),' \
+        '    "cookie" => "vks_session",' \
+        '    "path" => "/", "domain" => null, "secure" => false,' \
+        '    "http_only" => true, "same_site" => "lax",' \
+        '];' > config/session.php; fi; \
+    if [ ! -f config/queue.php ]; then printf '%s\n' '<?php return [' \
+        '    "default" => getenv("QUEUE_CONNECTION") ?: "database",' \
+        '    "connections" => [' \
+        '        "sync" => ["driver" => "sync"],' \
+        '        "database" => ["driver" => "database", "connection" => getenv("DB_CONNECTION") ?: "mysql", "table" => "jobs", "queue" => getenv("QUEUE_QUEUE") ?: "default"],' \
+        '        "redis" => ["driver" => "redis", "connection" => "default", "queue" => "default", "retry_after" => 90, "block_for" => null]' \
+        '    ],' \
+        '    "failed" => ["table" => "failed_jobs"],' \
+        '];' > config/queue.php; fi; \
+    if [ ! -f config/logging.php ]; then printf '%s\n' '<?php return [' \
+        '    "default" => getenv("LOG_CHANNEL") ?: "stack",' \
+        '    "channels" => [' \
+        '        "stack" => ["driver" => "stack", "channels" => ["single"]],' \
+        '        "single" => ["driver" => "single", "path" => storage_path("logs/laravel.log"), "level" => "debug"],' \
+        '    ],' \
+        '];' > config/logging.php; fi; \
     test -f config/app.php || { echo '!!! config/app.php так и не появился'; exit 1; }; \
     ls config/
 
@@ -306,10 +404,10 @@ RUN set -eux; \
 FROM app AS runtime
 
 # Runtime-права + самодостаточность образа. Контейнер больше НЕ получает код с
-# хоста (bind-mount удалены из docker-compose.yml), поэтому конфиги Laravel,
-# которых намеренно нет в git (секреты), дораспаковываются прямо здесь — из
-# ENV-значений, которые задаёт compose. Ветки выполняются только если файла
-# нет; существующие (например, смонтированный dev-оверридом config/) не трогаем.
+# хоста (bind-mount удалены из docker-compose.yml), поэтому весь каркас
+# config/ должен быть готов на стадии app (блок "Каркас config/*.php") — там же
+# он генерируется из ENV, если каркаса в контексте нет. Здесь только права:
+# config/ в образе принадлежит root и рантайму доступен на чтение.
 RUN set -eux; \
     mkdir -p storage/app/public storage/app/tmp storage/app/backups \
              storage/framework/cache/data storage/framework/sessions \
@@ -317,58 +415,7 @@ RUN set -eux; \
              bootstrap/cache config; \
     chown -R www-data:www-data storage bootstrap/cache; \
     chmod -R 777 storage bootstrap/cache; \
-    if [ ! -f config/app.php ]; then printf '%s\n' '<?php return [' \
-        '    "name" => getenv("APP_NAME") ?: "BCS",' \
-        '    "env" => getenv("APP_ENV") ?: "production",' \
-        '    "debug" => filter_var(getenv("APP_DEBUG") ?: "false", FILTER_VALIDATE_BOOLEAN),' \
-        '    "url" => rtrim(getenv("APP_URL") ?: "http://localhost", "/"),' \
-        '    "front_controller" => "index.php",' \
-        '    "key" => getenv("APP_KEY") ?: "",' \
-        '    "cipher" => "AES-256-CBC",' \
-        '];' > config/app.php; fi; \
-    if [ ! -f config/database.php ]; then printf '%s\n' '<?php return [' \
-        '    "default" => getenv("DB_CONNECTION") ?: "mysql",' \
-        '    "connections" => [' \
-        '        "sqlite" => ["driver" => "sqlite", "database" => database_path("database.sqlite"), "prefix" => "", "foreign_key_constraints" => true],' \
-        '        "mysql" => ["driver" => "mysql", "host" => getenv("DB_HOST") ?: "127.0.0.1", "port" => getenv("DB_PORT") ?: "3306", "database" => getenv("DB_DATABASE") ?: "vks_schedule", "username" => getenv("DB_USERNAME") ?: "root", "password" => getenv("DB_PASSWORD") ?: "", "charset" => "utf8mb4", "collation" => "utf8mb4_unicode_ci", "prefix" => ""],' \
-        '    ],' \
-        '    "migrations" => ["table" => "migrations", "update_date_on_publish" => true],' \
-        '];' > config/database.php; fi; \
-    if [ ! -f config/cache.php ]; then printf '%s\n' '<?php return [' \
-        '    "default" => getenv("CACHE_STORE") ?: "file",' \
-        '    "stores" => [' \
-        '        "array" => ["driver" => "array", "serialize" => false],' \
-        '        "file" => ["driver" => "file", "path" => storage_path("framework/cache/data"), "serialized" => false],' \
-        '        "redis" => ["driver" => "redis", "connection" => getenv("REDIS_CLIENT") ?: "phpredis", "options" => [], "key" => getenv("REDIS_DB") ?: 0],' \
-        '    ],' \
-        '    "prefix" => null,' \
-        '];' > config/cache.php; fi; \
-    if [ ! -f config/session.php ]; then printf '%s\n' '<?php return [' \
-        '    "driver" => getenv("SESSION_DRIVER") ?: "cookie",' \
-        '    "lifetime" => (int) (getenv("SESSION_LIFETIME") ?: 120),' \
-        '    "expire_on_close" => false,' \
-        '    "encrypt" => false,' \
-        '    "files" => storage_path("framework/sessions"),' \
-        '    "cookie" => "vks_session",' \
-        '    "path" => "/", "domain" => null, "secure" => false,' \
-        '    "http_only" => true, "same_site" => "lax",' \
-        '];' > config/session.php; fi; \
-    if [ ! -f config/queue.php ]; then printf '%s\n' '<?php return [' \
-        '    "default" => getenv("QUEUE_CONNECTION") ?: "database",' \
-        '    "connections" => [' \
-        '        "sync" => ["driver" => "sync"],' \
-        '        "database" => ["driver" => "database", "connection" => getenv("DB_CONNECTION") ?: "mysql", "table" => "jobs", "queue" => getenv("QUEUE_QUEUE") ?: "default"],' \
-        '        "redis" => ["driver" => "redis", "connection" => "default", "queue" => "default", "retry_after" => 90, "block_for" => null],' \
-        '    ],' \
-        '    "failed" => ["table" => "failed_jobs"],' \
-        '];' > config/queue.php; fi; \
-    if [ ! -f config/logging.php ]; then printf '%s\n' '<?php return [' \
-        '    "default" => getenv("LOG_CHANNEL") ?: "stack",' \
-        '    "channels" => [' \
-        '        "stack" => ["driver" => "stack", "channels" => ["single"]],' \
-        '        "single" => ["driver" => "single", "path" => storage_path("logs/laravel.log"), "level" => "debug"],' \
-        '    ],' \
-        '];' > config/logging.php; fi
+    test -f config/app.php || { echo '!!! config/app.php отсутствует в образе — сломана стадия app'; exit 1; }
 
 # Финальная самопроверка образа: если чего-то нет — сборка падает ЗДЕСЬ,
 # а не через 5 минут на странной рантайм-ошибке.

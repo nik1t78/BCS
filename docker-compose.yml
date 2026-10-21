@@ -63,6 +63,13 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      # именованный контекст `repo` = корень репозитория: из него стадия
+      # skeleton-stage забирает каркас docker/skeleton/laravel12/config/
+      # (из основного контекста ./backend выйти вверх нельзя). Требует
+      # compose >= 2.20 / buildkit >= 1.4; при сборке `docker build` без
+      # compose стадия остаётся пустой и конфиги генерируются из ENV.
+      additional_contexts:
+        repo: .
       # multi-stage в backend/Dockerfile: собираем только стадию base,
       # composer-бинарник берётся из стадии composer-stage через COPY --from.
       target: runtime
@@ -257,6 +264,13 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      # именованный контекст `repo` = корень репозитория: из него стадия
+      # skeleton-stage забирает каркас docker/skeleton/laravel12/config/
+      # (из основного контекста ./backend выйти вверх нельзя). Требует
+      # compose >= 2.20 / buildkit >= 1.4; при сборке `docker build` без
+      # compose стадия остаётся пустой и конфиги генерируются из ENV.
+      additional_contexts:
+        repo: .
       target: runtime
     container_name: vks-backend-assets
     restart: "no"
@@ -332,6 +346,13 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      # именованный контекст `repo` = корень репозитория: из него стадия
+      # skeleton-stage забирает каркас docker/skeleton/laravel12/config/
+      # (из основного контекста ./backend выйти вверх нельзя). Требует
+      # compose >= 2.20 / buildkit >= 1.4; при сборке `docker build` без
+      # compose стадия остаётся пустой и конфиги генерируются из ENV.
+      additional_contexts:
+        repo: .
       # multi-stage в backend/Dockerfile: собираем только стадию base,
       # composer-бинарник берётся из стадии composer-stage через COPY --from.
       target: runtime
@@ -377,6 +398,13 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      # именованный контекст `repo` = корень репозитория: из него стадия
+      # skeleton-stage забирает каркас docker/skeleton/laravel12/config/
+      # (из основного контекста ./backend выйти вверх нельзя). Требует
+      # compose >= 2.20 / buildkit >= 1.4; при сборке `docker build` без
+      # compose стадия остаётся пустой и конфиги генерируются из ENV.
+      additional_contexts:
+        repo: .
       # multi-stage в backend/Dockerfile: собираем только стадию base,
       # composer-бинарник берётся из стадии composer-stage через COPY --from.
       target: runtime
