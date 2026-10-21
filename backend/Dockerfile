@@ -114,11 +114,11 @@ RUN set -eux; \
     # не печатается в php -m; попытка пересобрать его (в т.ч. из tarball) цепляет
     # чужой libiconv.h и падает "_libiconv_version undeclared". intl тоже убран:
     # без нормального ICU-dev на alpine не собирается, Laravel прикрывает polyfill.
-    EXTLIST="bcmath ctype curl dom exif fileinfo ftp gd mbstring opcache pcntl pdo_mysql session simplexml tokenizer xml zip"; \
+    EXTLIST="bcmath ctype curl dom exif fileinfo ftp gd mbstring opcache openssl pcntl pdo_mysql session simplexml tokenizer xml zip"; \
     MEASURE() { M=""; for e in $EXTLIST; do m="$e"; [ "$e" = pdo_mysql ] && m="PDO"; php -m | grep -qx "$m" || M="$M $e"; done; }; \
     MEASURE; \
     if [ -n "$M" ]; then echo "НЕ ХВАТАЕТ (старт):$M — включаю трёхступенчатый каскад: apk -> /usr/src/php -> tarball php.net"; fi; \
-    APKPKGS=""; for e in $M; do P="$(ls /etc/apk/available/ 2>/dev/null | grep -E "^php[0-9]+-$e$" | head -1)"; if [ -n "$P" ]; then APKPKGS="$APKPKGS $P"; else echo "APK: пакета для '$e' нет в этом релизе alpine"; fi; done; \
+    APKPKGS=""; for e in $M; do P="$(ls /etc/apk/available/ 2>/dev/null | grep -E "^php[0-9]+-$e$" | head -1)"; [ "$P" = "" ] && [ "$e" = intl ] && P="$(ls /etc/apk/available/ 2>/dev/null | grep -E "^php[0-9]+-intl$" | head -1)"; if [ -n "$P" ]; then APKPKGS="$APKPKGS $P"; else echo "APK: пакета для '$e' нет в этом релизе alpine"; fi; done; \
     if [ -n "$APKPKGS" ]; then apk add --no-cache $APKPKGS >/dev/null 2>&1 || true; echo "APK: поставил:$APKPKGS"; fi; \
     MEASURE; \
     BUILDABLE=""; for e in $M; do if [ -f "/usr/src/php/ext/$e/config.m4" ]; then BUILDABLE="$BUILDABLE $e"; fi; done; \
