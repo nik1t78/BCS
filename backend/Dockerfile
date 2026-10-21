@@ -56,6 +56,12 @@ FROM php:8.4-fpm-alpine AS base
 # и кода приложения. Ставятся явно, а в конце слоя каждое проверяется через
 # `php -m`: если чего-то нет — сборка падает СРАЗУ с именем расширения, а не
 # позже на странных рантайм-ошибках ("Class 'IntlDateFormatter' not found").
+# ВАЖНО: в списке расширений НЕТ standalone "libxml" и "xmlreader/xmlwriter" —
+# это не отдельные модули: libxml встроен в ext-dom/ext-simplexml/ext-xml, а
+# xmlreader/xmlwriter собираются вместе с ext-xml. Попытка поставить их
+# отдельными аргументами обрывает сборку ("cannot find /usr/local/include/libxml"
+# либо "The following extension require the following extensions: xml").
+# То же касается проверочного цикла ниже (php -m никогда не печатает "libxml").
 RUN set -eux; \
     apk add --no-cache git curl icu-dev libpng-dev libjpeg-turbo-dev \
         freetype-dev libxml2-dev libzip-dev zip unzip mariadb-client; \
@@ -63,7 +69,7 @@ RUN set -eux; \
     apk add --no-cache --virtual .build-deps "${PHPIZE_DEPS}"; \
     docker-php-ext-configure gd --with-freetype --with-jpeg; \
     docker-php-ext-install -j"$(nproc)" \
-        bcmath ctype curl dom exif fileinfo ftp gd iconv intl libxml \
+        bcmath ctype curl dom exif fileinfo ftp gd iconv intl \
         mbstring opcache openssl pcntl pdo_mysql session simplexml tokenizer \
         xml xmlreader xmlwriter zip
 
@@ -91,7 +97,7 @@ RUN set -eux; \
 # именем расширения, а не через 5 минут на рантайм-ошибке вида
 # "Class 'IntlDateFormatter' not found" или "Call to undefined function curl_init()".
 RUN set -eux; \
-    for ext in bcmath ctype curl dom exif fileinfo ftp gd iconv intl libxml \
+    for ext in bcmath ctype curl dom exif fileinfo ftp gd iconv intl \
                json mbstring openssl pcntl pdo_mysql phar redis session \
                simplexml tokenizer xml xmlreader xmlwriter zip; do \
         php -m | grep -qix "$ext" \
@@ -99,6 +105,11 @@ RUN set -eux; \
     done; \
     php -v | head -1; \
     echo ">>> Все необходимые расширения PHP на месте."
+
+# Composer и его обязательные расширения (json, mbstring, openssl) должны быть
+# ДО стадии vendor-build — иначе `composer install` падает с "Requires extension
+# ... not installed". Стадия ниже наследует base (со ВСЕМИ расширениями), так что
+# порядок слоёв здесь критичен: не переносите vendor-build выше этих RUN.
 
 # Стадия 3: сборка production-зависимостей в чистом окружении.
 # Вынесено в отдельную стадию по двум причинам:
