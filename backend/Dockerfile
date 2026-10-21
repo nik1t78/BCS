@@ -110,8 +110,8 @@ RUN set -eux; \
     command -v pkg-config >/dev/null || apk add --no-cache pkgconfig; \
     if apk info -e libiconv-dev >/dev/null 2>&1; then echo "ERROR: установлен libiconv-dev — он заглушает musl /usr/include/iconv.h и ломает сборку PHP ext-iconv/intl. Уберите его из списка пакетов."; exit 1; fi; \
     pkg-config --exists libcurl || { echo "ERROR: pkg-config не видит libcurl (.pc отсутствует)"; exit 1; }; \
-    EXTLIST="bcmath ctype curl dom exif fileinfo ftp gd iconv intl mbstring opcache pcntl pdo_mysql session simplexml tokenizer xml zip"; \
-    MEASURE() { M=""; for e in $EXTLIST; do php -m | grep -qix "$e" || M="$M $e"; done; }; \
+    EXTLIST="bcmath ctype curl dom exif fileinfo ftp gd intl mbstring opcache pcntl pdo_mysql session simplexml tokenizer xml zip"; \
+    MEASURE() { M=""; for e in $EXTLIST; do m="$e"; [ "$e" = pdo_mysql ] && m="PDO"; php -m | grep -qx "$m" || M="$M $e"; done; }; \
     MEASURE; \
     if [ -n "$M" ]; then echo "НЕ ХВАТАЕТ (старт):$M — включаю трёхступенчатый каскад: apk -> /usr/src/php -> tarball php.net"; fi; \
     APKPKGS=""; for e in $M; do P="$(ls /etc/apk/available/ 2>/dev/null | grep -E "^php[0-9]+-$e$" | head -1)"; if [ -n "$P" ]; then APKPKGS="$APKPKGS $P"; else echo "APK: пакета для '$e' нет в этом релизе alpine"; fi; done; \
@@ -120,10 +120,10 @@ RUN set -eux; \
     BUILDABLE=""; for e in $M; do if [ -f "/usr/src/php/ext/$e/config.m4" ]; then BUILDABLE="$BUILDABLE $e"; fi; done; \
     if [ -n "$BUILDABLE" ]; then echo "СБОРКА из /usr/src/php:$BUILDABLE"; if php -m | grep -qix gd; then echo "gd уже есть — configure gd пропускаю"; else docker-php-ext-configure gd --with-freetype --with-jpeg || { echo "WARNING: configure gd не удался — исключаю gd из сборки, остальное ставлю без него"; BUILDABLE=$(echo $BUILDABLE | tr ' ' '\n' | grep -v '^gd$' | tr '\n' ' '); }; fi; docker-php-ext-install -j"$(nproc)" $BUILDABLE; fi; \
     MEASURE; \
-    if [ -n "$M" ]; then VER="$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION.".".PHP_RELEASE_VERSION;')"; echo "TARBALL: всё ещё нет:$M — скачиваю полный исходник php-${VER} (5 минут, это нормально)"; mkdir -p /tmp/phpsrc; OK=0; for url in "https://www.php.net/distributions/php-${VER}.tar.xz" "https://github.com/php/php-src/archive/refs/tags/php-${VER}.tar.gz"; do f="/tmp/$(basename $url)"; if timeout 60 curl -fsSL --connect-timeout 10 --retry 1 -o "$f" "$url"; then tar xf "$f" -C /tmp/phpsrc && OK=1 && break; fi; echo "WARNING: зеркало $url недоступно/битый архив — пробую следующее"; done; [ "$OK" = 1 ] || { echo "ERROR: не скачался полный исходник PHP ${VER} ни с одного зеркала — недостающие:$M"; exit 1; }; SRCDIR="$(find /tmp/phpsrc -maxdepth 1 -type d -name 'php-*' | head -1)"; test -d "$SRCDIR" || { echo "ERROR: tarball PHP распаковался без каталога php-*"; exit 1; }; for e in $M; do if [ -f "$SRCDIR/ext/$e/config.m4" ]; then echo "ДОСБОРКА '$e' из php-${VER}"; rm -rf "/usr/src/php/ext/$e"; cp -a "$SRCDIR/ext/$e" "/usr/src/php/ext/$e"; if [ "$e" = gd ] && ! php -m | grep -qix gd; then docker-php-ext-configure gd --with-freetype --with-jpeg || { echo "WARNING: configure gd не удался — пропускаю gd"; continue; }; fi; docker-php-ext-install -j"$(nproc)" "$e" || echo "WARNING: сборка '$e' из tarball не удалась — продолжаю с остальными"; fi; done; apk add --no-cache libiconv icu-libs libzstd >/dev/null 2>&1 || true; rm -rf /tmp/phpsrc /tmp/php.tar.*; fi; \
+    if [ -n "$M" ]; then VER="$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION.".".PHP_RELEASE_VERSION;')"; echo "TARBALL: всё ещё нет:$M — скачиваю полный исходник php-${VER} (5 минут, это нормально)"; mkdir -p /tmp/phpsrc; OK=0; for url in "https://www.php.net/distributions/php-${VER}.tar.xz" "https://github.com/php/php-src/archive/refs/tags/php-${VER}.tar.gz"; do f="/tmp/$(basename $url)"; if timeout 60 curl -fsSL --connect-timeout 10 --retry 1 -o "$f" "$url"; then tar xf "$f" -C /tmp/phpsrc && OK=1 && break; fi; echo "WARNING: зеркало $url недоступно/битый архив — пробую следующее"; done; [ "$OK" = 1 ] || { echo "ERROR: не скачался полный исходник PHP ${VER} ни с одного зеркала — недостающие:$M"; exit 1; }; SRCDIR="$(find /tmp/phpsrc -maxdepth 1 -type d -name 'php-*' | head -1)"; test -d "$SRCDIR" || { echo "ERROR: tarball PHP распаковался без каталога php-*"; exit 1; }; for e in $M; do if [ -f "$SRCDIR/ext/$e/config.m4" ]; then echo "ДОСБОРКА '$e' из php-${VER}"; rm -rf "/usr/src/php/ext/$e"; cp -a "$SRCDIR/ext/$e" "/usr/src/php/ext/$e"; if [ "$e" = gd ] && ! php -m | grep -qix gd; then docker-php-ext-configure gd --with-freetype --with-jpeg || { echo "WARNING: configure gd не удался — пропускаю gd"; continue; }; fi; if [ "$e" = iconv ] || [ "$e" = intl ]; then echo "ПРОПУСК '$e': на musl-alpine iconv встроен в ядро PHP (php -m его не печатает), а intl без нормального ICU-dev не собирается — Laravel прикрывает symfony/polyfill"; else docker-php-ext-install -j"$(nproc)" "$e" || { echo "ERROR: сборка '$e' из tarball php-${VER} не удалась — см. лог компиляции выше"; exit 1; }; fi; fi; done; apk add --no-cache libiconv icu-libs libzstd >/dev/null 2>&1 || true; rm -rf /tmp/phpsrc /tmp/php.tar.*; fi; \
     MEASURE; \
     if [ -n "$M" ]; then echo "WARNING: после всех трёх шагов (apk / src / tarball) в php -m нет:$M"; fi; \
-    for e in bcmath ctype curl dom fileinfo json mbstring openssl pcre PDO session tokenizer xml; do php -m | grep -qix "$e" || { echo "ERROR: критичное для Laravel/composer расширение '$e' отсутствует после всех попыток установки — проверьте лог выше (APK/SБОРКА/TARBALL)"; exit 1; }; done
+    for e in bcmath ctype curl dom fileinfo json mbstring openssl pcre PDO session tokenizer xml; do php -m | grep -qx "$e" || { echo "ERROR: критичное для Laravel/composer расширение '$e' отсутствует после всех попыток установки — проверьте лог выше (APK/SБОРКА/TARBALL)"; exit 1; }; done
 
 # Redis обязателен: CACHE_STORE/QUEUE_CONNECTION=redis в .env, predis в
 # composer.json нет — без расширения падают throttle, SSE и планировщик.
@@ -132,7 +132,7 @@ RUN set -eux; \
 # GitHub (codeload) -> gitee-зеркало. Первая успешная загрузка прерывает цикл.
 # Никакого COPY *.tgz из контекста сборки (см. боль 1 в шапке).
 RUN set -eux; \
-    { pecl channel-update pecl.php.net && pecl install redis && docker-php-ext-enable redis; } || true; \
+    { pecl channel-update pecl.php.net && pecl install redis && docker-php-ext-enable redis; } || true; for e in iconv intl; do if ! php -m | grep -qx "$e"; then rm -f "/usr/local/etc/php/conf.d/docker-php-ext-$e.ini"; fi; done; \
     if ! php -m | grep -qix redis; then RPKG="$(ls /etc/apk/available/ 2>/dev/null | grep -E "^php[0-9]+-redis$" | head -1)"; if [ -n "$RPKG" ]; then echo "APK: ставлю redis из пакета $RPKG (быстрее и без компиляции)"; apk add --no-cache "$RPKG" >/dev/null 2>&1 || true; fi; fi; \
     if ! php -m | grep -qix redis; then \
         apk add --no-cache autoconf linux-headers >/dev/null 2>&1 || true; \
@@ -162,8 +162,8 @@ RUN set -eux; \
 # (например tokenizer без Zend/zend_language_parser.y), пересобрать их docker-php-ext-install
 # не может, а без них проект работает (Laravel использует own-реализации/фолбэки).
 RUN set -eux; \
-    for ext in bcmath ctype curl dom fileinfo gd mbstring openssl pdo_mysql redis session tokenizer xml; do php -m | grep -qix "$ext" || { echo "!!! КРИТИЧНОЕ PHP-расширение '$ext' НЕ установлено"; exit 1; }; done; \
-    for ext in exif ftp iconv intl json pcntl phar simplexml xmlreader xmlwriter zip; do php -m | grep -qix "$ext" || echo "WARNING: необязательное расширение '$ext' отсутствует (Laravel прикроет symfony/polyfill) — продолжаем"; done; \
+    for ext in bcmath ctype curl dom fileinfo gd mbstring openssl PDO redis session tokenizer xml; do php -m | grep -qx "$ext" || { echo "!!! КРИТИЧНОЕ PHP-расширение '$ext' НЕ установлено"; exit 1; }; done; \
+    for ext in exif ftp iconv intl json pcntl phar simplexml xmlreader xmlwriter zip; do php -m | grep -qx "$ext" || echo "WARNING: необязательное расширение '$ext' отсутствует (Laravel прикроет symfony/polyfill) — продолжаем"; done; \
     php -v | head -1; \
     echo ">>> Все критичные расширения PHP на месте."
 
