@@ -94,26 +94,19 @@ FROM php:8.4-fpm-alpine AS base
 # Поэтому проверка после установки пакетов: если кто-то тянет libiconv — выходим
 # с понятной ошибкой вместо дебри компиляции.
 RUN set -eux; \
-    apk add --no-cache git curl curl-dev icu-dev libpng-dev libjpeg-turbo-dev \
-        freetype-dev libxml2-dev libzip-dev zip unzip mariadb-client 2>/dev/null \
-    || apk add --no-cache git curl libcurl-dev icu-dev libpng-dev libjpeg-turbo-dev \
-        freetype-dev libxml2-dev libzip-dev zip unzip mariadb-client; \
+    # ВАЖНО: внутри RUN docker склеивает строки в одну команду, поэтому
+    # перенос "|| ..." на новую строку ломает синтаксис sh — пишем одной строкой.
+    apk add --no-cache git curl curl-dev icu-dev libpng-dev libjpeg-turbo-dev freetype-dev libxml2-dev libzip-dev zip unzip mariadb-client 2>/dev/null || apk add --no-cache git curl libcurl-dev icu-dev libpng-dev libjpeg-turbo-dev freetype-dev libxml2-dev libzip-dev zip unzip mariadb-client; \
     apk add --no-cache oniguruma-dev || apk add --no-cache oniguruma || true; \
     BUILD_DEPS="${PHPIZE_DEPS:-autoconf dpkg-dev dpkg file g++ gcc libc-dev make pkgconf re2c}"; \
     apk add --no-cache --virtual .build-deps ${BUILD_DEPS}; \
     command -v pkg-config >/dev/null || apk add --no-cache pkgconfig; \
-    # страховка: libiconv в образе = почти гарантированный провал ext-iconv
-    if apk info -e libiconv >/dev/null 2>&1; then \
-        echo "ERROR: в образе появился libiconv (заглушает musl iconv.h) — проверьте список apk-пакетов"; exit 1; \
-    fi; \
+    # ВАЖНО: docker склеивает continuation-строки, но строку, начинающуюся с '#',
+    # вырезает из shell-команды целиком — поэтому переносов "|| ..." и "... ; \"
+    # перед комментарием быть не должно. Все if/for ниже — одной физической строкой.
+    if apk info -e libiconv >/dev/null 2>&1; then echo "ERROR: в образе появился libiconv (заглушает musl iconv.h) — проверьте список apk-пакетов"; exit 1; fi; \
     pkg-config --exists libcurl || { echo "ERROR: pkg-config не видит libcurl (.pc отсутствует)"; exit 1; }; \
-    # НЕ передаём iconv/intl в docker-php-ext-install: на Alpine PHP уже собран
-    # с этими расширениями (модули лежат в /usr/local/lib/php/extensions/*/),
-    # а пересборка «из /usr/src/php/ext» их затирает и ломает ABI. Проверяем,
-    # что они на месте, и при отсутствии ставим через docker-php-ext-enable.
-    for e in iconv intl; do \
-        php -m | grep -qix "$e" || docker-php-ext-enable "$e"; \
-    done; \
+    for e in iconv intl; do php -m | grep -qix "$e" || docker-php-ext-enable "$e"; done; \
     docker-php-ext-configure gd --with-freetype --with-jpeg; \
     docker-php-ext-install -j"$(nproc)" \
         bcmath ctype curl dom exif fileinfo ftp gd \
@@ -144,12 +137,7 @@ RUN set -eux; \
 # именем расширения, а не через 5 минут на рантайм-ошибке вида
 # "Class 'IntlDateFormatter' not found" или "Call to undefined function curl_init()".
 RUN set -eux; \
-    for ext in bcmath ctype curl dom exif fileinfo ftp gd iconv intl \
-               json mbstring openssl pcntl pdo_mysql phar redis session \
-               simplexml tokenizer xml xmlreader xmlwriter zip; do \
-        php -m | grep -qix "$ext" \
-            || { echo "!!! PHP-расширение '$ext' НЕ установлено"; exit 1; }; \
-    done; \
+    for ext in bcmath ctype curl dom exif fileinfo ftp gd iconv intl json mbstring openssl pcntl pdo_mysql phar redis session simplexml tokenizer xml xmlreader xmlwriter zip; do php -m | grep -qix "$ext" || { echo "!!! PHP-расширение '$ext' НЕ установлено"; exit 1; }; done; \
     php -v | head -1; \
     echo ">>> Все необходимые расширения PHP на месте."
 
@@ -205,8 +193,7 @@ RUN set -eux; \
 COPY --from=vendor-build --chown=www-data:www-data /opt/build/vendor /var/www/html/vendor
 RUN set -eux; \
     test -f /var/www/html/vendor/autoload.php; \
-    php -r 'require "/var/www/html/vendor/autoload.php"; exit(class_exists("Illuminate\\Foundation\\Application") ? 0 : 1);' \
-        || { echo "!!! autoload не загружает Laravel — слой vendor повреждён"; exit 1; }; \
+    php -r 'require "/var/www/html/vendor/autoload.php"; exit(class_exists("Illuminate\\Foundation\\Application") ? 0 : 1);' || { echo "!!! autoload не загружает Laravel — слой vendor повреждён"; exit 1; }; \
     echo ">>> autoload OK: Illuminate\\Foundation\\Application загружается."
 
 # Код приложения (контекст сборки = ./backend, см. backend/.dockerignore).
