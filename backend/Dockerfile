@@ -331,6 +331,7 @@ RUN set -eux; \
         '    ],' \
         '];' > config/logging.php; fi; \
     test -f config/app.php || { echo '!!! config/app.php так и не появился'; exit 1; }; \
+    for F in config/*.php; do php -l "$F" >/dev/null || { echo "!!! синтаксис $F"; php -l "$F"; exit 1; }; done; \
     ls config/
 
 # Список автопровайдеров генерируем после COPY . . отдельным шагом.
