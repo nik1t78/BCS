@@ -54,3 +54,6 @@ __pycache__/
 
 # phpredis-архив больше не нужен в git: Dockerfile скачивает redis с pecl.php.net
 backend/phpredis-6.3.0.tar.gz
+
+# Данные MySQL (bind-mount из docker-compose) — никогда не коммитить
+mysql/
