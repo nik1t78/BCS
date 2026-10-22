@@ -2,6 +2,7 @@
     "name": "vks/schedule-backend",
     "type": "project",
     "description": "ВКС Расписание - Backend API",
+    "license": "proprietary",
     "require": {
         "php": "^8.4",
         "laravel/framework": "^12.0",
