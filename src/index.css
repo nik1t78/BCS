@@ -10,8 +10,8 @@
    доступны во всех компонентах без правок существующих sm:/md:/lg:/xl:.
    ========================================================================== */
 @theme {
-  --breakpoint-3k: 1920px;  /* FullHD и выше */
-  --breakpoint-4k: 2560px;  /* 2K/QuadHD */
+  --breakpoint-3k: 1920px; /* FullHD и выше */
+  --breakpoint-4k: 2560px; /* 2K/QuadHD */
   --breakpoint-uwd: 3440px; /* Ultrawide (21:9) */
 }
 

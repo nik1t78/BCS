@@ -19,7 +19,16 @@ import MeetingMinutes from "./MeetingMinutes";
 import { SortMode, SORT_OPTIONS, sortMeetings, getMeetingGroup } from "../utils/meetingSort";
 import { exportMeetingToIcs } from "../utils/ics";
 import { getFavoriteIds, toggleFavorite, addFavorites } from "../utils/favorites";
-import { generateVksLink, normalizeVksLink, isVksLink, buildJoinUrl, extractPswFromAny, sanitizeVksLink, vksRoomCodeFromLink, vksPasswordFromLink } from "../utils/vksLink";
+import {
+  generateVksLink,
+  normalizeVksLink,
+  isVksLink,
+  buildJoinUrl,
+  extractPswFromAny,
+  sanitizeVksLink,
+  vksRoomCodeFromLink,
+  vksPasswordFromLink,
+} from "../utils/vksLink";
 import { createVksViaBot } from "../utils/vksBot";
 import { isLateTime, LATE_CREATE_LIMIT_HM } from "../utils/freeSlots";
 
@@ -102,9 +111,9 @@ interface CreateMeetingFormProps {
 
 /** Данные приглашения участников из текущей ссылки ВКС.
  *  ВАЖНО: buildJoinUrl ждёт ПОЛНУЮ ссылку (https://salutejazz.ru/calls/<код>?psw=<пароль>). */
-export function computeInviteData(link?: string | null):
-  | { joinUrl: string; code: string; psw: string | null; inviteText: string }
-  | null {
+export function computeInviteData(
+  link?: string | null
+): { joinUrl: string; code: string; psw: string | null; inviteText: string } | null {
   if (!link || !isVksLink(link)) return null;
   const clean = sanitizeVksLink(link);
   const code = vksRoomCodeFromLink(clean);
@@ -124,7 +133,10 @@ export function computeInviteData(link?: string | null):
  *  (раздел «Мои конференции» и модалка на главной). Раньше каждая форма
  *  имела свою копию рендера, из-за чего после рефакторинга осталась ссылка
  *  на несуществующую renderVksInviteBlock → крах страницы при создании. */
-export function VksInviteBlock({ link, copyToClipboard }: {
+export function VksInviteBlock({
+  link,
+  copyToClipboard,
+}: {
   link?: string | null;
   copyToClipboard?: (text: string, okLabel?: string) => Promise<void> | void;
 }) {
@@ -171,7 +183,20 @@ export function VksInviteBlock({ link, copyToClipboard }: {
 
 /** Форма создания/редактирования конференции — вынесена из UserPanel,
  *  чтобы открываться и в разделе «Мои конференции», и в модалке на главной. */
-function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, conflicts, editing, savingNote, copyToClipboard, vksHint, onCancel, handleSubmit }: CreateMeetingFormProps) {
+function CreateMeetingForm({
+  formData,
+  setFormData,
+  roomsCatalog,
+  users,
+  tags,
+  conflicts,
+  editing,
+  savingNote,
+  copyToClipboard,
+  vksHint,
+  onCancel,
+  handleSubmit,
+}: CreateMeetingFormProps) {
   const toggleParticipant = (userId: string) => {
     setFormData((f) => {
       const has = (f.participants ?? []).some((id) => String(id) === String(userId));
@@ -184,330 +209,328 @@ function CreateMeetingForm({ formData, setFormData, roomsCatalog, users, tags, c
     });
   };
   return (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {conflicts.length > 0 && (
-              <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 text-sm text-amber-800 dark:text-amber-200">
-                <p className="font-medium mb-1">
-                  <i className="fas fa-exclamation-triangle mr-1"></i>Конфликты расписания ({conflicts.length}):
-                </p>
-                <ul className="list-disc list-inside space-y-0.5">
-                  {conflicts.map((c: ScheduleConflict) => (
-                    <li key={String(c.meeting_id)}>
-                      «{c.title}» {c.start_time}–{c.end_time}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Название *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
-                  placeholder="Название конференции"
-                />
-              </div>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {conflicts.length > 0 && (
+        <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 text-sm text-amber-800 dark:text-amber-200">
+          <p className="font-medium mb-1">
+            <i className="fas fa-exclamation-triangle mr-1"></i>Конфликты расписания ({conflicts.length}):
+          </p>
+          <ul className="list-disc list-inside space-y-0.5">
+            {conflicts.map((c: ScheduleConflict) => (
+              <li key={String(c.meeting_id)}>
+                «{c.title}» {c.start_time}–{c.end_time}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="md:col-span-2">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Название *</label>
+          <input
+            type="text"
+            required
+            value={formData.title}
+            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+            className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+            placeholder="Название конференции"
+          />
+        </div>
 
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Описание</label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
-                  rows={2}
-                />
-              </div>
+        <div className="md:col-span-2">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Описание</label>
+          <textarea
+            value={formData.description}
+            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+            rows={2}
+          />
+        </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Дата *</label>
-                <input
-                  type="date"
-                  required
-                  min={localTodayKey()}
-                  value={formData.date}
-                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
-                />
-              </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Дата *</label>
+          <input
+            type="date"
+            required
+            min={localTodayKey()}
+            value={formData.date}
+            onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+            className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+          />
+        </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Комната</label>
-                <input
-                  type="text"
-                  list="rooms-catalog"
-                  value={formData.room}
-                  onChange={(e) => setFormData({ ...formData, room: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
-                  placeholder="Переговорная №1"
-                />
-                <datalist id="rooms-catalog">
-                  {roomsCatalog.map((r) => (
-                    <option
-                      key={r.name}
-                      value={r.name}
-                    >{`${r.capacity} мест${r.equipment.length ? " • " + r.equipment.join(", ") : ""}`}</option>
-                  ))}
-                </datalist>
-              </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Комната</label>
+          <input
+            type="text"
+            list="rooms-catalog"
+            value={formData.room}
+            onChange={(e) => setFormData({ ...formData, room: e.target.value })}
+            className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+            placeholder="Переговорная №1"
+          />
+          <datalist id="rooms-catalog">
+            {roomsCatalog.map((r) => (
+              <option
+                key={r.name}
+                value={r.name}
+              >{`${r.capacity} мест${r.equipment.length ? " • " + r.equipment.join(", ") : ""}`}</option>
+            ))}
+          </datalist>
+        </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Начало *</label>
-                <input
-                  type="time"
-                  required
-                  max={LATE_CREATE_LIMIT_HM}
-                  value={formData.startTime}
-                  onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
-                />
-              </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Начало *</label>
+          <input
+            type="time"
+            required
+            max={LATE_CREATE_LIMIT_HM}
+            value={formData.startTime}
+            onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+            className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+          />
+        </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Конец *</label>
-                <input
-                  type="time"
-                  required
-                  value={formData.endTime}
-                  onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
-                />
-              </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Конец *</label>
+          <input
+            type="time"
+            required
+            value={formData.endTime}
+            onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+            className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+          />
+        </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Ссылка ВКС
-                </label>
-                <div className="flex gap-2 flex-wrap">
-                  <input
-                    type="text"
-                    inputMode="url"
-                    value={formData.link}
-                    onChange={(e) => setFormData({ ...formData, link: e.target.value })}
-                    onPaste={(e) => {
-                      // разрешаем вставку любой ссылки (в т.ч. вручную созданной на salutejazz.ru)
-                      const t = e.clipboardData.getData("text");
-                      if (t) {
-                        e.preventDefault();
-                        setFormData({ ...formData, link: t.trim() });
-                      }
-                    }}
-                    className="flex-1 min-w-[180px] px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
-                    placeholder="https://salutejazz.ru/calls/... или вставьте свою ссылку"
-                  />
-                </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Ссылка ВКС создаётся автоматически при сохранении встречи (бот проходит
-                  salutejazz.ru/calls/create). При желании можно вставить свою ссылку — она
-                  сохранится как есть. Данные для приглашения участников показаны ниже.
-                </p>
-                {isVksLink(formData.link) && vksHint && (
-                  <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2">
-                    <i className="fas fa-check mr-1"></i>{vksHint}
-                  </p>
-                )}
-                {isVksLink(formData.link) && (
-                  <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
-                    <i className="fas fa-check-circle mr-1" aria-hidden="true"></i>
-                    Ссылка на корпоративную ВКС
-                  </p>
-                )}
-                <VksInviteBlock link={formData.link} copyToClipboard={copyToClipboard} />
-              </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ссылка ВКС</label>
+          <div className="flex gap-2 flex-wrap">
+            <input
+              type="text"
+              inputMode="url"
+              value={formData.link}
+              onChange={(e) => setFormData({ ...formData, link: e.target.value })}
+              onPaste={(e) => {
+                // разрешаем вставку любой ссылки (в т.ч. вручную созданной на salutejazz.ru)
+                const t = e.clipboardData.getData("text");
+                if (t) {
+                  e.preventDefault();
+                  setFormData({ ...formData, link: t.trim() });
+                }
+              }}
+              className="flex-1 min-w-[180px] px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+              placeholder="https://salutejazz.ru/calls/... или вставьте свою ссылку"
+            />
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Ссылка ВКС создаётся автоматически при сохранении встречи (бот проходит salutejazz.ru/calls/create). При
+            желании можно вставить свою ссылку — она сохранится как есть. Данные для приглашения участников показаны
+            ниже.
+          </p>
+          {isVksLink(formData.link) && vksHint && (
+            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2">
+              <i className="fas fa-check mr-1"></i>
+              {vksHint}
+            </p>
+          )}
+          {isVksLink(formData.link) && (
+            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
+              <i className="fas fa-check-circle mr-1" aria-hidden="true"></i>
+              Ссылка на корпоративную ВКС
+            </p>
+          )}
+          <VksInviteBlock link={formData.link} copyToClipboard={copyToClipboard} />
+        </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Приоритет</label>
-                <select
-                  value={formData.priority}
-                  onChange={(e) => setFormData({ ...formData, priority: e.target.value as Meeting["priority"] })}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Приоритет</label>
+          <select
+            value={formData.priority}
+            onChange={(e) => setFormData({ ...formData, priority: e.target.value as Meeting["priority"] })}
+            className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+          >
+            <option value="low">Низкий</option>
+            <option value="medium">Средний</option>
+            <option value="high">Высокий</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Повтор</label>
+          <select
+            value={formData.recurring}
+            onChange={(e) => setFormData({ ...formData, recurring: e.target.value as Meeting["recurring"] })}
+            className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+          >
+            <option value="none">Без повтора</option>
+            <option value="daily">Ежедневно</option>
+            <option value="weekly">Еженедельно</option>
+            <option value="monthly">Ежемесячно</option>
+            <option value="custom">По правилу (RRULE)…</option>
+          </select>
+        </div>
+        {formData.recurring === "custom" && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Правило RRULE</label>
+            <input
+              type="text"
+              value={formData.rrule ?? ""}
+              placeholder="FREQ=MONTHLY;BYDAY=FR;BYSETPOS=-1"
+              onChange={(e) => setFormData({ ...formData, rrule: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500 font-mono text-xs"
+            />
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {[
+                ["FREQ=WEEKLY;INTERVAL=2;BYDAY=MO", "кажд. 2 нед. пн"],
+                ["FREQ=MONTHLY;BYDAY=FR;BYSETPOS=-1", "послед. пятница мес."],
+                ["FREQ=MONTHLY;BYDAY=MO;BYSETPOS=1", "перв. понедельник мес."],
+                ["FREQ=DAILY;INTERVAL=3", "каждые 3 дня"],
+              ].map(([val, label]) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, rrule: val })}
+                  className={`px-2 py-0.5 rounded text-[11px] border ${formData.rrule === val ? "bg-blue-600 text-white border-blue-600" : "border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"}`}
+                  title={val}
                 >
-                  <option value="low">Низкий</option>
-                  <option value="medium">Средний</option>
-                  <option value="high">Высокий</option>
-                </select>
-              </div>
+                  {label}
+                </button>
+              ))}
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Повтор</label>
-                <select
-                  value={formData.recurring}
-                  onChange={(e) => setFormData({ ...formData, recurring: e.target.value as Meeting["recurring"] })}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
-                >
-                  <option value="none">Без повтора</option>
-                  <option value="daily">Ежедневно</option>
-                  <option value="weekly">Еженедельно</option>
-                  <option value="monthly">Ежемесячно</option>
-                  <option value="custom">По правилу (RRULE)…</option>
-                </select>
-              </div>
-              {formData.recurring === "custom" && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Правило RRULE
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.rrule ?? ""}
-                    placeholder="FREQ=MONTHLY;BYDAY=FR;BYSETPOS=-1"
-                    onChange={(e) => setFormData({ ...formData, rrule: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500 font-mono text-xs"
-                  />
-                  <div className="flex flex-wrap gap-1 mt-1.5">
-                    {[
-                      ["FREQ=WEEKLY;INTERVAL=2;BYDAY=MO", "кажд. 2 нед. пн"],
-                      ["FREQ=MONTHLY;BYDAY=FR;BYSETPOS=-1", "послед. пятница мес."],
-                      ["FREQ=MONTHLY;BYDAY=MO;BYSETPOS=1", "перв. понедельник мес."],
-                      ["FREQ=DAILY;INTERVAL=3", "каждые 3 дня"],
-                    ].map(([val, label]) => (
-                      <button
-                        key={val}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, rrule: val })}
-                        className={`px-2 py-0.5 rounded text-[11px] border ${formData.rrule === val ? "bg-blue-600 text-white border-blue-600" : "border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"}`}
-                        title={val}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  {formData.rrule && (
-                    <p className="text-[11px] text-gray-400 mt-1">
-                      <i className="fas fa-sync-alt mr-1"></i>
-                      {describeRRule(formData.rrule)}
-                    </p>
-                  )}
-                </div>
-              )}
-              {formData.recurring !== "none" && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Повторять до (опционально)
-                  </label>
-                  <input
-                    type="date"
-                    value={formData.repeatUntil ?? ""}
-                    min={formData.date}
-                    onChange={(e) => setFormData({ ...formData, repeatUntil: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Participants */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Участники ({formData.participants.length} выбрано)
-              </label>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                <i className="fas fa-info-circle mr-1"></i>
-                Выберите зарегистрированных пользователей из списка ниже
+            {formData.rrule && (
+              <p className="text-[11px] text-gray-400 mt-1">
+                <i className="fas fa-sync-alt mr-1"></i>
+                {describeRRule(formData.rrule)}
               </p>
+            )}
+          </div>
+        )}
+        {formData.recurring !== "none" && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Повторять до (опционально)
+            </label>
+            <input
+              type="date"
+              value={formData.repeatUntil ?? ""}
+              min={formData.date}
+              onChange={(e) => setFormData({ ...formData, repeatUntil: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
+            />
+          </div>
+        )}
+      </div>
 
-              {users.length === 0 ? (
-                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-                  <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                    <i className="fas fa-exclamation-triangle mr-2"></i>В системе нет зарегистрированных
-                    пользователей.
-                  </p>
-                </div>
-              ) : (
-                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 max-h-64 overflow-y-auto">
-                  <div className="space-y-2">
-                    {users
-                      .filter((u) => u.isActive)
-                      .map((u) => (
-                        <button
-                          key={u.id}
-                          type="button"
-                          onClick={() => toggleParticipant(u.id)}
-                          className={`w-full text-left px-3 py-2 rounded-lg border transition-colors flex items-center gap-3 ${
-                            (formData.participants ?? []).some((id) => String(id) === String(u.id))
-                              ? "bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700"
-                              : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600"
+      {/* Participants */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          Участники ({formData.participants.length} выбрано)
+        </label>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+          <i className="fas fa-info-circle mr-1"></i>
+          Выберите зарегистрированных пользователей из списка ниже
+        </p>
+
+        {users.length === 0 ? (
+          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+            <p className="text-sm text-yellow-800 dark:text-yellow-200">
+              <i className="fas fa-exclamation-triangle mr-2"></i>В системе нет зарегистрированных пользователей.
+            </p>
+          </div>
+        ) : (
+          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 max-h-64 overflow-y-auto">
+            <div className="space-y-2">
+              {users
+                .filter((u) => u.isActive)
+                .map((u) => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => toggleParticipant(u.id)}
+                    className={`w-full text-left px-3 py-2 rounded-lg border transition-colors flex items-center gap-3 ${
+                      (formData.participants ?? []).some((id) => String(id) === String(u.id))
+                        ? "bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700"
+                        : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600"
+                    }`}
+                  >
+                    <div
+                      className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
+                        (formData.participants ?? []).some((id) => String(id) === String(u.id))
+                          ? "bg-blue-600 border-blue-600"
+                          : "bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-500"
+                      }`}
+                    >
+                      {(formData.participants ?? []).some((id) => String(id) === String(u.id)) && (
+                        <i className="fas fa-check text-white text-xs"></i>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-800 dark:text-gray-100 text-sm">{u.name}</span>
+                        <span
+                          className={`px-2 py-0.5 rounded text-xs ${
+                            u.role === "admin"
+                              ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
+                              : u.role === "moderator"
+                                ? "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400"
+                                : "bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-300"
                           }`}
                         >
-                          <div
-                            className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
-                              (formData.participants ?? []).some((id) => String(id) === String(u.id))
-                                ? "bg-blue-600 border-blue-600"
-                                : "bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-500"
-                            }`}
-                          >
-                            {(formData.participants ?? []).some((id) => String(id) === String(u.id)) && (
-                              <i className="fas fa-check text-white text-xs"></i>
-                            )}
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium text-gray-800 dark:text-gray-100 text-sm">{u.name}</span>
-                              <span
-                                className={`px-2 py-0.5 rounded text-xs ${
-                                  u.role === "admin"
-                                    ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
-                                    : u.role === "moderator"
-                                      ? "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400"
-                                      : "bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-300"
-                                }`}
-                              >
-                                {u.role === "admin"
-                                  ? "Админ"
-                                  : u.role === "moderator"
-                                    ? "Модератор"
-                                    : "Пользователь"}
-                              </span>
-                            </div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                              @{u.login}
-                              {u.department && <span className="ml-2">• {u.department}</span>}
-                            </div>
-                          </div>
-                        </button>
-                      ))}
-                  </div>
-                </div>
-              )}
+                          {u.role === "admin" ? "Админ" : u.role === "moderator" ? "Модератор" : "Пользователь"}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        @{u.login}
+                        {u.department && <span className="ml-2">• {u.department}</span>}
+                      </div>
+                    </div>
+                  </button>
+                ))}
             </div>
+          </div>
+        )}
+      </div>
 
-            <div className="flex justify-end gap-3 pt-4 border-t dark:border-gray-700">
-              <button
-                type="button"
-                onClick={onCancel}
-                className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-              >
-                Отмена
-              </button>
-              <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
-                {savingNote ? (
-                  <span className="flex items-center gap-2">
-                    <i className="fas fa-spinner fa-spin"></i>
-                    {savingNote}
-                  </span>
-                ) : editing ? (
-                  "Сохранить"
-                ) : (
-                  "Создать ВКС"
-                )}
-              </button>
-            </div>
-          </form>
+      <div className="flex justify-end gap-3 pt-4 border-t dark:border-gray-700">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+        >
+          Отмена
+        </button>
+        <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
+          {savingNote ? (
+            <span className="flex items-center gap-2">
+              <i className="fas fa-spinner fa-spin"></i>
+              {savingNote}
+            </span>
+          ) : editing ? (
+            "Сохранить"
+          ) : (
+            "Создать ВКС"
+          )}
+        </button>
+      </div>
+    </form>
   );
 }
 
-export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillConsumed, formOnly, onCreated, onClose }: UserPanelProps) {
+export default function UserPanel({
+  user,
+  onNavigate,
+  initialPrefill,
+  onPrefillConsumed,
+  formOnly,
+  onCreated,
+  onClose,
+}: UserPanelProps) {
   // короткая зелёная подсказка после копирования кода/пароля конференции
   const [vksHint, setVksHint] = useState<string | null>(null);
   const copyToClipboard = async (text: string, okLabel?: string) => {
-    if (await copyText(text) && okLabel) {
+    if ((await copyText(text)) && okLabel) {
       setVksHint(okLabel);
       setTimeout(() => setVksHint((h) => (h === okLabel ? null : h)), 2500);
     }
@@ -867,7 +890,10 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
         alert("Нельзя создать встречу в прошедшую дату. Выберите сегодня или будущий день.");
         return;
       }
-      if (formData.date === todayKey && formData.startTime < `${String(nowD.getHours()).padStart(2, "0")}:${String(nowD.getMinutes()).padStart(2, "0")}`) {
+      if (
+        formData.date === todayKey &&
+        formData.startTime < `${String(nowD.getHours()).padStart(2, "0")}:${String(nowD.getMinutes()).padStart(2, "0")}`
+      ) {
         alert("Это время уже прошло. Нельзя создать заявку на прошедшее время — выберите более поздний слот.");
         return;
       }
@@ -930,9 +956,12 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
           alert(
             "Внимание: Selenium-бот не смог создать встречу на salutejazz.ru" +
               (botRes.error ? ` (${botRes.error})` : "") +
-              "." + NL2 + NL2 +
+              "." +
+              NL2 +
+              NL2 +
               "Ссылка сгенерирована локально — такой комнаты на платформе ещё нет, вход может потребовать создания встречи организатором." +
-              NL2 + NL2 +
+              NL2 +
+              NL2 +
               "Администратору сервера: проверить контейнер vks-bot командой (в папке проекта на сервере):" +
               NL2 +
               "docker compose --profile bot up -d vks-bot"
@@ -953,9 +982,7 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
         const botRes = await createVksViaBot(payload.title || "Встреча", user.name);
         payload.link = botRes.link;
         if (!botRes.real && !botRes.skipped) {
-          alert(
-            "Бот недоступен — ссылка сгенерирована локально (комнаты на платформе ещё нет)."
-          );
+          alert("Бот недоступен — ссылка сгенерирована локально (комнаты на платформе ещё нет).");
         }
       } catch {
         payload.link = generateVksLink();
@@ -1053,11 +1080,7 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
             <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">
               {editingMeeting ? "Редактировать конференцию" : "Новая конференция"}
             </h2>
-            <button
-              onClick={closePanel}
-              className="text-gray-400 hover:text-gray-600"
-              aria-label="Закрыть"
-            >
+            <button onClick={closePanel} className="text-gray-400 hover:text-gray-600" aria-label="Закрыть">
               <i className="fas fa-times text-xl"></i>
             </button>
           </div>
@@ -1391,12 +1414,13 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                       Ссылка ВКС создаётся автоматически при сохранении встречи (бот проходит
-                      salutejazz.ru/calls/create). При желании можно вставить свою ссылку — она
-                      сохранится как есть. Данные для приглашения участников показаны ниже.
+                      salutejazz.ru/calls/create). При желании можно вставить свою ссылку — она сохранится как есть.
+                      Данные для приглашения участников показаны ниже.
                     </p>
                     {isVksLink(formData.link) && vksHint && (
                       <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2">
-                        <i className="fas fa-check mr-1"></i>{vksHint}
+                        <i className="fas fa-check mr-1"></i>
+                        {vksHint}
                       </p>
                     )}
                     {isVksLink(formData.link) && (
@@ -1589,7 +1613,11 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
                         <i className="fas fa-spinner fa-spin"></i>
                         {savingNote}
                       </span>
-                    ) : editingMeeting ? "Сохранить" : "Создать"}
+                    ) : editingMeeting ? (
+                      "Сохранить"
+                    ) : (
+                      "Создать"
+                    )}
                   </button>
                 </div>
               </form>
@@ -1772,7 +1800,11 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
                             ta.value = text;
                             document.body.appendChild(ta);
                             ta.select();
-                            try { document.execCommand("copy"); } catch { /* noop */ }
+                            try {
+                              document.execCommand("copy");
+                            } catch {
+                              /* noop */
+                            }
                             document.body.removeChild(ta);
                           }
                         }}
@@ -2114,7 +2146,10 @@ export default function UserPanel({ user, onNavigate, initialPrefill, onPrefillC
                         </button>
                         {meeting.link && (
                           <a
-                            href={buildJoinUrl(meeting.link, meeting.meetingPassword ?? extractPswFromAny(meeting.link))}
+                            href={buildJoinUrl(
+                              meeting.link,
+                              meeting.meetingPassword ?? extractPswFromAny(meeting.link)
+                            )}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-blue-700 transition-colors"

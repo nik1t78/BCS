@@ -317,8 +317,7 @@ export const minutesAPI = {
   exportPdf: (meetingId: string) => downloadBlob(`/meetings/${meetingId}/minutes/export-pdf`),
 
   // Отправка протокола PDF-файлом в MAX участникам с привязанным chat_id
-  sendToMax: (meetingId: string) =>
-    apiRequest(`/meetings/${meetingId}/minutes/send-max`, { method: "POST" }),
+  sendToMax: (meetingId: string) => apiRequest(`/meetings/${meetingId}/minutes/send-max`, { method: "POST" }),
 };
 
 // Дашборд нагрузки системы (админ/модератор): GET /api/admin/load

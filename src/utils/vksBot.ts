@@ -56,11 +56,7 @@ export interface BotCreateResult {
  * тихо возвращаем локально сгенерированную ссылку в том же формате,
  * чтобы создание конференции никогда не блокировалось.
  */
-async function botAttempt(
-  title: string,
-  name: string,
-  timeoutMs: number,
-): Promise<BotCreateResult> {
+async function botAttempt(title: string, name: string, timeoutMs: number): Promise<BotCreateResult> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   // Секрет бота (заголовок X-Bot-Token) — то же значение, что BOT_TOKENS в .env.
@@ -94,8 +90,7 @@ async function botAttempt(
     throw new Error(detail ? `bot http ${resp.status}: ${detail}` : `bot http ${resp.status}`);
   }
   const data = await resp.json();
-  const link: string | undefined =
-    data?.ok && data?.link ? data.link : data?.fallback_link;
+  const link: string | undefined = data?.ok && data?.link ? data.link : data?.fallback_link;
   if (link && link.startsWith("https://salutejazz.ru/calls/")) {
     return {
       link,
@@ -107,11 +102,7 @@ async function botAttempt(
   throw new Error(data?.error || "бот не вернул ссылку");
 }
 
-export async function createVksViaBot(
-  title: string,
-  name: string,
-  timeoutMs = 75_000,
-): Promise<BotCreateResult> {
+export async function createVksViaBot(title: string, name: string, timeoutMs = 75_000): Promise<BotCreateResult> {
   if (!AUTOBOT_ENABLED) {
     // Бот выключен (экономия RAM контейнера vks-bot) — мгновенная
     // локальная генерация ссылки в эталонном формате платформы.

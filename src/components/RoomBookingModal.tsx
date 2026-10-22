@@ -40,7 +40,15 @@ const SNAP = 15; // шаг прилипания как в Outlook
  * кнопка «Занять и создать ВКС» отправляет пользователя в форму создания
  * конференции с предзаполненными залом/датой/временем и автогенерацией ссылки.
  */
-export default function RoomBookingModal({ open, date, startTime, roomName, endTime, onClose, onConfirm }: RoomBookingModalProps) {
+export default function RoomBookingModal({
+  open,
+  date,
+  startTime,
+  roomName,
+  endTime,
+  onClose,
+  onConfirm,
+}: RoomBookingModalProps) {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [selRoomId, setSelRoomId] = useState<string | null>(null);
   const [availDate, setAvailDate] = useState(date || todayKey());
@@ -120,7 +128,7 @@ export default function RoomBookingModal({ open, date, startTime, roomName, endT
         // справочник GET /rooms (работает для admin/moderator).
         try {
           const res: any = await roomsAPI.list();
-          const l: Room[] = Array.isArray(res) ? res : res?.data ?? [];
+          const l: Room[] = Array.isArray(res) ? res : (res?.data ?? []);
           const active = l.filter((r) => r.isActive !== false);
           if (cancelled) return;
           setRooms(active);
@@ -132,7 +140,9 @@ export default function RoomBookingModal({ open, date, startTime, roomName, endT
         }
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, date, startTime]);
 
@@ -167,7 +177,12 @@ export default function RoomBookingModal({ open, date, startTime, roomName, endT
           }))
           .filter((x) => x.endMin > x.startMin);
         setBusy(b);
-        setFree(computeFreeSlots(avail.busy ?? [], { isToday: availDate === todayKey(), nowMin }).map((s) => ({ startMin: s.startMin, endMin: s.endMin })));
+        setFree(
+          computeFreeSlots(avail.busy ?? [], { isToday: availDate === todayKey(), nowMin }).map((s) => ({
+            startMin: s.startMin,
+            endMin: s.endMin,
+          }))
+        );
       } catch (e: any) {
         if (!cancelled) {
           setBusy([]);
@@ -178,7 +193,9 @@ export default function RoomBookingModal({ open, date, startTime, roomName, endT
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [open, selRoomId, availDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const daySpan = WORK_DAY_END_MIN - WORK_DAY_START_MIN;
@@ -223,7 +240,9 @@ export default function RoomBookingModal({ open, date, startTime, roomName, endT
   return (
     <div
       className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
-      onMouseDown={(e) => { (e.target as HTMLElement).setAttribute("data-backdown", "1"); }}
+      onMouseDown={(e) => {
+        (e.target as HTMLElement).setAttribute("data-backdown", "1");
+      }}
       onClick={(e) => {
         // Закрываем ТОЛЬКО если и mousedown, и mouseup произошли на самом фоне
         // (backdrop). Раньше закрытие шло по любому click с «всплытием» из
@@ -241,7 +260,11 @@ export default function RoomBookingModal({ open, date, startTime, roomName, endT
           <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">
             <i className="fas fa-door-open mr-2 text-blue-600"></i>Выбор зала — занять время и создать ВКС
           </h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl leading-none" aria-label="Закрыть">
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl leading-none"
+            aria-label="Закрыть"
+          >
             ×
           </button>
         </div>
@@ -322,8 +345,8 @@ export default function RoomBookingModal({ open, date, startTime, roomName, endT
           {/* Правая колонка: суточная шкала как в Outlook */}
           <div>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-              Рабочий день {minToHm(WORK_DAY_START_MIN)}–{minToHm(WORK_DAY_END_MIN)} — кликните свободное место, чтобы выбрать время начала.
-              Зелёные окна — свободно, серые — занято.
+              Рабочий день {minToHm(WORK_DAY_START_MIN)}–{minToHm(WORK_DAY_END_MIN)} — кликните свободное место, чтобы
+              выбрать время начала. Зелёные окна — свободно, серые — занято.
             </p>
             {error && <p className="text-sm text-red-500 mb-2">{error}</p>}
             <div className="relative h-[480px] rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden select-none">
@@ -364,7 +387,10 @@ export default function RoomBookingModal({ open, date, startTime, roomName, endT
                     <div
                       key={`b${i}`}
                       className="absolute left-16 right-2 rounded bg-gray-200 dark:bg-slate-600 border border-gray-300 dark:border-slate-500 overflow-hidden"
-                      style={{ top: `${pct(b.startMin)}%`, height: `${Math.max(pct(b.endMin) - pct(b.startMin), 1.2)}%` }}
+                      style={{
+                        top: `${pct(b.startMin)}%`,
+                        height: `${Math.max(pct(b.endMin) - pct(b.startMin), 1.2)}%`,
+                      }}
                       title={`${b.title} ${minToHm(b.startMin)}–${minToHm(b.endMin)}`}
                     >
                       <span className="block truncate text-[11px] text-gray-600 dark:text-gray-300 px-2 py-0.5">

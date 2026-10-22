@@ -400,7 +400,7 @@ export async function getMeetings(params?: {
         const stamp = await getServerChangedStamp();
         localStorage.setItem(
           meetingsCacheKey(),
-          JSON.stringify({ savedAt: Date.now(), serverStamp: stamp, data } satisfies MeetingsCacheEntry),
+          JSON.stringify({ savedAt: Date.now(), serverStamp: stamp, data } satisfies MeetingsCacheEntry)
         );
       } catch {
         /* localStorage может быть переполнен — не критично */

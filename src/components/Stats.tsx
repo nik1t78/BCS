@@ -60,7 +60,9 @@ const TopList = ({
               style={{ width: `${(item.count / max) * 100}%` }}
             />
           </div>
-          <span className={`text-sm font-bold w-8 text-right ${item.count ? "text-gray-800 dark:text-gray-100" : "text-gray-300 dark:text-gray-600"}`}>
+          <span
+            className={`text-sm font-bold w-8 text-right ${item.count ? "text-gray-800 dark:text-gray-100" : "text-gray-300 dark:text-gray-600"}`}
+          >
             {item.count || "—"}
           </span>
         </div>
@@ -313,7 +315,9 @@ export default function Stats({ user }: StatsProps) {
                   {item.count > 0 && <span className="text-white text-xs font-bold">{item.count}</span>}
                 </div>
               </div>
-              <span className={`text-sm font-medium w-12 text-right ${item.count ? "text-gray-800 dark:text-gray-100" : "text-gray-300 dark:text-gray-600"}`}>
+              <span
+                className={`text-sm font-medium w-12 text-right ${item.count ? "text-gray-800 dark:text-gray-100" : "text-gray-300 dark:text-gray-600"}`}
+              >
                 {item.count || "—"}
               </span>
             </div>
@@ -331,13 +335,17 @@ export default function Stats({ user }: StatsProps) {
           <div className="space-y-3">
             <div className="flex justify-between items-center">
               <span className="text-gray-600 dark:text-gray-300">Организовано мной</span>
-              <span className={`text-2xl font-bold ${stats.organized ? "text-purple-600 dark:text-purple-400" : "text-gray-300 dark:text-gray-600"}`}>
+              <span
+                className={`text-2xl font-bold ${stats.organized ? "text-purple-600 dark:text-purple-400" : "text-gray-300 dark:text-gray-600"}`}
+              >
                 {stats.organized || "—"}
               </span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-gray-600 dark:text-gray-300">Участвую в</span>
-              <span className={`text-2xl font-bold ${stats.participating ? "text-blue-600 dark:text-blue-400" : "text-gray-300 dark:text-gray-600"}`}>
+              <span
+                className={`text-2xl font-bold ${stats.participating ? "text-blue-600 dark:text-blue-400" : "text-gray-300 dark:text-gray-600"}`}
+              >
                 {stats.participating || "—"}
               </span>
             </div>

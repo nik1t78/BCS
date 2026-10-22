@@ -53,10 +53,12 @@ export function sanitizeVksLink(link?: string | null): string {
     // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u001F\u007F\u200B\uFEFF]/g, "")
     // неразрывные пробелы внутри ссылки (заменяем на обычный, затем чистим)
-  .replace(/\u00A0/g, " ");
+    .replace(/\u00A0/g, " ");
   // «Пригласить участников» копируют иногда целиком («Ссылка: https://... Пароль: ...») —
   // вырываем адрес встречи из произвольного текста; если его нет, берём первое слово
-  const extracted = s.match(/(?:https?:\/\/)?(?:www\.)?salutejazz\.ru\/calls\/[^\s"'<>]+|(?:https?:\/\/)[^\s"'<>]*salutejazz\.ru\/calls\/[^\s"'<>]+/i);
+  const extracted = s.match(
+    /(?:https?:\/\/)?(?:www\.)?salutejazz\.ru\/calls\/[^\s"'<>]+|(?:https?:\/\/)[^\s"'<>]*salutejazz\.ru\/calls\/[^\s"'<>]+/i
+  );
   s = (extracted ? extracted[0] : s.split(/\s+/)[0]) || "";
   if (!s) return "";
   // «salutejazz.ru/...» / «www....» / «//host/...» — дописываем схему
@@ -151,10 +153,7 @@ export function buildJoinUrl(
       let psw = (meetingPassword || "").trim() || extractPswFromAny(link);
       if (!psw) {
         // пароль могли сохранить в описании/примечании встречи (вставка ссылки целиком)
-        psw =
-          extractPswFromAny(extra?.description ?? "") ||
-          extractPswFromAny(extra?.note ?? "") ||
-          "";
+        psw = extractPswFromAny(extra?.description ?? "") || extractPswFromAny(extra?.note ?? "") || "";
       }
       if (psw) url.searchParams.set("psw", psw);
     }
@@ -210,9 +209,7 @@ export function vksPasswordFromLink(link?: string | null): string | null {
  * null — ссылка генерируется локально по формату платформы, комната
  * создаётся автоматически при первом входе организатора по ссылке.
  */
-export async function createRoomViaPlatformApi(
-  _token?: string,
-): Promise<{ link: string } | null> {
+export async function createRoomViaPlatformApi(_token?: string): Promise<{ link: string } | null> {
   void _token;
   return null;
 }

@@ -139,9 +139,7 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
   // организованные им или где он участник. Все остальные конференции —
   // в разделе «Расписание». Админ/модератор видят всё.
   const visibleMeetings =
-    user.role === "admin" || user.role === "moderator"
-      ? meetings
-      : meetings.filter((m) => hasAccessTo(m));
+    user.role === "admin" || user.role === "moderator" ? meetings : meetings.filter((m) => hasAccessTo(m));
 
   useEffect(() => {
     const today = toDateKey(currentTime);
@@ -216,8 +214,7 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
 
   const isAdminOrMod = user.role === "admin" || user.role === "moderator";
   const displayTitle = (m: Meeting) => (isAdminOrMod || hasAccessTo(m) ? m.title : "Конференция");
-  const blockSubtitle = (m: Meeting) =>
-    isAdminOrMod || hasAccessTo(m) ? m.room || undefined : undefined;
+  const blockSubtitle = (m: Meeting) => (isAdminOrMod || hasAccessTo(m) ? m.room || undefined : undefined);
 
   // Клик по пустому слоту → открыть выбор зала с предзаполненными датой/временем
   const handleCreateAt = (dateKey: string, startTime: string) => {
@@ -239,7 +236,8 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
   const openBookingNow = () => {
     const rounded = Math.ceil((currentTime.getHours() * 60 + currentTime.getMinutes()) / 15) * 15;
     const clamped = Math.min(rounded, 23 * 60 + 45);
-    const fmt = (mins: number) => `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+    const fmt = (mins: number) =>
+      `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
     setBookingAt({ date: toDateKey(currentTime), startTime: fmt(clamped) });
     setBookingOpen(true);
   };
@@ -250,9 +248,7 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
     if (!window.confirm(`Перенести «${displayTitle(m)}» на ${dateKey} ${startTime}?`)) return;
     const realId = String(m._occurrenceOf ?? m.id);
     await updateMeeting(realId, { date: dateKey, startTime });
-    setMeetings((prev) =>
-      prev.map((x) => (String(x.id) === realId ? { ...x, date: dateKey, startTime } : x))
-    );
+    setMeetings((prev) => prev.map((x) => (String(x.id) === realId ? { ...x, date: dateKey, startTime } : x)));
   };
 
   // Клик по встрече → карточка как в «Расписании»: ссылка / копирование / отмена
@@ -289,25 +285,33 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
       <div className="grid grid-cols-2 md:grid-cols-4 3k:grid-cols-8 gap-4">
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
           <p className="text-sm text-gray-500 dark:text-gray-400">Сегодня</p>
-          <p className={`text-2xl font-bold ${todayMeetings.length ? "text-gray-800 dark:text-gray-100" : "text-gray-300 dark:text-gray-600"}`}>
+          <p
+            className={`text-2xl font-bold ${todayMeetings.length ? "text-gray-800 dark:text-gray-100" : "text-gray-300 dark:text-gray-600"}`}
+          >
             {todayMeetings.length || "—"}
           </p>
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
           <p className="text-sm text-gray-500 dark:text-gray-400">Всего</p>
-          <p className={`text-2xl font-bold ${visibleMeetings.length ? "text-gray-800 dark:text-gray-100" : "text-gray-300 dark:text-gray-600"}`}>
+          <p
+            className={`text-2xl font-bold ${visibleMeetings.length ? "text-gray-800 dark:text-gray-100" : "text-gray-300 dark:text-gray-600"}`}
+          >
             {visibleMeetings.length || "—"}
           </p>
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
           <p className="text-sm text-gray-500 dark:text-gray-400">Организовано</p>
-          <p className={`text-2xl font-bold ${visibleMeetings.filter((m) => Number(m.organizerId) === Number(user.id)).length ? "text-gray-800 dark:text-gray-100" : "text-gray-300 dark:text-gray-600"}`}>
+          <p
+            className={`text-2xl font-bold ${visibleMeetings.filter((m) => Number(m.organizerId) === Number(user.id)).length ? "text-gray-800 dark:text-gray-100" : "text-gray-300 dark:text-gray-600"}`}
+          >
             {visibleMeetings.filter((m) => Number(m.organizerId) === Number(user.id)).length || "—"}
           </p>
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
           <p className="text-sm text-gray-500 dark:text-gray-400">Высокий приоритет</p>
-          <p className={`text-2xl font-bold ${visibleMeetings.filter((m) => m.priority === "high").length ? "text-gray-800 dark:text-gray-100" : "text-gray-300 dark:text-gray-600"}`}>
+          <p
+            className={`text-2xl font-bold ${visibleMeetings.filter((m) => m.priority === "high").length ? "text-gray-800 dark:text-gray-100" : "text-gray-300 dark:text-gray-600"}`}
+          >
             {visibleMeetings.filter((m) => m.priority === "high").length || "—"}
           </p>
         </div>
@@ -393,7 +397,10 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
 
                       {nextMeeting.link ? (
                         <a
-                          href={buildJoinUrl(nextMeeting.link, nextMeeting.meetingPassword ?? extractPswFromAny(nextMeeting.link))}
+                          href={buildJoinUrl(
+                            nextMeeting.link,
+                            nextMeeting.meetingPassword ?? extractPswFromAny(nextMeeting.link)
+                          )}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium"
@@ -444,12 +451,14 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
 
         {/* Переключатель вида — как в Outlook */}
         <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden mb-4 text-sm">
-          {([
-            ["day", "День"],
-            ["workweek", "Рабочая неделя"],
-            ["week", "Неделя"],
-            ["month", "Месяц"],
-          ] as [OutlookView, string][]).map(([v, label]) => (
+          {(
+            [
+              ["day", "День"],
+              ["workweek", "Рабочая неделя"],
+              ["week", "Неделя"],
+              ["month", "Месяц"],
+            ] as [OutlookView, string][]
+          ).map(([v, label]) => (
             <button
               key={v}
               onClick={() => setCalView(v)}
@@ -498,18 +507,29 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
       {createOpen && (
         <div
           className="fixed inset-0 z-[60] bg-black/50 flex items-start justify-center p-4 overflow-auto"
-          onMouseDown={(e) => { (e.target as HTMLElement).setAttribute("data-backdown", "1"); }}
+          onMouseDown={(e) => {
+            (e.target as HTMLElement).setAttribute("data-backdown", "1");
+          }}
           onClick={(e) => {
             const t = e.target as HTMLElement;
             if (t.getAttribute("data-backdown") === "1") setCreatePrefill(null);
           }}
         >
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl my-8" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl my-8"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 rounded-t-xl z-10">
               <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">
                 <i className="fas fa-video text-blue-600 mr-2"></i>Создание ВКС
               </h3>
-              <button onClick={() => setCreatePrefill(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl leading-none" aria-label="Закрыть">×</button>
+              <button
+                onClick={() => setCreatePrefill(null)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl leading-none"
+                aria-label="Закрыть"
+              >
+                ×
+              </button>
             </div>
             <div className="p-6">
               <UserPanel
@@ -522,7 +542,9 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
                 onCreated={() => {
                   setCreatePrefill(null);
                   // обновим список встреч после создания
-                  getMeetings().then(setMeetings).catch(() => {});
+                  getMeetings()
+                    .then(setMeetings)
+                    .catch(() => {});
                 }}
               />
             </div>
@@ -557,7 +579,8 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
                 </div>
                 <p className="text-gray-600 dark:text-gray-300 mb-1">
                   <i className="far fa-clock mr-2 text-blue-500"></i>
-                  {new Date(detailMeeting.date).toLocaleDateString("ru-RU")} • {detailMeeting.startTime}–{detailMeeting.endTime}
+                  {new Date(detailMeeting.date).toLocaleDateString("ru-RU")} • {detailMeeting.startTime}–
+                  {detailMeeting.endTime}
                 </p>
                 <p className="text-gray-600 dark:text-gray-300 mb-1">
                   <i className="fas fa-map-marker-alt mr-2 text-purple-500"></i>
@@ -573,7 +596,10 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
                   {canSee && detailMeeting.link && (
                     <>
                       <a
-                        href={buildJoinUrl(detailMeeting.link, detailMeeting.meetingPassword ?? extractPswFromAny(detailMeeting.link))}
+                        href={buildJoinUrl(
+                          detailMeeting.link,
+                          detailMeeting.meetingPassword ?? extractPswFromAny(detailMeeting.link)
+                        )}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
@@ -588,25 +614,29 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
                       </button>
                     </>
                   )}
-                  {canSee && Number(detailMeeting.organizerId) === Number(user.id) && detailMeeting.status !== "cancelled" && (
-                    <button
-                      onClick={async () => {
-                        if (!window.confirm("Отменить эту конференцию?")) return;
-                        await updateMeeting(String(detailMeeting._occurrenceOf ?? detailMeeting.id), { status: "cancelled" });
-                        setMeetings((prev) =>
-                          prev.map((x) =>
-                            String(x.id) === String(detailMeeting._occurrenceOf ?? detailMeeting.id)
-                              ? { ...x, status: "cancelled" as Meeting["status"] }
-                              : x
-                          )
-                        );
-                        setDetailMeeting(null);
-                      }}
-                      className="border border-red-300 text-red-600 px-4 py-2 rounded-lg text-sm hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
-                    >
-                      <i className="fas fa-ban mr-2"></i>Отменить
-                    </button>
-                  )}
+                  {canSee &&
+                    Number(detailMeeting.organizerId) === Number(user.id) &&
+                    detailMeeting.status !== "cancelled" && (
+                      <button
+                        onClick={async () => {
+                          if (!window.confirm("Отменить эту конференцию?")) return;
+                          await updateMeeting(String(detailMeeting._occurrenceOf ?? detailMeeting.id), {
+                            status: "cancelled",
+                          });
+                          setMeetings((prev) =>
+                            prev.map((x) =>
+                              String(x.id) === String(detailMeeting._occurrenceOf ?? detailMeeting.id)
+                                ? { ...x, status: "cancelled" as Meeting["status"] }
+                                : x
+                            )
+                          );
+                          setDetailMeeting(null);
+                        }}
+                        className="border border-red-300 text-red-600 px-4 py-2 rounded-lg text-sm hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+                      >
+                        <i className="fas fa-ban mr-2"></i>Отменить
+                      </button>
+                    )}
                 </div>
               </div>
             </div>
@@ -621,9 +651,8 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
             Мой календарь ВКС
           </h3>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Скачайте файл .ics со своими встречами (название, время, комната, описание)
-            и добавьте его в Outlook, Яндекс.Календарь или Google Calendar — расписание
-            будет видно даже вне системы.
+            Скачайте файл .ics со своими встречами (название, время, комната, описание) и добавьте его в Outlook,
+            Яндекс.Календарь или Google Calendar — расписание будет видно даже вне системы.
           </p>
         </div>
         <button
@@ -632,9 +661,13 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
           className="mt-3 self-start bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition-colors disabled:opacity-50"
         >
           {icsLoading ? (
-            <><i className="fas fa-circle-notch fa-spin mr-1"></i> Формирование…</>
+            <>
+              <i className="fas fa-circle-notch fa-spin mr-1"></i> Формирование…
+            </>
           ) : (
-            <><i className="fas fa-download mr-1"></i> Скачать .ics</>
+            <>
+              <i className="fas fa-download mr-1"></i> Скачать .ics
+            </>
           )}
         </button>
       </div>

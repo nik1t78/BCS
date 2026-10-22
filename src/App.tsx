@@ -121,7 +121,7 @@ function App() {
   // Требование сменить пароль при первом входе (после создания/сброса админом)
   const handlePasswordChanged = async () => {
     try {
-      const fresh = mapUser((r => r.user ?? r.data ?? r)(await authAPI.getUser()));
+      const fresh = mapUser(((r) => r.user ?? r.data ?? r)(await authAPI.getUser()));
       localStorage.setItem(
         "vks_auth",
         JSON.stringify({ ...JSON.parse(localStorage.getItem("vks_auth") || "{}"), user: fresh })
@@ -136,15 +136,15 @@ function App() {
   const isModerator = user.role === "moderator";
 
   const navItems = [
-    { id: 'dashboard', label: 'Главная', icon: 'fa-home', roles: ['admin', 'user', 'moderator'] },
-    { id: 'schedule', label: 'Расписание', icon: 'fa-calendar-alt', roles: ['admin', 'user', 'moderator'] },
-    { id: 'meetings', label: 'Мои конференции', icon: 'fa-video', roles: ['admin', 'user', 'moderator'] },
-    { id: 'templates', label: 'Шаблоны', icon: 'fa-copy', roles: ['admin', 'moderator'] },
-    { id: 'tags', label: 'Теги', icon: 'fa-tags', roles: ['admin', 'user', 'moderator'] },
-    { id: 'stats', label: 'Статистика', icon: 'fa-chart-bar', roles: ['admin', 'moderator'] },
-    { id: 'notifications', label: 'Уведомления', icon: 'fa-bell', roles: ['admin', 'user', 'moderator'] },
-    { id: 'profile', label: 'Профиль', icon: 'fa-user', roles: ['admin', 'user', 'moderator'] },
-    { id: 'admin', label: 'Админ-панель', icon: 'fa-shield-alt', roles: ['admin', 'moderator'] },
+    { id: "dashboard", label: "Главная", icon: "fa-home", roles: ["admin", "user", "moderator"] },
+    { id: "schedule", label: "Расписание", icon: "fa-calendar-alt", roles: ["admin", "user", "moderator"] },
+    { id: "meetings", label: "Мои конференции", icon: "fa-video", roles: ["admin", "user", "moderator"] },
+    { id: "templates", label: "Шаблоны", icon: "fa-copy", roles: ["admin", "moderator"] },
+    { id: "tags", label: "Теги", icon: "fa-tags", roles: ["admin", "user", "moderator"] },
+    { id: "stats", label: "Статистика", icon: "fa-chart-bar", roles: ["admin", "moderator"] },
+    { id: "notifications", label: "Уведомления", icon: "fa-bell", roles: ["admin", "user", "moderator"] },
+    { id: "profile", label: "Профиль", icon: "fa-user", roles: ["admin", "user", "moderator"] },
+    { id: "admin", label: "Админ-панель", icon: "fa-shield-alt", roles: ["admin", "moderator"] },
   ];
 
   const visibleNavItems = navItems.filter((item) => item.roles.includes(user.role));

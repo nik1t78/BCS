@@ -93,7 +93,7 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
           // fallback на справочник GET /rooms (доступен админу/модератору).
           try {
             const res: any = await roomsAPI.list();
-            const roomsList: Room[] = Array.isArray(res) ? res : res?.data ?? [];
+            const roomsList: Room[] = Array.isArray(res) ? res : (res?.data ?? []);
             active = roomsList.filter((r) => r.isActive !== false);
           } catch (e2: any) {
             if (e2?.status === 401) throw new Error("Сессия истекла — обновите страницу");
@@ -139,11 +139,13 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
           }
           const avail: RoomAvailability = (resItem.value as any)?.data ?? resItem.value;
           const slots = computeFreeSlots(avail.busy ?? [], { isToday, nowMin: curMin });
-          const busy = (avail.busy ?? []).map((b: any) => ({
-            startMin: toMin(b.start),
-            endMin: toMin(b.end),
-            title: b.title || b.meetingTitle || "",
-          })).filter((b: any) => b.endMin > b.startMin);
+          const busy = (avail.busy ?? [])
+            .map((b: any) => ({
+              startMin: toMin(b.start),
+              endMin: toMin(b.end),
+              title: b.title || b.meetingTitle || "",
+            }))
+            .filter((b: any) => b.endMin > b.startMin);
           next.push({ room, slots, busy });
         });
         // Свободные залы — выше списка; внутри — по ближайшему слоту
@@ -162,7 +164,9 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
       }
     };
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
 
@@ -179,7 +183,9 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
         <h3 className="font-semibold text-gray-800 dark:text-gray-100">
           <i className="fas fa-door-open mr-2 text-blue-600" aria-hidden="true"></i>
           Свободные залы
-          <span className="text-xs font-normal text-gray-400 ml-2">рабочий день {minToHm(WORK_DAY_START_MIN)}–{minToHm(WORK_DAY_END_MIN)}</span>
+          <span className="text-xs font-normal text-gray-400 ml-2">
+            рабочий день {minToHm(WORK_DAY_START_MIN)}–{minToHm(WORK_DAY_END_MIN)}
+          </span>
         </h3>
         <input
           type="date"
@@ -198,7 +204,8 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
       {error && <p className="text-sm text-red-500">{error}</p>}
       {!loading && !error && infos.length === 0 && (
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Переговорные залы не настроены. Добавьте их в разделе «Управление залами» (админка) — после этого здесь появится расписание занятости.
+          Переговорные залы не настроены. Добавьте их в разделе «Управление залами» (админка) — после этого здесь
+          появится расписание занятости.
         </p>
       )}
 
@@ -222,8 +229,14 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
             {infos.map(({ room, slots, busy }) => (
               <li key={room.id}>
                 <div className="flex items-center">
-                  <div className="w-16 sm:w-36 shrink-0 pr-2 text-sm text-gray-700 dark:text-gray-200 font-medium truncate" title={`${room.name} • ${room.capacity} чел.${room.location ? ` • ${room.location}` : ""}`}>
-                    <i className={`fas fa-circle ${slots.length ? "text-emerald-500" : "text-red-400"} text-[8px] mr-2`} aria-hidden="true"></i>
+                  <div
+                    className="w-16 sm:w-36 shrink-0 pr-2 text-sm text-gray-700 dark:text-gray-200 font-medium truncate"
+                    title={`${room.name} • ${room.capacity} чел.${room.location ? ` • ${room.location}` : ""}`}
+                  >
+                    <i
+                      className={`fas fa-circle ${slots.length ? "text-emerald-500" : "text-red-400"} text-[8px] mr-2`}
+                      aria-hidden="true"
+                    ></i>
                     {room.name}
                   </div>
 
@@ -231,7 +244,11 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
                   <div className="relative flex-1 h-9 rounded-md bg-gray-100 dark:bg-slate-700 overflow-hidden">
                     {/* получасовые деления */}
                     {hours.slice(1).map((m) => (
-                      <div key={m} className="absolute top-0 bottom-0 w-px bg-gray-200 dark:bg-slate-600" style={{ left: `${pct(m)}%` }} />
+                      <div
+                        key={m}
+                        className="absolute top-0 bottom-0 w-px bg-gray-200 dark:bg-slate-600"
+                        style={{ left: `${pct(m)}%` }}
+                      />
                     ))}
                     {/* занятые блоки */}
                     {busy.map((b, i) => (
@@ -253,7 +270,10 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
                               key={`p${blk.startMin}-${blk.endMin}`}
                               title={`Прошедшее время ${minToHm(blk.startMin)}–${minToHm(blk.endMin)} — бронирование невозможно`}
                               className="absolute top-1 bottom-1 rounded bg-gray-200/70 dark:bg-slate-600/50 border border-dashed border-gray-300 dark:border-slate-500 text-gray-400 dark:text-slate-400 text-[11px] px-1 overflow-hidden whitespace-nowrap pointer-events-none select-none"
-                              style={{ left: `${pct(blk.startMin)}%`, width: `${Math.max(pct(blk.endMin) - pct(blk.startMin), 1.5)}%` }}
+                              style={{
+                                left: `${pct(blk.startMin)}%`,
+                                width: `${Math.max(pct(blk.endMin) - pct(blk.startMin), 1.5)}%`,
+                              }}
                             >
                               <i className="fas fa-ban mr-1 opacity-60" aria-hidden="true"></i>
                               {minToHm(blk.startMin)}
@@ -268,7 +288,10 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
                             onClick={() => onPickSlot?.(room.name, minToHm(blk.startMin), minToHm(bookEnd), date)}
                             title={`Забронировать с ${minToHm(blk.startMin)} до ${minToHm(blk.endMin)} (${humanDuration(blk.lengthMin)}) и создать ВКС`}
                             className="absolute top-1 bottom-1 rounded bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/50 dark:hover:bg-emerald-800/60 border border-emerald-300 dark:border-emerald-600 text-emerald-800 dark:text-emerald-200 text-[11px] font-medium px-1 overflow-hidden whitespace-nowrap transition-colors"
-                            style={{ left: `${pct(blk.startMin)}%`, width: `${Math.max(pct(blk.endMin) - pct(blk.startMin), 1.5)}%` }}
+                            style={{
+                              left: `${pct(blk.startMin)}%`,
+                              width: `${Math.max(pct(blk.endMin) - pct(blk.startMin), 1.5)}%`,
+                            }}
                           >
                             <i className="fas fa-plus mr-1 opacity-70" aria-hidden="true"></i>
                             {minToHm(blk.startMin)}
@@ -278,7 +301,10 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
                     )}
                     {/* линия «сейчас» */}
                     {showNowLine && (
-                      <div className="absolute top-0 bottom-0 w-[2px] bg-red-500 pointer-events-none" style={{ left: `${pct(nowMin)}%` }} />
+                      <div
+                        className="absolute top-0 bottom-0 w-[2px] bg-red-500 pointer-events-none"
+                        style={{ left: `${pct(nowMin)}%` }}
+                      />
                     )}
                   </div>
                 </div>
@@ -288,10 +314,22 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
 
           {/* Легенда */}
           <div className="flex flex-wrap gap-4 mt-3 text-[11px] text-gray-500 dark:text-gray-400">
-            <span><span className="inline-block w-3 h-3 rounded bg-emerald-100 border border-emerald-300 align-middle mr-1" />Свободно (клик — создать ВКС)</span>
-            <span><span className="inline-block w-3 h-3 rounded bg-gray-200 border border-dashed border-gray-300 align-middle mr-1" />Прошло — бронь невозможна</span>
-            <span><span className="inline-block w-3 h-3 rounded bg-gray-300 align-middle mr-1" />Занято</span>
-            <span><span className="inline-block w-3 h-[2px] bg-red-500 align-middle mr-1" />Текущее время</span>
+            <span>
+              <span className="inline-block w-3 h-3 rounded bg-emerald-100 border border-emerald-300 align-middle mr-1" />
+              Свободно (клик — создать ВКС)
+            </span>
+            <span>
+              <span className="inline-block w-3 h-3 rounded bg-gray-200 border border-dashed border-gray-300 align-middle mr-1" />
+              Прошло — бронь невозможна
+            </span>
+            <span>
+              <span className="inline-block w-3 h-3 rounded bg-gray-300 align-middle mr-1" />
+              Занято
+            </span>
+            <span>
+              <span className="inline-block w-3 h-[2px] bg-red-500 align-middle mr-1" />
+              Текущее время
+            </span>
           </div>
         </div>
       )}

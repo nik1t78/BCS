@@ -77,17 +77,23 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
         <div className="bg-white rounded-2xl shadow-2xl p-8">
           <div className="flex mb-6 bg-gray-100 rounded-lg p-1">
             <button
-              onClick={() => { setMode('login'); setError(''); }}
+              onClick={() => {
+                setMode("login");
+                setError("");
+              }}
               className={`flex-1 py-2.5 text-sm font-medium rounded-md transition-all ${
-                mode === 'login' ? 'bg-white shadow text-blue-600' : 'text-gray-500'
+                mode === "login" ? "bg-white shadow text-blue-600" : "text-gray-500"
               }`}
             >
               Вход
             </button>
             <button
-              onClick={() => { setMode('register'); setError(''); }}
+              onClick={() => {
+                setMode("register");
+                setError("");
+              }}
               className={`flex-1 py-2.5 text-sm font-medium rounded-md transition-all ${
-                mode === 'register' ? 'bg-white shadow text-blue-600' : 'text-gray-500'
+                mode === "register" ? "bg-white shadow text-blue-600" : "text-gray-500"
               }`}
             >
               Регистрация
@@ -130,7 +136,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
                 disabled={loading}
                 className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
               >
-                {loading ? 'Вход...' : 'Войти'}
+                {loading ? "Вход..." : "Войти"}
               </button>
             </form>
           ) : (
@@ -193,7 +199,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
                 disabled={loading}
                 className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
               >
-                {loading ? 'Регистрация...' : 'Зарегистрироваться'}
+                {loading ? "Регистрация..." : "Зарегистрироваться"}
               </button>
             </form>
           )}

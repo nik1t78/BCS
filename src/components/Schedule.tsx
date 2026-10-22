@@ -1,6 +1,12 @@
 import { useState, useEffect } from "react";
 import { User, Meeting } from "../types";
-import { getMeetings, getUsersForDisplay, rescheduleMeeting, checkRescheduleConflicts, updateMeeting } from "../store-api";
+import {
+  getMeetings,
+  getUsersForDisplay,
+  rescheduleMeeting,
+  checkRescheduleConflicts,
+  updateMeeting,
+} from "../store-api";
 import { roomsAPI } from "../api/client";
 import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { occursOn } from "../utils/recurrence";
@@ -89,8 +95,9 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
     // организованные им, с его участием + общедоступные (не приватные).
     // Приватная встреча без участия скрыта; у приватных с участием название
     // остаётся закрытым («Конференция») — см. canSeeDetails ниже.
-    const visibleMeetings =
-      isAdminLike ? allMeetings : allMeetings.filter((m) => m.isPrivate !== true || hasAccessTo(m));
+    const visibleMeetings = isAdminLike
+      ? allMeetings
+      : allMeetings.filter((m) => m.isPrivate !== true || hasAccessTo(m));
 
     setMeetings(visibleMeetings);
     setAllUsers(users);
@@ -114,7 +121,8 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
     (Number(m.organizerId) === Number(user.id) || isAdminLike || hasAccessTo(m));
 
   // Для повторяющихся встреч occurrence-копия имеет id родителя — переносим оригинал
-  const originalOf = (m: Meeting): Meeting => meetings.find((x) => String(x.id) === String(m._occurrenceOf ?? m.id)) ?? m;
+  const originalOf = (m: Meeting): Meeting =>
+    meetings.find((x) => String(x.id) === String(m._occurrenceOf ?? m.id)) ?? m;
 
   // Перенос встречи drag&drop в сетке Outlook (день + время с шагом 15 минут)
   const handleRequestMove = async (occ: Meeting, dateKey: string, startTime: string) => {
@@ -143,11 +151,7 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
       const found = await checkRescheduleConflicts({ ...m, startTime, endTime }, dateKey);
       if (found.length > 0) {
         const names = found.map((c) => `«${c.title}» ${c.start_time}–${c.end_time}`).join("\n");
-        if (
-          !confirm(
-            `⚠️ Конфликты при переносе на ${when}:\n${names}\n\nПеренести всё равно?`
-          )
-        ) {
+        if (!confirm(`⚠️ Конфликты при переносе на ${when}:\n${names}\n\nПеренести всё равно?`)) {
           return;
         }
       }
@@ -317,7 +321,9 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
                 {editing ? (
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Название</label>
+                      <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">
+                        Название
+                      </label>
                       <input
                         value={editForm.title}
                         onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
@@ -326,7 +332,9 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Начало</label>
+                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">
+                          Начало
+                        </label>
                         <input
                           type="time"
                           value={editForm.startTime}
@@ -335,7 +343,9 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Окончание</label>
+                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">
+                          Окончание
+                        </label>
                         <input
                           type="time"
                           value={editForm.endTime}
@@ -365,8 +375,8 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
                   <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
                     <p>
                       <i className="fas fa-calendar mr-2 text-blue-500"></i>
-                      {new Date(`${selectedMeeting.date}T00:00:00`).toLocaleDateString("ru-RU")}, {selectedMeeting.startTime} –{" "}
-                      {selectedMeeting.endTime}
+                      {new Date(`${selectedMeeting.date}T00:00:00`).toLocaleDateString("ru-RU")},{" "}
+                      {selectedMeeting.startTime} – {selectedMeeting.endTime}
                     </p>
                     <p>
                       <i className="fas fa-map-marker-alt mr-2 text-red-500"></i>
@@ -379,12 +389,17 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
                     {canSee && selectedMeeting.description && (
                       <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
                         <p className="font-medium text-gray-800 dark:text-gray-100 mb-1">Описание:</p>
-                        <p className="text-gray-600 dark:text-gray-400 whitespace-pre-line">{selectedMeeting.description}</p>
+                        <p className="text-gray-600 dark:text-gray-400 whitespace-pre-line">
+                          {selectedMeeting.description}
+                        </p>
                       </div>
                     )}
                     {canSee && selectedMeeting.link && (
                       <a
-                        href={buildJoinUrl(selectedMeeting.link, selectedMeeting.meetingPassword ?? extractPswFromAny(selectedMeeting.link))}
+                        href={buildJoinUrl(
+                          selectedMeeting.link,
+                          selectedMeeting.meetingPassword ?? extractPswFromAny(selectedMeeting.link)
+                        )}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-block mt-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
@@ -393,7 +408,9 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
                       </a>
                     )}
                     {!canSee && (
-                      <p className="text-gray-400 italic pt-2">Детали скрыты: вы не участник этой приватной конференции.</p>
+                      <p className="text-gray-400 italic pt-2">
+                        Детали скрыты: вы не участник этой приватной конференции.
+                      </p>
                     )}
                     {canEdit && (
                       <div className="pt-3 border-t border-gray-200 dark:border-gray-700 flex justify-end">

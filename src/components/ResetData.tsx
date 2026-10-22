@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { forceReset } from '../store';
+import React, { useState } from "react";
+import { forceReset } from "../store";
 
 export default function ResetData() {
   const [showConfirm, setShowConfirm] = useState(false);

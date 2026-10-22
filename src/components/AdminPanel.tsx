@@ -1321,10 +1321,9 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         </button>
                       </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Как создать вручную: «Создать вручную» → на salutejazz.ru «Создать видео
-                        встречу» → Ваше имя и название → «Создать и присоединиться» → «Пригласить
-                        участников» → скопируйте ссылку в это поле (можно всё приглашение —
-                        лишнее обрежется). Сохранится как есть.
+                        Как создать вручную: «Создать вручную» → на salutejazz.ru «Создать видео встречу» → Ваше имя и
+                        название → «Создать и присоединиться» → «Пригласить участников» → скопируйте ссылку в это поле
+                        (можно всё приглашение — лишнее обрежется). Сохранится как есть.
                       </p>
                     </div>
                     <div className="flex justify-end gap-3 pt-4 border-t dark:border-gray-600">
@@ -1491,123 +1490,123 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
           {/* Meetings Table */}
           {meetingsViewMode === "table" && (
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-                  <tr>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                      Конференция
-                    </th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                      Дата / Время
-                    </th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                      Организатор
-                    </th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                      Кабинет
-                    </th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                      Статус
-                    </th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                      Действия
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {filteredMeetings.map((m) => (
-                    <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => setViewMeeting(m)}
-                          className="font-medium text-gray-800 dark:text-gray-100 text-sm hover:text-blue-600 text-left"
-                          title="Открыть конференцию"
-                        >
-                          {m.title}
-                        </button>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          {(m.participants ?? []).length} участник(ов)
-                        </p>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
-                        {m.date}
-                        <br />
-                        <span className="text-xs text-gray-400">
-                          {m.startTime}–{m.endTime}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
-                        {getUserName(m.organizerId)}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{m.room || "—"}</td>
-                      <td className="px-4 py-3">
-                        <select
-                          value={m.status}
-                          onChange={(e) => handleStatusChange(m.id, e.target.value as Meeting["status"])}
-                          className={`text-xs px-2 py-1 rounded-full font-medium border-0 ${
-                            m.status === "scheduled"
-                              ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
-                              : m.status === "completed"
-                                ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-                                : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
-                          }`}
-                        >
-                          <option value="scheduled">Запланирована</option>
-                          <option value="completed">Завершена</option>
-                          <option value="cancelled">Отменена</option>
-                        </select>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+                    <tr>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                        Конференция
+                      </th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                        Дата / Время
+                      </th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                        Организатор
+                      </th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                        Кабинет
+                      </th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                        Статус
+                      </th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                        Действия
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {filteredMeetings.map((m) => (
+                      <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <td className="px-4 py-3">
                           <button
                             onClick={() => setViewMeeting(m)}
-                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-gray-600 rounded"
-                            title="Просмотр"
+                            className="font-medium text-gray-800 dark:text-gray-100 text-sm hover:text-blue-600 text-left"
+                            title="Открыть конференцию"
                           >
-                            <i className="fas fa-eye"></i>
+                            {m.title}
                           </button>
-                          {m.link && (
-                            <a
-                              href={buildJoinUrl(m.link, m.meetingPassword ?? extractPswFromAny(m.link))}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {(m.participants ?? []).length} участник(ов)
+                          </p>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                          {m.date}
+                          <br />
+                          <span className="text-xs text-gray-400">
+                            {m.startTime}–{m.endTime}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                          {getUserName(m.organizerId)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{m.room || "—"}</td>
+                        <td className="px-4 py-3">
+                          <select
+                            value={m.status}
+                            onChange={(e) => handleStatusChange(m.id, e.target.value as Meeting["status"])}
+                            className={`text-xs px-2 py-1 rounded-full font-medium border-0 ${
+                              m.status === "scheduled"
+                                ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
+                                : m.status === "completed"
+                                  ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                                  : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
+                            }`}
+                          >
+                            <option value="scheduled">Запланирована</option>
+                            <option value="completed">Завершена</option>
+                            <option value="cancelled">Отменена</option>
+                          </select>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => setViewMeeting(m)}
                               className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-gray-600 rounded"
-                              title="Войти в конференцию"
+                              title="Просмотр"
                             >
-                              <i className="fas fa-video"></i>
-                            </a>
-                          )}
-                          <button
-                            onClick={() => handleEditMeeting(m)}
-                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-gray-600 rounded"
-                            title="Редактировать"
-                          >
-                            <i className="fas fa-edit"></i>
-                          </button>
-                          <button
-                            onClick={() => handleDeleteMeeting(m.id)}
-                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-gray-600 rounded"
-                            title="Удалить"
-                          >
-                            <i className="fas fa-trash"></i>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {filteredMeetings.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                        <i className="fas fa-video-slash mr-2"></i>Конференции не найдены
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                              <i className="fas fa-eye"></i>
+                            </button>
+                            {m.link && (
+                              <a
+                                href={buildJoinUrl(m.link, m.meetingPassword ?? extractPswFromAny(m.link))}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-gray-600 rounded"
+                                title="Войти в конференцию"
+                              >
+                                <i className="fas fa-video"></i>
+                              </a>
+                            )}
+                            <button
+                              onClick={() => handleEditMeeting(m)}
+                              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-gray-600 rounded"
+                              title="Редактировать"
+                            >
+                              <i className="fas fa-edit"></i>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteMeeting(m.id)}
+                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-gray-600 rounded"
+                              title="Удалить"
+                            >
+                              <i className="fas fa-trash"></i>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {filteredMeetings.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                          <i className="fas fa-video-slash mr-2"></i>Конференции не найдены
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
           )}
         </div>
       )}

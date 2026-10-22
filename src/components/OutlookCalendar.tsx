@@ -48,7 +48,6 @@ const MONTHS_RU = [
   "Декабрь",
 ];
 
-
 /** Пн–Вс (Mon=0 … Sun=6) */
 const isoDayIndex = (d: Date): number => (d.getDay() + 6) % 7;
 
@@ -277,10 +276,18 @@ export default function OutlookCalendar({
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-2">
-            <button onClick={() => navigate(-1)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Предыдущий месяц">
+            <button
+              onClick={() => navigate(-1)}
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+              aria-label="Предыдущий месяц"
+            >
               <i className="fas fa-chevron-left text-gray-600 dark:text-gray-300"></i>
             </button>
-            <button onClick={() => navigate(1)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Следующий месяц">
+            <button
+              onClick={() => navigate(1)}
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+              aria-label="Следующий месяц"
+            >
               <i className="fas fa-chevron-right text-gray-600 dark:text-gray-300"></i>
             </button>
             <button
@@ -296,87 +303,90 @@ export default function OutlookCalendar({
         <div className="grid grid-cols-7 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
           {WEEKDAYS_SHORT.map((wd) => (
             // hidden sm:flex — на очень узких экранах подписи дней скрыты, чтобы 7 колонок не «выезжали»
-            <div key={wd} className="hidden sm:flex py-1.5 justify-center text-xs font-medium uppercase text-gray-500 dark:text-gray-400">
+            <div
+              key={wd}
+              className="hidden sm:flex py-1.5 justify-center text-xs font-medium uppercase text-gray-500 dark:text-gray-400"
+            >
               {wd}
             </div>
           ))}
         </div>
         {/* min-w-[460px] + горизонтальный скролл: ячейки месяца не сжимаются ниже читаемого */}
         <div className="overflow-x-auto max-w-full">
-        <div className="grid grid-cols-7 min-w-[460px]">
-          {visibleDays.map((date, i) => {
-            const key = toDateKey(date);
-            const evts = eventsForDate(date);
-            const inMonth = date.getMonth() === selectedDate.getMonth();
-            const isToday = key === todayKey;
-            return (
-              <div
-                key={i}
-                {...slotClickProps(date)}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragOverKey(key);
-                }}
-                onDragLeave={() => setDragOverKey((cur) => (cur === key ? null : cur))}
-                onDrop={(e) => handleDrop(key, e)}
-                className={`min-h-[110px] border-b border-r border-gray-100 dark:border-gray-700 p-1 transition-colors ${
-                  dragOverKey === key ? "bg-blue-50 dark:bg-blue-900/30 ring-2 ring-inset ring-blue-400" : ""
-                } ${onCreateAt ? "cursor-pointer" : ""}`}
-              >
-                <div className="flex justify-end">
-                  <span
-                    className={`text-xs leading-6 w-6 h-6 inline-flex items-center justify-center rounded-full ${
-                      isToday
-                        ? "bg-blue-600 text-white font-semibold"
-                        : inMonth
-                          ? "text-gray-700 dark:text-gray-200"
-                          : "text-gray-400 dark:text-gray-500"
-                    }`}
-                  >
-                    {date.getDate()}
-                  </span>
-                </div>
-                <div className="space-y-0.5 mt-0.5">
-                  {evts.slice(0, 3).map((m) => {
-                    const c = priorityClasses(m.priority);
-                    const draggable = !!canDragMeeting?.(m);
-                    return (
-                      <div
-                        key={`${m.id}-${m.date}`}
-                        draggable={draggable}
-                        onDragStart={(e) => {
-                          e.dataTransfer.effectAllowed = "move";
-                          e.dataTransfer.setData("text/plain", String(m.id));
-                        }}
+          <div className="grid grid-cols-7 min-w-[460px]">
+            {visibleDays.map((date, i) => {
+              const key = toDateKey(date);
+              const evts = eventsForDate(date);
+              const inMonth = date.getMonth() === selectedDate.getMonth();
+              const isToday = key === todayKey;
+              return (
+                <div
+                  key={i}
+                  {...slotClickProps(date)}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragOverKey(key);
+                  }}
+                  onDragLeave={() => setDragOverKey((cur) => (cur === key ? null : cur))}
+                  onDrop={(e) => handleDrop(key, e)}
+                  className={`min-h-[110px] border-b border-r border-gray-100 dark:border-gray-700 p-1 transition-colors ${
+                    dragOverKey === key ? "bg-blue-50 dark:bg-blue-900/30 ring-2 ring-inset ring-blue-400" : ""
+                  } ${onCreateAt ? "cursor-pointer" : ""}`}
+                >
+                  <div className="flex justify-end">
+                    <span
+                      className={`text-xs leading-6 w-6 h-6 inline-flex items-center justify-center rounded-full ${
+                        isToday
+                          ? "bg-blue-600 text-white font-semibold"
+                          : inMonth
+                            ? "text-gray-700 dark:text-gray-200"
+                            : "text-gray-400 dark:text-gray-500"
+                      }`}
+                    >
+                      {date.getDate()}
+                    </span>
+                  </div>
+                  <div className="space-y-0.5 mt-0.5">
+                    {evts.slice(0, 3).map((m) => {
+                      const c = priorityClasses(m.priority);
+                      const draggable = !!canDragMeeting?.(m);
+                      return (
+                        <div
+                          key={`${m.id}-${m.date}`}
+                          draggable={draggable}
+                          onDragStart={(e) => {
+                            e.dataTransfer.effectAllowed = "move";
+                            e.dataTransfer.setData("text/plain", String(m.id));
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectMeeting?.(m);
+                          }}
+                          title={`${m.startTime}–${m.endTime} ${displayTitle ? displayTitle(m) : m.title}`}
+                          className={`rounded px-1.5 py-0.5 text-[11px] leading-tight truncate cursor-pointer ${c} border-l-2 ${draggable ? "cursor-grab active:cursor-grabbing" : ""}`}
+                        >
+                          <span className="font-medium">{m.startTime}</span> {displayTitle ? displayTitle(m) : m.title}
+                        </div>
+                      );
+                    })}
+                    {evts.length > 3 && (
+                      <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          onSelectMeeting?.(m);
+                          onSelectedDateChange(date);
                         }}
-                        title={`${m.startTime}–${m.endTime} ${displayTitle ? displayTitle(m) : m.title}`}
-                        className={`rounded px-1.5 py-0.5 text-[11px] leading-tight truncate cursor-pointer ${c} border-l-2 ${draggable ? "cursor-grab active:cursor-grabbing" : ""}`}
+                        className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline px-1"
                       >
-                        <span className="font-medium">{m.startTime}</span>{" "}
-                        {displayTitle ? displayTitle(m) : m.title}
-                      </div>
-                    );
-                  })}
-                  {evts.length > 3 && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelectedDateChange(date);
-                      }}
-                      className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline px-1"
-                    >
-                      Ещё {evts.length - 3}
-                    </button>
-                  )}
+                        Ещё {evts.length - 3}
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
-        </div>{/* /overflow-x-auto month grid */}
+        {/* /overflow-x-auto month grid */}
       </div>
     );
   }
@@ -391,10 +401,18 @@ export default function OutlookCalendar({
       {/* Header: навигация + диапазон дат */}
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center gap-2">
-          <button onClick={() => navigate(-1)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Назад">
+          <button
+            onClick={() => navigate(-1)}
+            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+            aria-label="Назад"
+          >
             <i className="fas fa-chevron-left text-gray-600 dark:text-gray-300"></i>
           </button>
-          <button onClick={() => navigate(1)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Вперёд">
+          <button
+            onClick={() => navigate(1)}
+            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+            aria-label="Вперёд"
+          >
             <i className="fas fa-chevron-right text-gray-600 dark:text-gray-300"></i>
           </button>
           <button
@@ -443,7 +461,11 @@ export default function OutlookCalendar({
           {/* Часовая линейка */}
           <div className="w-14 flex-shrink-0">
             {Array.from({ length: HOURS_PER_DAY }, (_, h) => (
-              <div key={h} className="relative text-[11px] text-gray-400 dark:text-gray-500" style={{ height: HOUR_HEIGHT }}>
+              <div
+                key={h}
+                className="relative text-[11px] text-gray-400 dark:text-gray-500"
+                style={{ height: HOUR_HEIGHT }}
+              >
                 <span className="absolute -top-2 right-1.5">{h === 0 ? "" : `${String(h).padStart(2, "0")}:00`}</span>
               </div>
             ))}
@@ -542,7 +564,10 @@ export default function OutlookCalendar({
                           </p>
                         )}
                         {m.recurring !== "none" && (
-                          <i className="fas fa-sync-alt absolute bottom-1 right-1 text-[9px] opacity-50" title="Повторяющаяся встреча"></i>
+                          <i
+                            className="fas fa-sync-alt absolute bottom-1 right-1 text-[9px] opacity-50"
+                            title="Повторяющаяся встреча"
+                          ></i>
                         )}
                       </div>
                     );
