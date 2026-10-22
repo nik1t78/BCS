@@ -18,6 +18,11 @@ backend
 .env
 .env.*
 !.env.example
+# Vite-конфиг продакшена (VITE_API_URL=/api и т.д.) ОБЯЗАТЕЛЕН в контексте
+# сборки frontend: без него `npm run build` внутри Docker теряет настройки из
+# .env.production (правило `.env.*` выше его исключало). Секретов здесь нет —
+# только публичные VITE_* переменные, которые всё равно вшиты в JS-бандл.
+!.env.production
 Dockerfile
 docker-compose*.yml
 setup-project.sh

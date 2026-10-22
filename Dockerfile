@@ -8,7 +8,11 @@ RUN npm ci --maxsockets=5 || npm install --legacy-peer-deps --maxsockets=1
 
 COPY src ./src
 COPY public ./public
-COPY index.html vite.config.js tsconfig.json ./
+# .env.production подхватывается Vite при `npm run build` (режим production) —
+# без него VITE_*-переменные из файла окружения в docker-сборку не попадают.
+# Файл отсутствует в контексте — COPY молча пропускается (это допустимо).
+COPY .env.production* ./
+COPY index.html vite.config.js tsconfig.json package.json ./
 
 # NODE_OPTIONS — лимит heap, чтобы сборка не съедала всю оперативку
 ENV NODE_OPTIONS=--max-old-space-size=768

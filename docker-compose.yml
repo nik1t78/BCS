@@ -4,8 +4,11 @@ x-defaults: &container-defaults
   deploy:
     resources:
       limits:
+        # 512M хватает php-fpm (pm.max_children=12 при 128M/процесс работают
+        # лениво), mysql (buffer pool 64M) и redis (maxmemory 96mb).
+        # Лимит CPU ("cpus") снят намеренно: одна full-сборка Vite + nginx +
+        # php-fpm на 1 ядре приводят к таймаутам и 502 под нагрузкой.
         memory: 512M
-        cpus: "1.0"
   logging:
     driver: json-file
     options:
@@ -34,18 +37,6 @@ services:
         VITE_VKS_BOT_TOKEN: "${BOT_TOKENS:-}"
     container_name: vks-frontend-builder
     restart: "no"   # одноразовый: собрал dist -> volume -> завершился, RAM не держит
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-          cpus: "2.0"
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-    security_opt:
-      - no-new-privileges:true
     networks:
       - vks-network
     volumes:

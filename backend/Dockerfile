@@ -187,6 +187,10 @@ RUN set -eux; \
 # Если кто-то запускает `docker build` без compose (именованного контекста нет),
 # стадия остаётся пустой — app-стадия это терпит и генерирует конфиги из ENV
 # (см. блок "Каркас config/*.php" в стадии app).
+# ВАЖНО: `docker build` без compose (без именованного контекста repo) падает на
+# этом шаге с "Copy requires at least one source location" — легальный способ
+# собрать стадии base/vendor-build/app напрямую:
+#   docker build --target app -t vks-backend-app ./backend
 FROM scratch AS skeleton-stage
 COPY --from=repo \
     docker/skeleton/laravel12/config/app.php \
@@ -194,6 +198,7 @@ COPY --from=repo \
     docker/skeleton/laravel12/config/cache.php \
     docker/skeleton/laravel12/config/database.php \
     docker/skeleton/laravel12/config/filesystems.php \
+    docker/skeleton/laravel12/config/logging.php \
     docker/skeleton/laravel12/config/queue.php \
     docker/skeleton/laravel12/config/session.php \
     /skeleton/
