@@ -183,25 +183,18 @@ RUN set -eux; \
 # ВАЖНО про .dockerignore в КОРНЕ репо: он фильтрует контекст `repo` и уже
 # содержит точечные инверсии `!docker/skeleton/laravel12/config/*.php` (иначе
 # COPY молча копирует НОЛЬ файлов и сборка падает на проверке config/app.php).
-# Поэтому здесь копится КОНКРЕТНЫЙ список файлов, а не директория целиком.
+# Копится ДИРЕКТОРИЯ целиком (а не поимённый список файлов): при glob-источнике
+# Docker не требует наличия каждого файла, поэтому отсутствие отдельного конфига
+# в скелетоне НЕ ломает сборку (раньше поимённый COPY logging.php падал с
+# "failed to compute cache key ... not found", если файл не был скачан/залит).
+# Недостающие конфиги app-стадия догенерирует из ENV (см. блок
+# "Каркас config/*.php" в стадии app).
 # Если кто-то запускает `docker build` без compose (именованного контекста нет),
-# стадия остаётся пустой — app-стадия это терпит и генерирует конфиги из ENV
-# (см. блок "Каркас config/*.php" в стадии app).
-# ВАЖНО: `docker build` без compose (без именованного контекста repo) падает на
-# этом шаге с "Copy requires at least one source location" — легальный способ
-# собрать стадии base/vendor-build/app напрямую:
+# стадия остаётся пустой — app-стадия это терпит. Легальный способ собрать
+# стадии base/vendor-build/app напрямую:
 #   docker build --target app -t vks-backend-app ./backend
 FROM scratch AS skeleton-stage
-COPY --from=repo \
-    docker/skeleton/laravel12/config/app.php \
-    docker/skeleton/laravel12/config/auth.php \
-    docker/skeleton/laravel12/config/cache.php \
-    docker/skeleton/laravel12/config/database.php \
-    docker/skeleton/laravel12/config/filesystems.php \
-    docker/skeleton/laravel12/config/logging.php \
-    docker/skeleton/laravel12/config/queue.php \
-    docker/skeleton/laravel12/config/session.php \
-    /skeleton/
+COPY --from=repo docker/skeleton/laravel12/config/ /skeleton/
 
 # Стадия 3: сборка production-зависимостей в чистом окружении.
 # Вынесено в отдельную стадию по двум причинам:
