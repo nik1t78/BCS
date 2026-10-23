@@ -22,7 +22,11 @@
 #      корректно для Laravel). Меняйте только вместе с тестовой сборкой.
 # =============================================================================
 
-FROM composer:2 AS composer-stage
+# multi-job: один и тот же базис, но с расширением pdo_mysql (он в официальном
+# образце НЕ собран — проверено по build-history Docker Hub 23.10.2026).
+# Исходники PHP для компиляции скачивает САМ docker-php-ext-install из tarball
+# /usr/src/php.tar.xz (в этом теге он есть; PHP_SOURCE_ORIGIN='docker-library').
+FROM --platform=$BUILDPLATFORM composer:2 AS composer-stage
 
 FROM php:8.4-fpm-alpine3.21 AS runtime
 
@@ -31,6 +35,13 @@ ENV TZ=Europe/Moscow
 RUN apk add --no-cache unzip git tzdata \
  && cp -f /usr/share/zoneinfo/Europe/Moscow /etc/localtime \
  && echo Europe/Moscow > /etc/timezone
+
+#pdo_mysql: единственный модуль, которого нет в базисе, но который требует mysql-коннект
+RUN set -eux; \
+    apk add --no-cache --virtual .build-deps $PHPIZE_DEPS; \
+    docker-php-ext-install -j"$(nproc)" pdo_mysql; \
+    php -m | grep -qix pdo_mysql; \
+    apk del .build-deps
 
 WORKDIR /var/www/html
 
