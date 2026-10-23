@@ -43,16 +43,27 @@ RUN apk add --no-cache unzip mariadb-client tzdata \
 #   * Проверяем результат ТОЛЬКО штатным способом: php -m сразу после установки.
 #     Никаких проверок до/после apk del и т.п. самодеятельности.
 # =============================================================================
+#   * КРИТИЧНО: docker-php-ext-install/pecl могут собирать ТОЛЬКО расширения,
+#     отсутствующие в образе (php -m). Если по ошибке попросить собрать то, что
+#     уже вкомпилировано статически (например json в PHP 8.5), make падает со
+#     странным "cp: can't stat 'modules/*'". Поэтому список сборки минимальный
+#     и вычисляется прямо при сборке из вывода php -m.
 RUN set -eux; \
     test -f /usr/src/php.tar.xz \
       || { echo "!!! В базовом образе нет /usr/src/php.tar.xz — расширений не собрать"; exit 1; }; \
     apk add --no-cache libzip-dev icu-dev; \
-    docker-php-ext-install -j"$(nproc)" bcmath intl pdo_mysql zip; \
-    pecl install redis; \
-    docker-php-ext-enable redis; \
+    TO_BUILD=""; \
+    for e in bcmath intl pdo_mysql zip; do \
+        php -m | grep -qix "$e" || TO_BUILD="$TO_BUILD $e"; \
+    done; \
+    if [ -n "$TO_BUILD" ]; then docker-php-ext-install -j"$(nproc)" $TO_BUILD; fi; \
+    php -m | grep -qix redis || { pecl install redis && docker-php-ext-enable redis; }; \
     php -m; \
-    for e in bcmath ctype curl dom fileinfo intl json mbstring openssl \
-             PDO pdo_mysql redis session SimpleXML tokenizer xml zip; do \
+    for e in ctype curl dom fileinfo json mbstring openssl \
+             PDO session SimpleXML tokenizer xml; do \
+        php -m | grep -qix "$e" || { echo "!!! базовое расширение '$e' отсутствует в образе — смените базис"; exit 1; }; \
+    done; \
+    for e in bcmath intl pdo_mysql zip redis; do \
         php -m | grep -qix "$e" || { echo "!!! расширение '$e' НЕ установлено"; exit 1; }; \
     done
 
