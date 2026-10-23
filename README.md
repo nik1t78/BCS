@@ -177,7 +177,7 @@ php artisan migrate                    # применить миграции (в
 есть готовый скрипт:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\fix-env.ps1   # чинит .env (UTF-8 + LF), делает бэкап
+# (скрипт fix-env удалён из репо) чините .env вручную: UTF-8 без BOM, окончания строк LF
 ```
 
 На будущее — не используйте `>>` и `Add-Content` для `.env`. Безопасные способы:
@@ -257,8 +257,8 @@ docker compose up -d backend   # пересоздаст laravel.log от име�
 Пересборки образов копят старые слои и кеш builder. Раз в неделю (или cron) запускайте:
 
 ```bash
-./scripts/docker-prune.sh   # мягкая чистка: stopped-контейнеры, <none>-образы, сети, кеш builder (остаток ≤2 ГБ)
-./scripts/docker-lean.sh    # полная «похуделка»: дополнительно удаляет ВСЕ неиспользуемые образы
+docker system prune -f   # мягкая чистка: stopped-контейнеры, <none>-образы, сети, кеш builder
+docker system prune -a --volumes   # полная «похуделка»: все неиспользуемые образы (+тома — осторожно!)
                             # (включая тяжёлый chromium из vks-bot), весь кеш сборки и контейнер бота.
                             # Данные MySQL (bind-монтирование) и volume frontend_build НЕ трогаются.
 ```
@@ -267,7 +267,7 @@ docker compose up -d backend   # пересоздаст laravel.log от име�
 рабочие образы nginx/php-fpm/mysql/redis. Значения «Disk: 24 GB» в панели — это накопленные слои старых
 пересборок и образ Chromium; скрипт убирает их за один запуск.
 
-Пример cron (Linux): `0 4 * * 0 cd /opt/BCS-main && ./scripts/docker-lean.sh >> /var/log/vks-prune.log 2>&1`
+Пример cron (Linux): `0 4 * * 0 cd /opt/BCS-main && docker system prune -f >> /var/log/vks-prune.log 2>&1`
 Windows (планировщик задач): действие `powershell -Command "docker system prune -f"` раз в неделю.
 
 Жёсткие лимиты под конкретный сервер можно переопределить без правки основного файла:

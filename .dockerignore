@@ -1,10 +1,4 @@
-# =============================================================================
-# Контекст сборки = ВЕСЬ репозиторий (docker-compose.yml: context: .).
-# Применяется и к frontend-образу (корневой Dockerfile), и к backend-образу
-# (backend/Dockerfile) — поэтому НЕ исключаем ни src/, ни backend/, ни docker/.
-# =============================================================================
-
-# Гигантские/локальные артефакты — никогда не отправляем на демон
+# Контекст сборки = весь репозиторий (frontend: Dockerfile, backend: backend/Dockerfile).
 node_modules
 **/node_modules
 dist
@@ -17,28 +11,20 @@ docker/mysql/data
 *.tar.gz
 *.tgz
 *.zip
-
-# Laravel: vendor собирается внутри образа (composer install), локальный не нужен
 backend/vendor
 
-# Локальные секреты и окружение (в образы попадают только явные примеры)
+# Секреты: в образы попадают только примеры
 .env
 .env.*
 !.env.example
 !.env.production
-!.env.production.local
 !.env.dev.example
 
-# Сборочные скрипты, которым не место внутри образов
-deploy
-scripts
+# Локальные скрипты не нужны внутри образов
+deploy.sh
 setup-project.sh
 start.sh
-deploy.sh
-
-# vks-bot собирается отдельным контекстом (./vks-bot) — в общем не нужен
-vks-bot
-
-# Прочее
-*.md
-*.patch
+fix-env.ps1
+fix-env.sh
+scripts/
+vks-bot/

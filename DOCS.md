@@ -113,11 +113,11 @@ Nginx слушает порт **80** на `0.0.0.0` — сайт доступе�
 
 ```powershell
 cd D:\server\BCS
-powershell -ExecutionPolicy Bypass -File .\setup-project.ps1
+cp .env.example .env; copy backend\.env.example backend\.env  # затем key:generate см. ниже
 docker compose up -d --build
 ```
 
-Linux/macOS/WSL — то же самое скриптом `bash ./setup-project.sh`.
+Linux/macOS/WSL — те же команды в bash.
 
 Проверьте, что в `backend/` есть `composer.json`, `composer.lock`, `artisan`,
 `bootstrap/app.php`, а также файлы `docker/skeleton/laravel12/**` — без них скрипт
@@ -152,7 +152,7 @@ openssl rand -hex 16   # → REDIS_PASSWORD
 docker compose run --rm backend php artisan key:generate --show
 # → скопировать вывод (base64:...) в APP_KEY=... в .env И в backend/.env
 # Windows PowerShell: Copy-Item .env.example .env; Get-Content .env
-# Проще: запустить setup-project.ps1 / setup-project.sh — он сделает это сам.
+# Проще: выполнить команды выше вручную — они тривиальны.
 
 # 3. Собрать и запустить всё (frontend, backend, nginx, mysql, redis, queue, scheduler)
 docker compose up -d --build
@@ -471,7 +471,7 @@ Remove-Item -Force -Recurse backend\public\storage -ErrorAction SilentlyContinue
 docker compose down
 
 # 4. Настройка проекта (конфиги Laravel, .env, APP_KEY):
-powershell -ExecutionPolicy Bypass -File .\setup-project.ps1
+cp .env.example .env; copy backend\.env.example backend\.env  # затем key:generate см. ниже
 
 # 5. Сборка и запуск всех сервисов:
 docker compose up -d --build
@@ -528,7 +528,7 @@ docker compose exec backend php artisan migrate --force
 После `git pull` повторите `docker compose build` (образы содержат старые миграции)
 или используйте `docker compose up -d --build`.
 
-### PowerShell: «NativeCommandError» при запуске setup-project.ps1
+### PowerShell: «NativeCommandError» при запуске docker
 
 Старая версия скрипта прерывалась, когда docker писал в stderr (`redis Pulling`,
 `Container ... Running`). Это НЕ ошибка проекта — обновите скрипт (`git pull`) и
@@ -717,7 +717,7 @@ curl -I http://localhost/        # должно быть 200
 | `Connection refused (Host: mysql)` | контейнер mysql ещё не поднялся | подождите 20–40 с, проверьте `docker compose ps`, при `Restarting` — `docker compose logs mysql` |
 | `vks-queue` в статусе Restarting | следствие ошибок БД/redis выше | после исправления паролей: `docker compose restart queue scheduler` |
 | composer `curl error 28 ... Connection timed out` | нет `backend/composer.lock` | убедитесь, что lock в репозитории; иначе `cd backend && composer update --lock` и закоммитьте |
-| PowerShell: `docker : redis Pulling ... NativeCommandError` | stderr Docker при `ErrorActionPreference=Stop` | обновите `setup-project.ps1` (`git pull`) — исправлено |
+| PowerShell: `docker : redis Pulling ... NativeCommandError` | stderr Docker при `ErrorActionPreference=Stop` | запускайте docker вне `$ErrorActionPreference='Stop'` сессий |
 | `/api/auth/login` → **502 Bad Gateway** | nginx не смог получить ответ от php-fpm (backend): контейнер ещё стартовал, упал из-за недоступного redis/mysql или завис на медленном запросе | 1) `docker compose ps` — backend должен быть `Up (healthy)`; 2) `docker compose logs backend --tail=30`; 3) `docker compose restart backend nginx`; 4) проверьте пароли redis/mysql в `.env`. В docker-compose добавлены явные `SESSION_DRIVER/CACHE_STORE/QUEUE_CONNECTION` и healthcheck backend. |
 | `/api/auth/login` → **429 Too Many Requests** | сработал rate-limiter `throttle:login` (слишком много попыток) | подождите 60 секунд или `docker compose exec backend php artisan cache:clear` |
 
@@ -747,7 +747,7 @@ sudo usermod -aG docker $USER && newgrp docker
 
 ```bash
 git clone https://github.com/nik1t78/BCS.git vks && cd vks
-bash ./setup-project.sh                # каркас Laravel + .env + APP_KEY
+cp .env.example .env && cp backend/.env.example backend/.env   # затем docker compose up -d --build
 docker compose up -d --build
 docker compose exec backend php artisan migrate --force
 # вложения отдаются nginx напрямую из storage/app/public (storage:link не обязателен)
@@ -803,9 +803,7 @@ BCS/
 ├── docker-compose.yml       # nginx, php-fpm, mysql, redis, queue, scheduler, frontend-build, vks-bot
 │                            # (все сервисы с лимитами RAM/CPU; см. README «Оптимизация Docker»)
 ├── docker-compose.override.example.yml  # шаблон жёстких лимитов под конкретный сервер
-├── scripts/docker-prune.sh  # еженедельная чистка старых образов/кеша builder
 ├── vks-bot/                 # Python+Selenium бот автосоздания ссылок salutejazz.ru
-├── setup-project.ps1|.sh    # подготовка каркаса Laravel + .env + APP_KEY
 ├── .github/workflows/ci.yml # CI: lint → format → typecheck → build (+ backend tests)
 └── DOCS.md                  # эта документация
 ```
@@ -818,7 +816,7 @@ BCS/
 истины — MySQL), PHP-FPM — динамический пул до 6 детей по 128M, одноразовый
 frontend-builder освобождает RAM сразу после сборки. Суммарный потолок ≈ 2.4 ГБ.
 
-Раз в неделю выполняйте `./scripts/docker-prune.sh` (или cron-задачу) — он
+Раз в неделю выполняйте `docker system prune -f` — он
 удаляет stopped-контейнеры, `<none>`-образы, неиспользуемые сети и кеш
 builder сверх 2 ГБ. Данные MySQL (bind `./docker/mysql/data`) скрипт не трогает.
 Индивидуальные лимиты — через `docker-compose.override.yml` (шаблон:
