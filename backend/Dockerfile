@@ -47,11 +47,14 @@ RUN apk add --no-cache git unzip mariadb-client tzdata \
 # --- защиты от «свежего» базового образа ------------------------------------
 # Если кто-то заменит FROM на moving-тег и /usr/src/php снова исчезнет —
 # падение здесь с ПОНЯТНЫМ сообщением, а не через 3 минуты на странных ошибках.
+# Если /usr/src/php нет (образы alpine3.23+ идут без дерева исходников, но с
+# /usr/src/php.tar.xz) — распаковываем его штатным скриптом образа.
 RUN set -eux; \
-    [ -f /usr/src/php/.docker-source.sha256 ] \
-      || { echo "!!! В базовом образе НЕТ полных исходников PHP (/usr/src/php)."; \
-           echo "!!! docker-php-ext-install работать не будет — закрепите базис по digest (см. комментарий выше)."; \
-           exit 1; }
+    if [ ! -d /usr/src/php/ext/tokenizer ]; then \
+        if [ -f /usr/src/php.tar.xz ]; then docker-php-source extract; \
+        else echo "!!! В базовом образе нет ни /usr/src/php, ни php.tar.xz — закрепите рабочий digest базиса."; exit 1; fi; \
+    fi; \
+    test -f /usr/src/php/ext/tokenizer/config.m4
 
 # --- расширения PHP ----------------------------------------------------------
 # iconv НЕ собираем: в php:8.4-fpm-alpine он уже встроен в ядро PHP.
