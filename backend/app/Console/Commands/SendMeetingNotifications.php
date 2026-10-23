@@ -25,8 +25,12 @@ class SendMeetingNotifications extends Command
         $notificationsSent = 0;
 
         foreach ($meetings as $meeting) {
-            // Проверка начала конференции
-            $startTime = Carbon::parse($meeting->date . ' ' . $meeting->start_time);
+            // Проверка начала конференции.
+            // $meeting->date приведён к 'date'-касту (Carbon), а start_time — TIME-колонка,
+            // которую MySQL отдаёт строкой 'H:i:s'. Конкатенация "Carbon . string" даёт
+            // "2026-10-23 00:00:00 10:00:00" -> DateMalformedStringException (Double time
+            // specification). Поэтому дату берём явно через toDateString().
+            $startTime = Carbon::parse($meeting->date->toDateString() . ' ' . $meeting->start_time);
             
             if ($now->between($startTime->copy()->subMinutes(5), $startTime->copy()->addMinutes(5))) {
                 // Уведомление о начале конференции
