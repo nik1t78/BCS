@@ -14,6 +14,11 @@
 #   => Расширения берём НЕ компиляцией, а ГОТОВЫМИ .so из Alpine-репозитория
 #      (pkgs.org проверено): php85-* для 8.5, php84-* для 8.4. Никакой
 #      компиляции, никаких PHPIZE_DEPS, pecl-сборки C-модулей.
+#   * ВНИМАНИЕ (проверено на реальном выводе php -m пользователя): в этом
+#      базисе НЕТ curl / mbstring / pdo_mysql / zip / sodium — все они
+#      добираются готовыми пакетами phpXX-* из Alpine-репо; intl/gd/iconv не
+#      ставятся вообще: код проекта их не использует (проверено grep-ом), а
+#      Laravel/composer покрывают себя polyfill-пакетами из composer.lock.
 #   * composer.lock проекта требует laravel/framework ^12 при php >=8.4 —
 #      и 8.4, и 8.5 совместимы. Хостовый PHP 8.5.9 с Docker не связан.
 #
@@ -41,8 +46,13 @@ RUN apk add --no-cache unzip mariadb-client tzdata \
 RUN set -eux; \
     MAJ=$(php -r 'echo PHP_MAJOR_VERSION*10+PHP_MINOR_VERSION;'); \
     EXTDIR=$(php -i | sed -n 's/^extension_dir => //p' | tail -1); \
-    apk add --no-cache "php${MAJ}-bcmath" "php${MAJ}-intl"; \
-    for e in bcmath intl; do \
+    # готовые .so из Alpine-репо: добираем ВСЁ, чего нет в базисе
+    # (по реальному php -m отсутствует curl, mbstring, pdo_mysql, zip, sodium;
+    #  iconv/intl кодом проекта не используются (проверено grep-ом)).
+    apk add --no-cache "php${MAJ}-bcmath" "php${MAJ}-curl" \
+        "php${MAJ}-mbstring" "php${MAJ}-mysqlnd" "php${MAJ}-pdo_mysql" \
+        "php${MAJ}-sodium" "php${MAJ}-zip"; \
+    for e in bcmath curl mbstring pdo_mysql sodium zip; do \
         found=""; \
         for cand in "$EXTDIR/$e.so" /usr/lib/php"$MAJ"/"$e.so" "$(find /usr/lib -name "$e.so" 2>/dev/null | head -1)"; do \
             [ -n "$cand" ] && [ -f "$cand" ] && found="$cand" && break; \
@@ -53,14 +63,14 @@ RUN set -eux; \
     pecl install redis >/dev/null; \
     docker-php-ext-enable redis; \
     php -m; \
-    # критичные модули, которые ОБЯЗАНЫ быть в базовом образе статически:
-    for e in ctype curl date dom fileinfo filter hash json libxml mbstring \
-             openssl pcre PDO pdo_mysql random session SimpleXML sodium SPL \
-             tokenizer xml xmlreader xmlwriter zlib; do \
+    # то, что ОБЯЗАНО быть в базовом образе статически:
+    for e in ctype date dom fileinfo filter hash json libxml openssl pcre \
+             PDO random session SimpleXML SPL tokenizer xml xmlreader \
+             xmlwriter zlib; do \
         php -m | grep -qix "$e" || { echo "!!! базовое расширение '$e' отсутствует — смените базис"; exit 1; }; \
     done; \
     # то, что добавили пакетами/pecl:
-    for e in bcmath intl redis; do \
+    for e in bcmath curl mbstring pdo_mysql redis sodium zip; do \
         php -m | grep -qix "$e" || { echo "!!! расширение '$e' НЕ подключилось (php${MAJ}-$e)"; exit 1; }; \
     done; \
     test -f "$EXTDIR/redis.so" || { echo "!!! redis.so нет в $EXTDIR"; exit 1; }
