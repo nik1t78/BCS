@@ -14,7 +14,10 @@
 
 FROM composer:2 AS composer-stage
 
-FROM php:8.5-fpm-alpine AS runtime
+# Базис закреплен digest'ом (сверен с Docker Hub API 2026-10-23): этот образ
+# точно существует и содержит полные исходники PHP в /usr/src/php.tar.xz —
+# docker-php-ext-install сам их распакует. Тег: php:8.5-fpm-alpine.
+FROM php:8.5-fpm-alpine@sha256:e2ca465c4e914602d632e12a968263333355b4d1b26bf66d0994cb2ae5039d21 AS runtime
 
 # Часовой пояс + утилиты (mysql-клиент нужен для healthcheck/artisan)
 RUN apk add --no-cache unzip mariadb-client tzdata \
