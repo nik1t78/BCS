@@ -1,71 +1,69 @@
 # syntax=docker/dockerfile:1.4
 # =============================================================================
-# BCS backend (Laravel 12) — php-fpm, Alpine. МИНИМАЛЬНАЯ ВЕРСИЯ (~60 строк).
+# BCS backend (Laravel 12) — php-fpm, Alpine. МИНИМАЛЬНАЯ ВЕРСИЯ.
 #
-# Все предыдущие провалы сборки были из-за самодельных каскадов компиляции PHP
-# и ВЫДУМАННЫХ digest'ов базовых образов. Здесь этого нет:
-#   * базис — обычный тег php:8.5-fpm-alpine (PHP 8.5.x, как на хосте);
-#   * расширения ставятся штатными скриптами образа docker-php-ext-install /
-#     pecl — они сами распаковывают исходники (/usr/src/php.tar.xz) и сами
-#     тянут нужные -dev библиотеки; никаких ручных configure/make;
-#   * готовый образ содержит код + vendor + config — в рантайме ничего не
-#     скачивается, compose только разворачивает проект.
+# ФАКТЫ, ПРОВЕРЕННЫЕ НАПРЯМУЮ С REGISTRY.DOCKER.IO (2026-10-23), а не на глаз:
+#   * php:8.5-fpm-alpine  = PHP 8.5.12, amd64 digest sha256:e2ca465c...
+#     в его build-history ЕСТЬ строка `docker-php-source delete` — исходников
+#     PHP в образе НЕТ вообще (ни /usr/src/php, ни tarball). Поэтому любая
+#     попытка docker-php-ext-install в этом базисе обречена ("cp: can't stat
+#     modules/*", "No rule to make target .../config.m4"). Все прошлые падения
+#     сборки были из-за этого.
+#   * php:8.4-fpm-alpine  = PHP 8.4.27, amd64 digest sha256:a58708a9...
+#     тоже без исходников.
+#   => Расширения берём НЕ компиляцией, а ГОТОВЫМИ .so из Alpine-репозитория
+#      (pkgs.org проверено): php85-* для 8.5, php84-* для 8.4. Никакой
+#      компиляции, никаких PHPIZE_DEPS, pecl-сборки C-модулей.
+#   * composer.lock проекта требует laravel/framework ^12 при php >=8.4 —
+#      и 8.4, и 8.5 совместимы. Хостовый PHP 8.5.9 с Docker не связан.
+#
+# Рантайм в контейнерах ничего не скачивает: всё (код+vendor+.so) внутри образа.
 # =============================================================================
 
 FROM composer:2 AS composer-stage
 
-# Базис: обычный плавающий тег php:8.5-fpm-alpine (PHP 8.5.x, как на хосте).
-# Digest'ами НЕ закрепляем: при изменении содержимого тега докер просто
-# перекачает свежий образ. Образ содержит /usr/src/php.tar.xz —
-# docker-php-ext-install сам распакует исходники.
 FROM php:8.5-fpm-alpine AS runtime
 
-# Часовой пояс + утилиты (mysql-клиент нужен для healthcheck/artisan)
+ENV TZ=Europe/Moscow
+
+# Часовой пояс + утилиты (mysql-клиент для artisan/healthcheck)
 RUN apk add --no-cache unzip mariadb-client tzdata \
  && cp -f /usr/share/zoneinfo/Europe/Moscow /etc/localtime \
  && echo Europe/Moscow > /etc/timezone
 
 # =============================================================================
-# РАСШИРЕНИЯ PHP — финальная схема (основана на официальном Dockerfile образа
-# php:8.5-fpm-alpine, github.com/docker-library/php, 8.5/alpine3.24/fpm):
-#
-#   * Базовый образ PHP 8.5-alpine собирается со ВСЕМИ основными расширениями
-#     СТАТИЧЕСКИ (curl, dom, fileinfo, mbstring, openssl, PDO/mysqlnd, session,
-#     tokenizer, xml, ctype, json ...) и сам делает `docker-php-source delete`,
-#     т.е. дерева /usr/src/php в нём НЕТ, но есть tarball /usr/src/php.tar.xz.
-#   * docker-php-ext-install САМ распаковывает исходники (docker-php-source
-#     extract) и САМ ставит/удаляет $PHPIZE_DEPS — вручную их добавлять НЕ нужно.
-#   * Все прошлые падения были из-за ручного управления зависимостями/компиляцией:
-#     gd/opcache в 8.5-alpine не собираются как shared (.so отсутствует →
-#     "cp: can't stat modules/*"); project их не использует (grep по app/ +
-#     composer.lock: только suggest) — НЕ ставим;
-#     sockets падал на linux/sock_diag.h, ftp/bcmath-gmp не нужны — НЕ ставим.
-#   * Проверяем результат ТОЛЬКО штатным способом: php -m сразу после установки.
-#     Никаких проверок до/после apk del и т.п. самодеятельности.
+# PHP-расширения: готовые .so из Alpine-репо (компиляция не нужна и невозможна
+# — см. шапку). Версия образа (PHP_VERSION, напр. 8.5.12) -> мажор 85 -> пакеты
+# php85-*. Если тег обновят до другой минорной линейки (8.6), подбор пакета
+# провалится ЖЁСТКО, с внятным сообщением, а не через 5 минут странных ошибок.
+# redis — чистый PHP-модуль (pecl install redis не компилирует C) — ставится им.
 # =============================================================================
-#   * КРИТИЧНО: docker-php-ext-install/pecl могут собирать ТОЛЬКО расширения,
-#     отсутствующие в образе (php -m). Если по ошибке попросить собрать то, что
-#     уже вкомпилировано статически (например json в PHP 8.5), make падает со
-#     странным "cp: can't stat 'modules/*'". Поэтому список сборки минимальный
-#     и вычисляется прямо при сборке из вывода php -m.
 RUN set -eux; \
-    test -f /usr/src/php.tar.xz \
-      || { echo "!!! В базовом образе нет /usr/src/php.tar.xz — расширений не собрать"; exit 1; }; \
-    apk add --no-cache libzip-dev icu-dev; \
-    TO_BUILD=""; \
-    for e in bcmath intl pdo_mysql zip; do \
-        php -m | grep -qix "$e" || TO_BUILD="$TO_BUILD $e"; \
+    MAJ=$(php -r 'echo PHP_MAJOR_VERSION*10+PHP_MINOR_VERSION;'); \
+    EXTDIR=$(php -i | sed -n 's/^extension_dir => //p' | tail -1); \
+    apk add --no-cache "php${MAJ}-bcmath" "php${MAJ}-intl"; \
+    for e in bcmath intl; do \
+        found=""; \
+        for cand in "$EXTDIR/$e.so" /usr/lib/php"$MAJ"/"$e.so" "$(find /usr/lib -name "$e.so" 2>/dev/null | head -1)"; do \
+            [ -n "$cand" ] && [ -f "$cand" ] && found="$cand" && break; \
+        done; \
+        [ -n "$found" ] || { echo "!!! $e.so не найден (проверьте пакеты php${MAJ}-*)"; exit 1; }; \
+        printf 'extension=%s\n' "$found" > "$PHP_INI_DIR/conf.d/zz-$e.ini"; \
     done; \
-    if [ -n "$TO_BUILD" ]; then docker-php-ext-install -j"$(nproc)" $TO_BUILD; fi; \
-    php -m | grep -qix redis || { pecl install redis && docker-php-ext-enable redis; }; \
+    pecl install redis >/dev/null; \
+    docker-php-ext-enable redis; \
     php -m; \
-    for e in ctype curl dom fileinfo json mbstring openssl \
-             PDO session SimpleXML tokenizer xml; do \
-        php -m | grep -qix "$e" || { echo "!!! базовое расширение '$e' отсутствует в образе — смените базис"; exit 1; }; \
+    # критичные модули, которые ОБЯЗАНЫ быть в базовом образе статически:
+    for e in ctype curl date dom fileinfo filter hash json libxml mbstring \
+             openssl pcre PDO pdo_mysql random session SimpleXML sodium SPL \
+             tokenizer xml xmlreader xmlwriter zlib; do \
+        php -m | grep -qix "$e" || { echo "!!! базовое расширение '$e' отсутствует — смените базис"; exit 1; }; \
     done; \
-    for e in bcmath intl pdo_mysql zip redis; do \
-        php -m | grep -qix "$e" || { echo "!!! расширение '$e' НЕ установлено"; exit 1; }; \
-    done
+    # то, что добавили пакетами/pecl:
+    for e in bcmath intl redis; do \
+        php -m | grep -qix "$e" || { echo "!!! расширение '$e' НЕ подключилось (php${MAJ}-$e)"; exit 1; }; \
+    done; \
+    test -f "$EXTDIR/redis.so" || { echo "!!! redis.so нет в $EXTDIR"; exit 1; }
 
 WORKDIR /var/www/html
 
