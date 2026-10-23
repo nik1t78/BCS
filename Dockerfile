@@ -1,4 +1,4 @@
-FROM node:20-alpine@sha256:afdf98210b07b586eb71fa22ba2e432e058e4cd1304d31ed60888755b8c865fb AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -25,6 +25,6 @@ ENV VITE_VKS_BOT_TOKEN=$VITE_VKS_BOT_TOKEN
 RUN npm run build
 
 # Финальный крошечный образ-экспортёр (alpine, без node)
-FROM alpine:3.20@sha256:c64c687cbea9300178b30c95835354e34c4e4febc4badfe27102879de0483b5e
+FROM alpine:3.20
 COPY --from=builder /app/dist/ /export/
 CMD ["sh", "-c", "cp -a /export/. /mnt/dist/ && echo frontend_build populated"]

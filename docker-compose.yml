@@ -103,7 +103,7 @@ services:
   # Nginx: точка входа (порт 80), раздаёт фронт + static Laravel, фаст-cgi на backend
   nginx:
     <<: *container-defaults
-    image: nginx:alpine@sha256:2db7d28517d1fba17c2da3210395f7be11a11b419246ad0da2edf782af72f367
+    image: nginx:alpine
     container_name: vks-nginx
     restart: unless-stopped
     ports:
@@ -148,7 +148,7 @@ services:
   # MySQL (данные — в ./docker/mysql/data, переживают down/пересборки)
   mysql:
     <<: *container-defaults
-    image: mysql:8.0@sha256:62fb722c78b24245ddff1796a0fcee4a49cc5b87e0aaaf20c92d1da9e0a2497b
+    image: mysql:8.0
     container_name: vks-mysql
     restart: unless-stopped
     shm_size: 64mb
@@ -182,7 +182,7 @@ services:
   # Redis (кэш/очереди/сессии; доступ только из внутренней сети)
   redis:
     <<: *container-defaults
-    image: redis:alpine@sha256:16b124a2d3eacd620d917ead6fd26cbf1f1d7117fa94122398971931cfe2d403
+    image: redis:alpine
     container_name: vks-redis
     restart: unless-stopped
     command: >-

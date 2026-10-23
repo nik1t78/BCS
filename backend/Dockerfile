@@ -12,28 +12,34 @@
 #     скачивается, compose только разворачивает проект.
 # =============================================================================
 
-# digest сверен с Docker Hub API 2026-10-23 (тег composer:2, amd64)
-FROM composer:2@sha256:66c00f4ea1c6a01364d75460bb2837886388e1d5b2b1b6e0f22c8788eb4e73ad AS composer-stage
+FROM composer:2 AS composer-stage
 
-# Базис закреплен digest'ом (сверен с Docker Hub API 2026-10-23): этот образ
-# точно существует и содержит полные исходники PHP в /usr/src/php.tar.xz —
-# docker-php-ext-install сам их распакует. Тег: php:8.5-fpm-alpine.
-FROM php:8.5-fpm-alpine@sha256:e2ca465c4e914602d632e12a968263333355b4d1b26bf66d0994cb2ae5039d21 AS runtime
+# Базис: обычный плавающий тег php:8.5-fpm-alpine (PHP 8.5.x, как на хосте).
+# Digest'ами НЕ закрепляем: при изменении содержимого тега докер просто
+# перекачает свежий образ. Образ содержит /usr/src/php.tar.xz —
+# docker-php-ext-install сам распакует исходники.
+FROM php:8.5-fpm-alpine AS runtime
 
 # Часовой пояс + утилиты (mysql-клиент нужен для healthcheck/artisan)
 RUN apk add --no-cache unzip mariadb-client tzdata \
  && cp -f /usr/share/zoneinfo/Europe/Moscow /etc/localtime \
  && echo Europe/Moscow > /etc/timezone
 
-# Расширения PHP. Компиляция — в одном слое, затем .build-deps удаляются.
+# Расширения PHP. ТОЛЬКО то, чего нет в базовом образе (базис уже несёт
+# ctype curl dom fileinfo json mbstring openssl PDO phar session tokenizer
+# xml xmlreader xmlwriter). Компиляция — в одном слое, .build-deps удаляются.
+# ext-sockets и ext-ftp УДАЛЕНЫ из сборки: проект их не использует
+# (require-only в composer.json нет), а компиляция sockets падала на
+# linux/sock_diag.h. Если когда-нибудь понадобится raw-сокет — там же
+# доступен встроенный stream_socket_client() без всякого расширения.
 RUN set -eux; \
     apk add --no-cache --virtual .build-deps $PHPIZE_DEPS libzip-dev icu-dev \
-        libpng-dev libjpeg-turbo-dev freetype-dev oniguruma-dev linux-headers; \
+        libpng-dev libjpeg-turbo-dev freetype-dev oniguruma-dev; \
     docker-php-ext-configure gd --with-freetype --with-jpeg; \
     docker-php-ext-install -j"$(nproc)" \
-        bcmath exif fileinfo ftp gd intl pdo_mysql pcntl sockets zip; \
+        bcmath exif fileinfo gd intl opcache pcntl pdo_mysql zip; \
     pecl install redis; \
-    docker-php-ext-enable opcache redis; \
+    docker-php-ext-enable redis; \
     apk del .build-deps; \
     # самопроверка: критичные модули на месте (иначе сборка падает здесь, а
     # не через полчаса на невнятном exit 1)
