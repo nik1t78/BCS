@@ -109,20 +109,35 @@ FROM symfony/php8.4-cli-alpine AS base
 # ext-iconv/intl падает с "'_libiconv_version' undeclared". Здесь их и нет.
 RUN set -eux; \
     apk add --no-cache git unzip tzdata mariadb-client; \
-    # Определяем apk-серию пакетов PHP (php83/php84...): сначала по списку
-    # доступных пакетов, затем по каталогу /etc/phpNN (на случай, если образ
-    # собран без /etc/apk/available). Берём СТАРШУЮ серию — она совпадает с
-    # интерпретатором базиса Symfony.
-    PV="$(php -r 'echo PHP_MAJOR_VERSION.PHP_MINOR_VERSION;')"; \
-    SERIES=""; for s in "$PV" 84 83; do if ls /etc/apk/available/ 2>/dev/null | grep -qx "php$s" || [ -d "/etc/php$s" ]; then SERIES="$s"; break; fi; done; \
-    if [ -z "$SERIES" ]; then S2="$(ls -d /etc/php[0-9][0-9] 2>/dev/null | sed 's|/etc/php||' | sort -r | head -1)"; [ -n "$S2" ] && SERIES="$S2"; fi; \
-    test -n "$SERIES" || { echo "ERROR: в репозитории базиса нет apk-серии php* (php83/php84) — проверьте FROM base"; exit 1; }; \
-    echo ">>> Серия apk-пакетов PHP: php$SERIES"; \
-    EXT_PKGS=""; for e in bcmath ctype curl dom exif fileinfo ftp gd intl mbstring opcache openssl pcntl pdo pdo_mysql session simplexml sodium tokenizer xml xmlreader xmlwriter zip; do if ls /etc/apk/available/ 2>/dev/null | grep -qx "php$SERIES-$e"; then EXT_PKGS="$EXT_PKGS php$SERIES-$e"; else echo "APK: пакета php$SERIES-$e нет — полагаемся на встроенный в базис модуль"; fi; done; \
-    apk add --no-cache "php$SERIES" "php$SERIES-dev" "php$SERIES-fpm" $EXT_PKGS; \
     cp -f /usr/share/zoneinfo/Europe/Moscow /etc/localtime; \
     echo Europe/Moscow > /etc/timezone; \
-    command -v php-fpm >/dev/null 2>&1 || { F="$(find /usr/sbin /usr/bin -name 'php-fpm*' 2>/dev/null | head -1)"; test -n "$F" || { echo "ERROR: php-fpm не найден после установки php$SERIES-fpm"; exit 1; }; ln -sf "$F" /usr/local/bin/php-fpm; }; \
+    # Определяем РЕАЛЬНУЮ apk-серию пакетов PHP базиса: это та серия, чей meta-
+    # пакет установлен (в symfony/php8.4-cli-alpine это php85-*, т.к. в Alpine
+    # 3.22/edge PHP 8.4 собирается из пакетов php85). Перебираем каталоги
+    # /etc/phpNN и берём тот, где лежит php.conf работающего интерпретатора.
+    SERIES=""; \
+    for d in $(ls -d /etc/php[0-9][0-9] 2>/dev/null | sort -r); do S2="$(basename "$d" | sed 's/php//')"; if [ -f "/etc/php$S2/conf.d/php.conf" ] || ls /etc/apk/available/ 2>/dev/null | grep -qx "php$S2"; then SERIES="$S2"; break; fi; done; \
+    test -n "$SERIES" || { echo "ERROR: не определена apk-серия PHP базиса (каталога /etc/phpNN нет) — проверьте FROM base"; exit 1; }; \
+    echo ">>> Apk-серия PHP базиса: php$SERIES ($(php -v | head -1))"; \
+    # Совпадение ABI гарантируем ПРОВЕРКОЙ, а не угадыванием: после установки
+    # пакета расширяния должен грузиться текущим интерпретатором. Если не
+    # грузится (другая серия пакетов) — пакет снимаем и полагаемся на то, что
+    # модуль уже встроен в PHP базиса (в symfony/*-alpine он встроен).
+    EXT_PKGS_OK=""; \
+    for e in bcmath ctype curl dom exif fileinfo ftp gd intl mbstring opcache openssl pcntl pdo pdo_mysql session simplexml sodium tokenizer xml zip; do \
+        P="php$SERIES-$e"; \
+        if ls /etc/apk/available/ 2>/dev/null | grep -qx "$P"; then \
+            if apk add --no-cache "$P" >/dev/null 2>&1 && php -d extension="$e" -m >/dev/null 2>&1; then \
+                EXT_PKGS_OK="$EXT_PKGS_OK $P"; \
+            else \
+                echo "APK: $P не подошёл по ABI или не поставился — оставляю встроенный в базис модуль"; \
+                apk fix >/dev/null 2>&1 || true; \
+            fi; \
+        else echo "APK: пакета $P нет в репозитории — полагаемся на встроенный модуль"; fi; \
+    done; \
+    echo ">>> Пакеты расширений, подошедшие по ABI:$EXT_PKGS_OK"; \
+    apk add --no-cache "php$SERIES-dev" "php$SERIES-fpm"; \
+    command -v php-fpm >/dev/null 2>&1 || { F="$(find /usr/sbin /usr/bin -name "php-fpm*" 2>/dev/null | head -1)"; test -n "$F" || { echo "ERROR: php-fpm не найден после установки php$SERIES-fpm"; exit 1; }; ln -sf "$F" /usr/local/bin/php-fpm; }; \
     command -v php-fpm >/dev/null || { echo "ERROR: нет команды php-fpm"; exit 1; }; \
     php -v | head -1; \
     echo ">>> Базис готов: PHP + полный набор расширений, php-fpm на месте."
