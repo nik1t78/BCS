@@ -53,8 +53,11 @@ x-backend-env: &backend-env
   APP_ENV: "${APP_ENV:-production}"
   APP_DEBUG: "false"
   SESSION_DRIVER: cookie
-  CACHE_STORE: "${CACHE_STORE:-redis}"
-  QUEUE_CONNECTION: "${QUEUE_CONNECTION:-redis}"
+  # Redis-расширение в образ НЕ ставится (см. backend/Dockerfile):
+  # очереди — sync, кэш/сессии — файловые. Redis-контейнер оставлен на будущее:
+  # если когда-нибудь поставите phpredis, достаточно переключить эти значения.
+  CACHE_STORE: "file"
+  QUEUE_CONNECTION: "sync"
   MESSENGER: "${MESSENGER:-max}"
   MAX_ENABLED: "${MAX_ENABLED:-true}"
   MAX_API_URL: "${MAX_API_URL:-https://maxapi.ru/v1}"
@@ -90,8 +93,6 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
-      redis:
-        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "pidof php-fpm >/dev/null 2>&1 || exit 1"]
       interval: 30s
@@ -197,14 +198,12 @@ services:
     build: *backend-build
     container_name: vks-queue
     restart: unless-stopped
-    command: sh -c 'php artisan migrate --force || true; exec php artisan queue:work redis --sleep=3 --tries=3 --max-time=3600'
+    command: sh -c 'php artisan migrate --force || true; exec php artisan queue:work --sleep=3 --tries=3 --max-time=3600'
     volumes: *backend-volumes
     environment: *backend-env
     depends_on:
       mysql:
         condition: service_healthy
-      redis:
-        condition: service_started
     networks: [vks-network]
 
   # Laravel Scheduler
@@ -219,8 +218,6 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
-      redis:
-        condition: service_started
     networks: [vks-network]
 
   # Опциональный Selenium-бот ВКС (по умолчанию НЕ запускается):

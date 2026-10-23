@@ -29,25 +29,27 @@ RUN apk add --no-cache unzip mariadb-client tzdata \
  && echo Europe/Moscow > /etc/timezone
 
 # -----------------------------------------------------------------------------
-# Шаг 1. Готовые .so из Alpine + включение БЕЗ ручных ini.
+# Шаг 1. НИЧЕГО не доустанавливаем и НЕ компилируем.
+# Проект переведён на драйверы без Redis/bcmath:
+#   QUEUE_CONNECTION=sync, CACHE_STORE=file, SESSION_DRIVER=file,
+#   realtime-SSE деградирует в поллинг (SafeCache/RealtimeNotifier это умеют).
+# Требуемые composer.lock модули (ctype filter hash json mbstring openssl
+# pcre PDO session tokenizer xml ...) — все статически вкомпилированы в базис.
+# Проверяем их наличие один раз; при отсутствии любой из них сборка падает
+# сразу с именем модуля (значит базис изменился — тогда читаем комментарий
+# про php84-* пакеты выше и возвращаем нужную строку установки).
 # -----------------------------------------------------------------------------
 RUN set -eux; \
-    apk add --no-cache php84-bcmath php84-pecl-redis; \
-    EXTDIR=$(php -i | sed -n 's/^extension_dir => //p' | tail -1); \
-    for e in bcmath redis; do \
-        src=""; \
-        for cand in "/usr/lib/php84/${e}.so" "$(find /usr/lib -name "${e}.so" 2>/dev/null | head -1)"; do \
-            [ -n "$cand" ] && [ -f "$cand" ] && src="$cand" && break; \
-        done; \
-        [ -n "$src" ] || { echo "!!! ${e}.so не найден (пакеты php84-*)"; exit 1; }; \
-        cp "$src" "$EXTDIR/${e}.so"; \
-    done; \
-    docker-php-ext-enable bcmath redis; \
     php -m; \
-    for e in bcmath ctype curl dom fileinfo json libxml mbstring openssl \
-             PDO pdo_mysql session SimpleXML tokenizer xml zip redis; do \
-        php -m | grep -qix "$e" || { echo "!!! расширение '$e' отсутствует — проверьте базис"; exit 1; }; \
-    done
+    for e in ctype date dom fileinfo filter hash json libxml mbstring \
+             openssl PDO pcre Phar session SimpleXML SPL tokenizer uri \
+             xml xmlreader xmlwriter zlib Zend OPcache; do \
+        php -m | grep -qix "$e" || { echo "!!! базис: '$e' нет в php -m — смените базис"; exit 1; }; \
+    done; \
+    php -r 'exit(extension_loaded("curl")?0:1);'; \
+    php -r 'exit(extension_loaded("pdo_mysql")?0:1);'; \
+    php -r 'exit(extension_loaded("zip")?0:1);'; \
+    php -r 'exit(extension_loaded("mbstring")?0:1);'
 
 WORKDIR /var/www/html
 

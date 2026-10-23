@@ -20,10 +20,14 @@ class RealtimeNotifier
 {
     public const CHANNEL_PREFIX = 'vks:events:';
 
-    /** Доступен ли realtime-канал (redis включён в конфиге) */
+    /** Доступен ли realtime-канал: нужен phpredis + настроенный redis-коннект */
     public static function isEnabled(): bool
     {
-        return config('queue.default') === 'redis' && config('database.redis.client') !== null;
+        if (!extension_loaded('redis')) {
+            return false;
+        }
+        $cfg = config('database.redis.default');
+        return is_array($cfg) && !empty($cfg['host']);
     }
 
     /**
