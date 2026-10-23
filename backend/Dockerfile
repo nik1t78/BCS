@@ -30,12 +30,11 @@
 # Composer берём из официального образа — без COPY бинарников из контекста.
 FROM composer:2 AS composer-stage
 
-# БАЗИС ЗАКРЕПЛЁН ПО DIGEST. Это принципиально: floating-тег php:8.4-fpm-alpine
-# обновляется автоматически, и образы свежее ~2026-07 собраны на Alpine 3.23+,
-# где из них УДАЛЕНЫ исходники /usr/src/php — docker-php-ext-install на них
-# падает (например: "No rule to make target '/usr/src/php/ext/tokenizer/Zend/
-# zend_language_parser.y'"). Зафиксированный digest = всегда рабочая сборка
-# PHP 8.4.22 с полным деревом исходников в образе.
+# БАЗИС ЗАКРЕПЛЁН ПО DIGEST — он сверен напрямую с Docker Hub API (2026-10-23):
+# digest sha256:a49524d3... = текущий тег php:8.4-fpm-alpine (Alpine 3.24).
+# В новых образах docker-library дерево /usr/src/php может отсутствовать, но
+# tarball исходников (/usr/src/php.tar.xz) есть всегда — ниже он распаковывается
+# штатным docker-php-source extract, поэтому docker-php-ext-install работает.
 # Обновлять базис можно только вместе с проверкой расширений.
 FROM php:8.4-fpm-alpine@sha256:a49524d3cec4a77d1807d0878e5bb38146116ae5489ec60c367aee53bb9b0699 AS runtime
 
