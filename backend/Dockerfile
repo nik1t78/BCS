@@ -24,7 +24,7 @@ RUN apk add --no-cache unzip mariadb-client tzdata \
 # Расширения PHP. Компиляция — в одном слое, затем .build-deps удаляются.
 RUN set -eux; \
     apk add --no-cache --virtual .build-deps $PHPIZE_DEPS libzip-dev icu-dev \
-        libpng-dev libjpeg-turbo-dev freetype-dev oniguruma-dev; \
+        libpng-dev libjpeg-turbo-dev freetype-dev oniguruma-dev linux-headers; \
     docker-php-ext-configure gd --with-freetype --with-jpeg; \
     docker-php-ext-install -j"$(nproc)" \
         bcmath exif fileinfo ftp gd intl pdo_mysql pcntl sockets zip; \
