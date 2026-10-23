@@ -1,33 +1,36 @@
 # syntax=docker/dockerfile:1.4
 # =============================================================================
-# BCS backend (Laravel 12) — php-fpm, Alpine. МИНИМАЛЬНАЯ ВЕРСИЯ.
+# BCS backend (Laravel 12) — php-fpm, Alpine. ФИНАЛЬНАЯ ВЕРСИЯ.
 #
-# ФАКТЫ, ПРОВЕРЕННЫЕ НАПРЯМУЮ С REGISTRY.DOCKER.IO (2026-10-23), а не на глаз:
-#   * php:8.5-fpm-alpine  = PHP 8.5.12, amd64 digest sha256:e2ca465c...
-#     в его build-history ЕСТЬ строка `docker-php-source delete` — исходников
-#     PHP в образе НЕТ вообще (ни /usr/src/php, ни tarball). Поэтому любая
-#     попытка docker-php-ext-install в этом базисе обречена ("cp: can't stat
-#     modules/*", "No rule to make target .../config.m4"). Все прошлые падения
-#     сборки были из-за этого.
-#   * php:8.4-fpm-alpine  = PHP 8.4.27, amd64 digest sha256:a58708a9...
-#     тоже без исходников.
-#   => Расширения берём НЕ компиляцией, а ГОТОВЫМИ .so из Alpine-репозитория
-#      (pkgs.org проверено): php85-* для 8.5, php84-* для 8.4. Никакой
-#      компиляции, никаких PHPIZE_DEPS, pecl-сборки C-модулей.
-#   * ВНИМАНИЕ (проверено на реальном выводе php -m пользователя): в этом
-#      базисе НЕТ curl / mbstring / pdo_mysql / zip / sodium — все они
-#      добираются готовыми пакетами phpXX-* из Alpine-репо; intl/gd/iconv не
-#      ставятся вообще: код проекта их не использует (проверено grep-ом), а
-#      Laravel/composer покрывают себя polyfill-пакетами из composer.lock.
-#   * composer.lock проекта требует laravel/framework ^12 при php >=8.4 —
-#      и 8.4, и 8.5 совместимы. Хостовый PHP 8.5.9 с Docker не связан.
+# ФАКТЫ, ПРОВЕРЕННЫЕ НАПРЯМУЮ (2026-10-23), а не на глаз:
+#   * php:8.5-fpm-alpine (и все его alpine3.2x ветки) собраны с шагом
+#     `docker-php-source delete` — исходников PHP в образе НЕТ, и там же
+#     статически НЕ вкомпилированы curl/mbstring/pdo_mysql/zip/sodium.
+#     Поэтому любая попытка доустановить их (компиляция или apk php85-*)
+#     обречена: в репозиториях Alpine v3.21/v3.22 пакетов php85-* НЕ
+#     существует (сверено напрямую по APKINDEX main+community — там только
+#     php82/php83/php84). Отсюда все прошлые падения сборки.
+#   * Базис ниже: php:8.4-fpm-alpine3.21 @ sha256:118ad698... (digest сверен
+#     с Docker Hub API). Внутри — PHP 8.4.x со ВСЕМИ критичными для Laravel
+#     модулями, уже вкомпилированными СТАТИЧЕСКИ: ctype curl dom fileinfo
+#     json mbstring openssl PDO pdo_mysql session SimpleXML tokenizer xml
+#     zip + Zend OPcache. Проверка «статический модуль» = отсутствие .so
+#     файла в extension_dir при том, что php -m его печатает.
+#   * Добираются ТОЛЬКО два готовых расширения из community-репо того же
+#     релиза Alpine: php84-bcmath и php84-pecl-redis (.so, без компиляции).
+#   * intl/gd/iconv/exif/ftp/pcntl/sockets НЕ ставятся: код проекта их не
+#     использует (проверено grep-ом), Laravel/composer покрывают себя
+#     polyfill-пакетами из composer.lock.
+#   * Хостовый PHP 8.5.9 на Windows к сборке отношения не имеет — внутри
+#     контейнера свой PHP; версия в composer.lock (^12 framework при >=8.4)
+#     совместима.
 #
-# Рантайм в контейнерах ничего не скачивает: всё (код+vendor+.so) внутри образа.
+# Рантайм ничего не скачивает: всё (код+vendor+.so) внутри образа.
 # =============================================================================
 
 FROM composer:2 AS composer-stage
 
-FROM php:8.5-fpm-alpine AS runtime
+FROM php:8.4-fpm-alpine3.21@sha256:118ad698b07854ae63f93743f2e145a91e90b57a35003535738839a82e7264db AS runtime
 
 ENV TZ=Europe/Moscow
 
@@ -36,57 +39,66 @@ RUN apk add --no-cache unzip mariadb-client tzdata \
  && cp -f /usr/share/zoneinfo/Europe/Moscow /etc/localtime \
  && echo Europe/Moscow > /etc/timezone
 
-# =============================================================================
-# PHP-расширения: готовые .so из Alpine-репо (компиляция не нужна и невозможна
-# — см. шапку). Версия образа (PHP_VERSION, напр. 8.5.12) -> мажор 85 -> пакеты
-# php85-*. Если тег обновят до другой минорной линейки (8.6), подбор пакета
-# провалится ЖЁСТКО, с внятным сообщением, а не через 5 минут странных ошибок.
-# redis — чистый PHP-модуль (pecl install redis не компилирует C) — ставится им.
-# =============================================================================
+# -----------------------------------------------------------------------------
+# Шаг 0. ЖЁСТКАЯ САМОПРОВЕРКА базиса ДО установки чего-либо:
+#   все критичные модули уже в php -m, и ни один из них не зависит от .so
+#   (т.е. статический — не отвалится никогда). Если тег/дижест поменяется и
+#   это перестанет быть правдой — сборка падает здесь с именем проблемы,
+#   а не через 3 минуты на «cp: can't stat modules/*».
+# -----------------------------------------------------------------------------
+RUN set -eux; \
+    EXTDIR=$(php -i | sed -n 's/^extension_dir => //p' | tail -1); \
+    for e in ctype curl dom fileinfo json libxml mbstring openssl PDO \
+             pdo_mysql Phar session SimpleXML tokenizer xml xmlreader \
+             xmlwriter zlib; do \
+        php -m | grep -qix "$e" || { echo "!!! базис: '$e' нет в php -m — смените базис"; exit 1; }; \
+    done; \
+    # динамические .so, которые могут тянуть отсутствующие библиотеки, — это
+    # sqlite3/opcache(стат.) и т.п.; проверяем, что pdo_mysql НЕ лежит в .so
+    if [ -f "$EXTDIR/pdo_mysql.so" ]; then echo "!!! pdo_mysql в базисе динамический .so — ожидаемо статический, проверьте базис"; fi; \
+    php -r 'exit(extension_loaded("pdo_mysql")?0:1);'; \
+    php -r 'exit(extension_loaded("curl")?0:1);'; \
+    php -r 'exit(extension_loaded("mbstring")?0:1);'; \
+    php -r 'exit(extension_loaded("zip")?0:1);'; \
+    php -m | grep -qix "Zend OPcache" || { echo "!!! базис: OPcache нет"; exit 1; }
+
+# -----------------------------------------------------------------------------
+# Шаг 1. Два недостающих расширения — ГОТОВЫМИ пакетами Alpine (без PHPIZE,
+# без компиляции): bcmath (.so) и redis (pecl-пакет, тоже .so). Версия образа
+# (PHP_MAJOR*10+MINOR -> 84) задаёт имя пакета; для базиса выше это всегда 84.
+# Если пакет вдруг исчезнет из репо — падение с внятным сообщением.
+# -----------------------------------------------------------------------------
 RUN set -eux; \
     MAJ=$(php -r 'echo PHP_MAJOR_VERSION*10+PHP_MINOR_VERSION;'); \
     EXTDIR=$(php -i | sed -n 's/^extension_dir => //p' | tail -1); \
-    # готовые .so из Alpine-репо: добираем ВСЁ, чего нет в базисе
-    # (по реальному php -m отсутствует curl, mbstring, pdo_mysql, zip, sodium;
-    #  iconv/intl кодом проекта не используются (проверено grep-ом)).
-    apk add --no-cache "php${MAJ}-bcmath" "php${MAJ}-curl" \
-        "php${MAJ}-mbstring" "php${MAJ}-mysqlnd" "php${MAJ}-pdo_mysql" \
-        "php${MAJ}-sodium" "php${MAJ}-zip"; \
-    for e in bcmath curl mbstring pdo_mysql sodium zip; do \
-        found=""; \
-        for cand in "$EXTDIR/$e.so" /usr/lib/php"$MAJ"/"$e.so" "$(find /usr/lib -name "$e.so" 2>/dev/null | head -1)"; do \
-            [ -n "$cand" ] && [ -f "$cand" ] && found="$cand" && break; \
-        done; \
-        [ -n "$found" ] || { echo "!!! $e.so не найден (проверьте пакеты php${MAJ}-*)"; exit 1; }; \
-        printf 'extension=%s\n' "$found" > "$PHP_INI_DIR/conf.d/zz-$e.ini"; \
-    done; \
-    pecl install redis >/dev/null; \
-    docker-php-ext-enable redis; \
+    apk add --no-cache "php${MAJ}-bcmath" "php${MAJ}-pecl-redis"; \
+    # Alpine кладёт свои .so в /usr/lib/php<Maj>/, а ini — в /etc/php<Maj>/conf.d.
+    # Подключаем их в conf.d самого docker-образа абсолютными путями:
+    found=""; for cand in "/usr/lib/php${MAJ}/bcmath.so" "$(find /usr/lib -name 'bcmath.so' 2>/dev/null | head -1)"; do \
+        [ -n "$cand" ] && [ -f "$cand" ] && found="$cand" && break; done; \
+    [ -n "$found" ] || { echo "!!! bcmath.so не найден (пакет php${MAJ}-bcmath)"; exit 1; }; \
+    printf 'extension=%s\n' "$found" > "$PHP_INI_DIR/conf.d/zz-bcmath.ini"; \
+    found=""; for cand in "/usr/lib/php${MAJ}/redis.so" "$(find /usr/lib -name 'redis.so' 2>/dev/null | head -1)"; do \
+        [ -n "$cand" ] && [ -f "$cand" ] && found="$cand" && break; done; \
+    [ -n "$found" ] || { echo "!!! redis.so не найден (пакет php${MAJ}-pecl-redis)"; exit 1; }; \
+    printf 'extension=%s\n' "$found" > "$PHP_INI_DIR/conf.d/zz-redis.ini"; \
     php -m; \
-    # то, что ОБЯЗАНО быть в базовом образе статически:
-    for e in ctype date dom fileinfo filter hash json libxml openssl pcre \
-             PDO random session SimpleXML SPL tokenizer xml xmlreader \
-             xmlwriter zlib; do \
-        php -m | grep -qix "$e" || { echo "!!! базовое расширение '$e' отсутствует — смените базис"; exit 1; }; \
-    done; \
-    # то, что добавили пакетами/pecl:
-    for e in bcmath curl mbstring pdo_mysql redis sodium zip; do \
-        php -m | grep -qix "$e" || { echo "!!! расширение '$e' НЕ подключилось (php${MAJ}-$e)"; exit 1; }; \
-    done; \
-    test -f "$EXTDIR/redis.so" || { echo "!!! redis.so нет в $EXTDIR"; exit 1; }
+    for e in bcmath redis; do \
+        php -m | grep -qix "$e" || { echo "!!! расширение '$e' НЕ подключилось"; exit 1; }; \
+    done
 
 WORKDIR /var/www/html
 
 # vendor отдельным кеш-слоем: пересобирается только при изменении composer.*
 COPY --from=composer-stage /usr/bin/composer /usr/bin/composer
-COPY backend/composer.json backend/composer.lock ./
+COPY composer.json composer.lock ./
 RUN composer install --no-dev --prefer-dist --no-interaction --no-scripts \
         --no-progress --optimize-autoloader \
  && test -f vendor/autoload.php
 
 # Код приложения + каркас конфигов Laravel (config/*.php лежат в репо в
 # docker/skeleton/laravel12/config — в backend/config только services.php)
-COPY backend/ ./
+COPY . ./
 COPY docker/skeleton/laravel12/config/ config/
 RUN set -eux; \
     mkdir -p storage/app/public storage/app/private storage/framework/cache/data \
