@@ -25,52 +25,36 @@ RUN apk add --no-cache unzip mariadb-client tzdata \
  && cp -f /usr/share/zoneinfo/Europe/Moscow /etc/localtime \
  && echo Europe/Moscow > /etc/timezone
 
-# Расширения PHP. ТОЛЬКО то, чего нет в базовом образе (базис уже несёт
-# ctype curl dom fileinfo json mbstring openssl PDO phar session tokenizer
-# xml xmlreader xmlwriter). Компиляция — в одном слое, .build-deps удаляются.
-# ext-sockets и ext-ftp УДАЛЕНЫ из сборки: проект их не использует
-# (require-only в composer.json нет), а компиляция sockets падала на
-# linux/sock_diag.h. Если когда-нибудь понадобится raw-сокет — там же
-# доступен встроенный stream_socket_client() без всякого расширения.
-# ВАЖНО: opcache НЕ компилируется через docker-php-ext-install. В php:8.x-alpine
-# он уже встроен в бинарник php-fpm, а отдельная сборка "shared" версии в PHP 8.5
-# падает на `cp: can't stat 'modules/*'` (не остаётся .so для копирования) и
-# роняла всю сборку backend/queue/scheduler. Включается ниже ini-файлом zz-app.ini.
-# ВАЖНО про порядок self-проверки: раньше проверка php -m стояла ПОСЛЕ
-# `apk del .build-deps`. В PHP 8.5-alpine многие расширения (ctype, curl, dom,
-# fileinfo, json, mbstring, openssl, PDO, session, tokenizer, xml) собраны как
-# общие .so, а для их загрузки нужен pkgconf из $PHPIZE_DEPS — его удаление
-# делало вывод `php -m` неполным и сборка падала с ложным «gd НЕ установлено»
-# (и упоминание gd в ошибке было просто первым элементом списка). Проверка
-# теперь идёт ДО apk del.
+# =============================================================================
+# РАСШИРЕНИЯ PHP — финальная схема (основана на официальном Dockerfile образа
+# php:8.5-fpm-alpine, github.com/docker-library/php, 8.5/alpine3.24/fpm):
+#
+#   * Базовый образ PHP 8.5-alpine собирается со ВСЕМИ основными расширениями
+#     СТАТИЧЕСКИ (curl, dom, fileinfo, mbstring, openssl, PDO/mysqlnd, session,
+#     tokenizer, xml, ctype, json ...) и сам делает `docker-php-source delete`,
+#     т.е. дерева /usr/src/php в нём НЕТ, но есть tarball /usr/src/php.tar.xz.
+#   * docker-php-ext-install САМ распаковывает исходники (docker-php-source
+#     extract) и САМ ставит/удаляет $PHPIZE_DEPS — вручную их добавлять НЕ нужно.
+#   * Все прошлые падения были из-за ручного управления зависимостями/компиляцией:
+#     gd/opcache в 8.5-alpine не собираются как shared (.so отсутствует →
+#     "cp: can't stat modules/*"); project их не использует (grep по app/ +
+#     composer.lock: только suggest) — НЕ ставим;
+#     sockets падал на linux/sock_diag.h, ftp/bcmath-gmp не нужны — НЕ ставим.
+#   * Проверяем результат ТОЛЬКО штатным способом: php -m сразу после установки.
+#     Никаких проверок до/после apk del и т.п. самодеятельности.
+# =============================================================================
 RUN set -eux; \
-    apk add --no-cache --virtual .build-deps $PHPIZE_DEPS libzip-dev icu-dev oniguruma-dev; \
-    # gd НЕ компилируем: проект не использует imagecreate*/Intervention (проверено
-    # grep'ом по коду и composer.lock — только suggest), а в PHP 8.5-alpine
-    # shared-сборка gd роняла весь слой (`cp: can't stat 'modules/*'`).
-    # docker-php-ext-configure gd --with-freetype --with-jpeg;
-    # docker-php-ext-install -j"$(nproc)" gd;   ← включить, если понадобится
-    # pcntl НЕ ставим: в коде нет pcntl_signal/pcntl_fork (проверено grep'ом),
-    # а он нужен только для обработки сигналов контейнера.
-    docker-php-ext-install -j"$(nproc)" \
-        bcmath exif fileinfo intl pdo_mysql zip; \
+    test -f /usr/src/php.tar.xz \
+      || { echo "!!! В базовом образе нет /usr/src/php.tar.xz — расширений не собрать"; exit 1; }; \
+    apk add --no-cache libzip-dev icu-dev; \
+    docker-php-ext-install -j"$(nproc)" bcmath intl pdo_mysql zip; \
     pecl install redis; \
     docker-php-ext-enable redis; \
-    # opcache НЕ компилируем отдельно: в php:8.x-alpine он встроен в бинарники
-    # php/php-fpm; отдельная shared-сборка в 8.5 падает на cp modules/*.
-    # Включается ini-файлом zz-app.ini ниже.
-    # самопроверка критичных модулей — ДО apk del (см. комментарий выше);
-    # gd/exif — необязательные: при отсутствии только предупреждение,
-    # Laravel от них не ломается
-    CRIT="bcmath ctype curl dom fileinfo intl json mbstring openssl \
-          PDO pdo_mysql redis session SimpleXML tokenizer xml zip"; \
-    for e in $CRIT; do \
+    php -m; \
+    for e in bcmath ctype curl dom fileinfo intl json mbstring openssl \
+             PDO pdo_mysql redis session SimpleXML tokenizer xml zip; do \
         php -m | grep -qix "$e" || { echo "!!! расширение '$e' НЕ установлено"; exit 1; }; \
-    done; \
-    for e in gd exif; do \
-        php -m | grep -qix "$e" || echo "WARN: необязательное '$e' отсутствует"; \
-    done; \
-    apk del .build-deps
+    done
 
 WORKDIR /var/www/html
 
