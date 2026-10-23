@@ -37,7 +37,7 @@ FROM composer:2 AS composer-stage
 # zend_language_parser.y'"). Зафиксированный digest = всегда рабочая сборка
 # PHP 8.4.22 с полным деревом исходников в образе.
 # Обновлять базис можно только вместе с проверкой расширений.
-FROM php:8.4-fpm-alpine3.22@sha256:e8235a0207e4153f84d44e2acfa69fd74bfb06bdd065a9122b6281847400a255 AS runtime
+FROM php:8.4-fpm-alpine@sha256:a49524d3cec4a77d1807d0878e5bb38146116ae5489ec60c367aee53bb9b0699 AS runtime
 
 # --- системные утилиты -------------------------------------------------------
 RUN apk add --no-cache git unzip mariadb-client tzdata \
