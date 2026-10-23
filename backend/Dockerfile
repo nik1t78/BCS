@@ -37,11 +37,15 @@ RUN apk add --no-cache unzip mariadb-client tzdata \
 # падает на `cp: can't stat 'modules/*'` (не остаётся .so для копирования) и
 # роняла всю сборку backend/queue/scheduler. Включается ниже ini-файлом zz-app.ini.
 RUN set -eux; \
-    apk add --no-cache --virtual .build-deps $PHPIZE_DEPS libzip-dev icu-dev \
-        libpng-dev libjpeg-turbo-dev freetype-dev oniguruma-dev; \
-    docker-php-ext-configure gd --with-freetype --with-jpeg; \
+    apk add --no-cache --virtual .build-deps $PHPIZE_DEPS libzip-dev icu-dev oniguruma-dev; \
+    # gd НЕ компилируем: проект не использует imagecreate*/Intervention (проверено
+    # grep'ом по коду), а в PHP 8.5 shared-сборка gd ломает весь слой
+    # docker-php-ext-install (`cp: can't stat 'modules/*'`). Если когда-нибудь
+    # понадобится обработка картинок — включить обратно одной строкой ниже.
+    # docker-php-ext-configure gd --with-freetype --with-jpeg;
+    # docker-php-ext-install -j"$(nproc)" gd;
     docker-php-ext-install -j"$(nproc)" \
-        bcmath exif fileinfo gd intl pcntl pdo_mysql zip; \
+        bcmath exif fileinfo intl pcntl pdo_mysql zip; \
     pecl install redis; \
     docker-php-ext-enable redis; \
     apk del .build-deps; \
@@ -51,7 +55,8 @@ RUN set -eux; \
     # не создаём, иначе php-cli будет искать несуществующий opcache.so.
     # самопроверка: критичные модули на месте (иначе сборка падает здесь, а
     # не через полчаса на невнятном exit 1)
-    for e in bcmath ctype curl dom fileinfo gd intl json mbstring openssl \
+    # gd УБРАН из самопроверки: не компилируется (см. выше) и кодом не используется
+    for e in bcmath ctype curl dom fileinfo intl json mbstring openssl \
              PDO pdo_mysql redis session SimpleXML tokenizer xml zip; do \
         php -m | grep -qix "$e" || { echo "!!! расширение '$e' НЕ установлено"; exit 1; }; \
     done
