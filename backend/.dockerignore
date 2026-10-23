@@ -1,12 +1,10 @@
+# Файл без силы: compose-сервисы backend/queue/scheduler/backend-assets
+# собираются с контекстом "." (корень репо) и dockerfile backend/Dockerfile,
+# поэтому применяется ТОЛЬКО корневой .dockerignore. Оставлен как заглушка,
+# чтобы случайная сборка `docker build ./backend` не тащила vendor/ и данные.
 vendor
-# composer.lock НЕ игнорируем — он обязателен для детерминированной сборки образа
+node_modules
 .env
-!.env.dev.example
-# Симлинк storage:link (появляется на серверах, где запускали artisan storage:link).
-# Docker BuildKit не может отправить в контекст симлинк, указывающий наружу
-# (public/storage -> ../storage), и сборка падает с "failed to solve: invalid
-# file request public/storage". Исключаем его из контекста — внутри образа
-# симлинк не нужен (файлы отдаются через bind-mount ./backend).
 public/storage
 storage/app/backups/*
 storage/logs/*
@@ -14,24 +12,6 @@ storage/framework/cache/data/*
 storage/framework/sessions/*
 storage/framework/views/*
 *.log
-
-# tar/zip-архивы не должны когда-либо попадать в контекст сборки (лечит
-# «failed to compute cache key ... not found» на Windows/Docker Desktop).
 *.tar.gz
 *.tgz
 *.zip
-
-# Каркасы Laravel-конфигов (в git намеренно нет backend/config/* — там секреты).
-# Кладём их в контекст сборки из docker/skeleton/laravel12/config/, чтобы стадия
-# app (`COPY . .`) получила полный каркас и php artisan package:discover работал
-# прямо из образа (без сети и без composer на рантайме).
-# ВАЖНО про порядок правил: по семантике dockerignore ПОСЛЕДНЕЕ совпавшее правило
-# побеждает, а файлы внутри директории, исключённой целиком, инверсией НЕ
-# возвращаются. Поэтому инверсии идут ПОСЛЕ глобальных *.log/*.tgz/*.zip — перенос
-# их выше этих правил молча выкинет каркасы из контекста и сборка снова упадёт с
-# «config/app.php так и не появился».
-# Инверсия ** именно с двойной звёздочкой: `!docker/bin/*` не матчит вложенные
-# файлы (docker/bin/redis-src/x.tgz) — правила dockerignore не нормализуют
-# глубину, * не пересекает /.
-!docker/bin/**
-!docker/skeleton/laravel12/config/**

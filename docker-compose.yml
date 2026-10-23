@@ -52,16 +52,12 @@ services:
   backend:
     <<: *container-defaults
     build:
-      context: ./backend
-      dockerfile: Dockerfile
-      # именованный контекст `repo` = корень репозитория: из него стадия
-      # skeleton-stage забирает каркас docker/skeleton/laravel12/config/
-      # (из основного контекста ./backend выйти вверх нельзя). Требует
-      # compose >= 2.20 / buildkit >= 1.4; при сборке `docker build` без
-      # compose стадия остаётся пустой и конфиги генерируются из ENV.
-      additional_contexts:
-        repo: .
-      # multi-stage в backend/Dockerfile: собираем только стадию base,
+      context: .
+      dockerfile: backend/Dockerfile
+      # Каркас config/*.php (docker/skeleton/laravel12/config) копируется из
+      # этого же контекста напрямую — никаких additional_contexts: под
+      # Docker Desktop/Windows они иногда падают с "failed to compute cache key".
+      # multi-stage в backend/Dockerfile: стадия runtime собирает расширения,
       # composer-бинарник берётся из стадии composer-stage через COPY --from.
       target: runtime
     container_name: vks-backend
@@ -279,15 +275,8 @@ services:
   backend-assets:
     profiles: ["tools"]
     build:
-      context: ./backend
-      dockerfile: Dockerfile
-      # именованный контекст `repo` = корень репозитория: из него стадия
-      # skeleton-stage забирает каркас docker/skeleton/laravel12/config/
-      # (из основного контекста ./backend выйти вверх нельзя). Требует
-      # compose >= 2.20 / buildkit >= 1.4; при сборке `docker build` без
-      # compose стадия остаётся пустой и конфиги генерируются из ENV.
-      additional_contexts:
-        repo: .
+      context: .
+      dockerfile: backend/Dockerfile
       target: runtime
     container_name: vks-backend-assets
     restart: "no"
@@ -361,16 +350,12 @@ services:
   queue:
     <<: *container-defaults
     build:
-      context: ./backend
-      dockerfile: Dockerfile
-      # именованный контекст `repo` = корень репозитория: из него стадия
-      # skeleton-stage забирает каркас docker/skeleton/laravel12/config/
-      # (из основного контекста ./backend выйти вверх нельзя). Требует
-      # compose >= 2.20 / buildkit >= 1.4; при сборке `docker build` без
-      # compose стадия остаётся пустой и конфиги генерируются из ENV.
-      additional_contexts:
-        repo: .
-      # multi-stage в backend/Dockerfile: собираем только стадию base,
+      context: .
+      dockerfile: backend/Dockerfile
+      # Каркас config/*.php (docker/skeleton/laravel12/config) копируется из
+      # этого же контекста напрямую — никаких additional_contexts: под
+      # Docker Desktop/Windows они иногда падают с "failed to compute cache key".
+      # multi-stage в backend/Dockerfile: стадия runtime собирает расширения,
       # composer-бинарник берётся из стадии composer-stage через COPY --from.
       target: runtime
     container_name: vks-queue
@@ -419,16 +404,12 @@ services:
   scheduler:
     <<: *container-defaults
     build:
-      context: ./backend
-      dockerfile: Dockerfile
-      # именованный контекст `repo` = корень репозитория: из него стадия
-      # skeleton-stage забирает каркас docker/skeleton/laravel12/config/
-      # (из основного контекста ./backend выйти вверх нельзя). Требует
-      # compose >= 2.20 / buildkit >= 1.4; при сборке `docker build` без
-      # compose стадия остаётся пустой и конфиги генерируются из ENV.
-      additional_contexts:
-        repo: .
-      # multi-stage в backend/Dockerfile: собираем только стадию base,
+      context: .
+      dockerfile: backend/Dockerfile
+      # Каркас config/*.php (docker/skeleton/laravel12/config) копируется из
+      # этого же контекста напрямую — никаких additional_contexts: под
+      # Docker Desktop/Windows они иногда падают с "failed to compute cache key".
+      # multi-stage в backend/Dockerfile: стадия runtime собирает расширения,
       # composer-бинарник берётся из стадии composer-stage через COPY --from.
       target: runtime
     container_name: vks-scheduler

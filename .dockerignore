@@ -1,40 +1,44 @@
-# Максимально уменьшаем контекст сборки: node_modules и артефакты не отправляются
-# на docker-демон (иначе сборка frontend может занимать минуты и гигабайты RAM)
+# =============================================================================
+# Контекст сборки = ВЕСЬ репозиторий (docker-compose.yml: context: .).
+# Применяется и к frontend-образу (корневой Dockerfile), и к backend-образу
+# (backend/Dockerfile) — поэтому НЕ исключаем ни src/, ни backend/, ни docker/.
+# =============================================================================
+
+# Гигантские/локальные артефакты — никогда не отправляем на демон
 node_modules
+**/node_modules
 dist
+**/dist
 .git
+.github
 docker/mysql/data
-backend/vendor
-backend/storage/logs
 *.log
 *.bundle
-vks-bot
-deploy
-scripts
-backend
-.github
-*.md
-*.patch
-.env
-.env.*
-!.env.example
-# Vite-конфиг продакшена (VITE_API_URL=/api и т.д.) ОБЯЗАТЕЛЕН в контексте
-# сборки frontend: без него `npm run build` внутри Docker теряет настройки из
-# .env.production (правило `.env.*` выше его исключало). Секретов здесь нет —
-# только публичные VITE_* переменные, которые всё равно вшиты в JS-бандл.
-!.env.production
-Dockerfile
-docker-compose*.yml
-setup-project.sh
-start.sh
-deploy.sh
 *.tar.gz
 *.tgz
 *.zip
 
-# Каркас Laravel-конфигов для стадии skeleton-stage (backend/Dockerfile,
-# COPY --from=repo). По умолчанию всё содержимое docker/ уходит вместе с
-# бинарниками/данными; возвращаем ТОЛЬКО *.php каркаса. Правила идут последними:
-# в dockerignore "last match wins", перенос этих строк выше глобальных
-# исключений молча выкинет каркас из контекста repo.
-!docker/skeleton/laravel12/config/*.php
+# Laravel: vendor собирается внутри образа (composer install), локальный не нужен
+backend/vendor
+
+# Локальные секреты и окружение (в образы попадают только явные примеры)
+.env
+.env.*
+!.env.example
+!.env.production
+!.env.production.local
+!.env.dev.example
+
+# Сборочные скрипты, которым не место внутри образов
+deploy
+scripts
+setup-project.sh
+start.sh
+deploy.sh
+
+# vks-bot собирается отдельным контекстом (./vks-bot) — в общем не нужен
+vks-bot
+
+# Прочее
+*.md
+*.patch

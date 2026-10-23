@@ -18,34 +18,52 @@
 #
 # Приложение живёт ТОЛЬКО внутри образа (bind-mount ./backend в compose нет);
 # runtime-данные — в named volumes backend_storage / backend_bootstrap_cache.
-# Каркас config/*.php берётся из корня репо (docker/skeleton/laravel12/config)
-# через именованный контекст `repo` (см. docker-compose.yml).
+#
+# Контекст сборки = ВЕСЬ репозиторий, dockerfile = backend/Dockerfile
+# (см. docker-compose.yml: context: ., dockerfile: backend/Dockerfile).
+# Пути COPY ниже — от корня репо; каркас config/*.php лежит в
+# docker/skeleton/laravel12/config/ и копируется напрямую (без additional_contexts:
+# на Docker Desktop под Windows именованные контексты + symlink-иногда дают
+# «failed to compute cache key», поэтому от них отказались).
 # =============================================================================
 
 # Composer берём из официального образа — без COPY бинарников из контекста.
 FROM composer:2 AS composer-stage
 
-# Стадия сборки PHP (расширения, composer vendor) — называется `runtime`,
-# чтобы `docker compose build` (в compose.yml указано target: runtime для
-# backend/queue/scheduler/backend-assets) не падал с "base name 'runtime'
-# not found". Финальная стадия — она же.
-FROM php:8.4-fpm-alpine AS runtime
+# БАЗИС ЗАКРЕПЛЁН ПО DIGEST. Это принципиально: floating-тег php:8.4-fpm-alpine
+# обновляется автоматически, и образы свежее ~2026-07 собраны на Alpine 3.23+,
+# где из них УДАЛЕНЫ исходники /usr/src/php — docker-php-ext-install на них
+# падает (например: "No rule to make target '/usr/src/php/ext/tokenizer/Zend/
+# zend_language_parser.y'"). Зафиксированный digest = всегда рабочая сборка
+# PHP 8.4.22 с полным деревом исходников в образе.
+# Обновлять базис можно только вместе с проверкой расширений.
+FROM php:8.4-fpm-alpine3.22@sha256:e8235a0207e4153f84d44e2acfa69fd74bfb06bdd065a9122b6281847400a255 AS runtime
 
 # --- системные утилиты -------------------------------------------------------
 RUN apk add --no-cache git unzip mariadb-client tzdata \
  && cp -f /usr/share/zoneinfo/Europe/Moscow /etc/localtime \
  && echo Europe/Moscow > /etc/timezone
 
+# --- защиты от «свежего» базового образа ------------------------------------
+# Если кто-то заменит FROM на moving-тег и /usr/src/php снова исчезнет —
+# падение здесь с ПОНЯТНЫМ сообщением, а не через 3 минуты на странных ошибках.
+RUN set -eux; \
+    [ -f /usr/src/php/.docker-source.sha256 ] \
+      || { echo "!!! В базовом образе НЕТ полных исходников PHP (/usr/src/php)."; \
+           echo "!!! docker-php-ext-install работать не будет — закрепите базис по digest (см. комментарий выше)."; \
+           exit 1; }
+
 # --- расширения PHP ----------------------------------------------------------
 # iconv НЕ собираем: в php:8.4-fpm-alpine он уже встроен в ядро PHP.
 # intl требует ICU той же версии, что собирала docker-library (icu-dev), —
 # ставим вместе с остальными -dev пакетами одним слоем.
+# json/list/session/pcre/hash/filter/zlibcurl уже встроены — их ставить нельзя.
 # redis — единственный PECL-модуль (CACHE_STORE/QUEUE_CONNECTION=redis в .env,
 # predis в composer.json нет); ставится pecl c прямым указанием extension-dir
 # и ini-файла, чтобы не зависеть от состояния /usr/local/etc/php/conf.d.
 RUN set -eux; \
     apk add --no-cache --virtual .build-deps $PHPIZE_DEPS icu-dev oniguruma-dev libzip-dev libpng-dev libjpeg-turbo-dev freetype-dev linux-headers; \
-    docker-php-ext-install bcmath ctype exif fileinfo ftp gd intl mbstring opcache pcntl pdo_mysql sockets tokenizer xml zip; \
+    docker-php-ext-install bcmath ctype curl dom exif fileinfo ftp gd intl mbstring opcache pcntl pdo_mysql simplexml sockets tokenizer xml xmlreader xmlwriter zip; \
     docker-php-ext-enable opcache; \
     pecl channel-update pecl.php.net || true; \
     EXTDIR="$(php -i | sed -n 's/^extension_dir => //p' | tail -1)"; \
@@ -65,7 +83,7 @@ RUN set -eux; \
 # --- vendor (прод-зависимости, отдельным кеш-слоем) --------------------------
 WORKDIR /var/www/html
 COPY --from=composer-stage /usr/bin/composer /usr/bin/composer
-COPY composer.json composer.lock ./
+COPY backend/composer.json backend/composer.lock ./
 # --no-scripts: artisan сюда ещё не скопирован, а post-autoload-dump зовёт
 # `php artisan package:discover`. Автозагрузчик собираем явным dump-autoload.
 RUN set -eux; \
@@ -74,12 +92,11 @@ RUN set -eux; \
     test -f vendor/autoload.php
 
 # --- код приложения -----------------------------------------------------------
-COPY . .
+COPY backend/ ./
 
-# Каркас config/*.php из корня репо (контекст `repo`). При сборке без compose
-# (`docker build ./backend`) контекста нет — стадия пуста, это не ошибка:
+# Каркас config/*.php из корня репо. При сборке вне compose его может не быть —
 # недостающие конфиги создаются ниже только если их реально нет.
-COPY --from=repo docker/skeleton/laravel12/config/ /tmp/skeleton/
+COPY docker/skeleton/laravel12/config/ /tmp/skeleton/
 RUN set -eux; \
     mkdir -p config; \
     if [ -d /tmp/skeleton ]; then for f in /tmp/skeleton/*.php; do [ -e "$f" ] || continue; t="config/$(basename "$f")"; [ -f "$t" ] || cp -a "$f" "$t"; done; rm -rf /tmp/skeleton; fi; \
