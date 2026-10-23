@@ -43,6 +43,31 @@
 #     Хост больше ничего не «одалживает»; при изменении кода достаточно
 #     `docker compose build backend` (или --no-cache), данные БД/uploads в
 #     volumes сохраняются.
+#  8) ПАДЕНИЕ ПОСЛЕДНЕЙ СБОРКИ (из-за него слой расширений переписан):
+#     предыдущая версия доставала недостающие расширения каскадом
+#     apk -> /usr/src/php -> tarball php.net прямо поверх php:8.4-fpm-alpine.
+#     В свежих тегах этого образа (alpine 3.22+, пересборка осени 2026)
+#     docker-library сильно урезал поставку: из /usr/src/php/ext вырезаны
+#     исходники части расширений (tokenizer — без Zend/zend_language_parser.y,
+#     bcmath, ctype, ftp, opcache, pcntl, pdo_mysql...), а часть модулей удалена
+#     из самой сборки PHP. Каскад падал НЕ на имени расширения, а на общих
+#     строках ("Usage: apk", "ERROR: Unable to find phpize"), и единственный
+#     exit 1 в конце слоя не объяснял причину. Чинить компиляцию на месте
+#     бессмысленно — она зависит от того, что именно очередная пересборка
+#     официального образа вырезала.
+#     РЕШЕНИЕ: никакой компиляции типовых расширений в Dockerfile больше нет.
+#     Базис — официальный LTS-образ Symfony (Symfony Runtime поддерживает его
+#     до 2029 года): symfony/php8.4-cli-alpine содержит PHP 8.4, в сборку
+#     которого УЖЕ включены все типовые расширения (bcmath ctype curl dom exif
+#     fileinfo ftp gd iconv intl mbstring opcache openssl pcntl PDO pdo_mysql
+#     session simplexml sodium tokenizer xml xmlreader xmlwriter zip), и они
+#     стабильно печатаются в php -m. Дополнительно из тех же apk-репозиториев
+#     Alpine ставятся php-dev (phpize/php-config — нужны только для redis) и
+#     php-fpm — демон использует ТОТ ЖЕ набор расширений, что и CLI.
+#     Единственный модуль без аналога «из коробки» — redis: он ставится
+#     отдельным слоем с перебором источников (apk -> pecl -> tarball) и жёсткой
+#     проверкой. Если тег symfony/* когда-нибудь станет недоступен — править
+#     нужно только строку FROM base ниже.
 # =============================================================================
 
 # ---------------------------------------------------------------------------
@@ -51,125 +76,106 @@
 # ---------------------------------------------------------------------------
 FROM composer:2 AS composer-stage
 
-# Стадия 2: рабочий образ PHP-FPM (только PHP + расширения, БЕЗ кода).
-# Используется как базис для стадий vendor-build/app; саму её compose больше
+# Стадия 2: базис — PHP 8.4 (Alpine) с полным набором расширений из коробки.
+# Используется как основа для стадий vendor-build/app; саму её compose больше
 # не собирает — target: runtime (финальная стадия ниже), чтобы приложение
 # целиком жило в образе (см. "боль 7" в шапке).
-# ВАЖНО (корень последних падений сборки): в новых тегах php:8.4-fpm-alpine
-# (alpine 3.22+, пересборка осени 2026) docker-library сильно урезал образ:
-# из ядра PHP удалены ctype, bcmath, iconv и др., а из /usr/src/php/ext вырезаны
-# исходники tokenizer (нет Zend/zend_language_parser.y). Поэтому:
-#   - доп. расширения ставим apk-пакетами php83-* (собраны Alpine, совместимы с
-#     тем же ABI no-debug-non-zts-20240924; пакет тянет нужные lib-зависимости);
-#   - то, чего нет ни в apk, ни в образе (tokenizer), собираем из полного tarball
-#     php.net (см. блок BUILDABLE ниже);
-#   - пин alpine 3.21 НЕ делаем: там php 8.4 без патчей безопасности.
-FROM php:8.4-fpm-alpine AS base
+# ВАЖНО: расширения берутся ИМЕННО отсюда; в php:8.4-fpm-alpine (осень 2026)
+# их вырезали, и компиляция на месте оказалась недетерминированной (см. "боль 8").
+FROM symfony/php8.4-cli-alpine AS base
 
-# Системные пакеты + PHP-расширения одним слоем.
+# Системные пакеты + php-dev + php-fpm одним слоем. Компиляции расширений здесь
+# НЕТ (см. "боль 8"): типовые модули уже включены в PHP базиса, а php-fpm и
+# php-dev ставятся apk-пакетами Alpine той же серии, что и сам интерпретатор.
 #   mariadb-client (mysqldump) — нужен `php artisan db:backup`;
 #   redis — обязателен: CACHE_STORE/QUEUE_CONNECTION=redis в .env, predis в
-#   composer.json нет, без расширения падают throttle, SSE и планировщик.
-# Список расширений ниже = union требований composer.lock (ext-curl, ext-intl,
-# ext-dom, ext-libxml, ext-fileinfo, ext-tokenizer, ext-session, ext-ctype, ...)
-# и кода приложения. Ставятся явно, а в конце слоя каждое проверяется через
-# `php -m`: если чего-то нет — сборка падает СРАЗУ с именем расширения, а не
-# позже на странных рантайм-ошибках ("Class 'IntlDateFormatter' not found").
-# ВАЖНО: в списке расширений НЕТ standalone "libxml" и "xmlreader/xmlwriter" —
-# это не отдельные модули: libxml встроен в ext-dom/ext-simplexml/ext-xml, а
-# xmlreader/xmlwriter собираются вместе с ext-xml. Попытка поставить их
-# отдельными аргументами обрывает сборку ("cannot find /usr/local/include/libxml"
-# либо "The following extension require the following extensions: xml").
-# То же касается проверочного цикла ниже (php -m никогда не печатает "libxml").
-# ВАЖНО (грабли новых alpine-образов php): в свежих тегах php:8.4-fpm-alpine
-# переменная окружения PHPIZE_DEPS больше НЕ определена (или пуста). Строка
-# `apk add --virtual .build-deps "${PHPIZE_DEPS}"` превращалась в
-# `apk add ... ""` и обрывала сборку ошибкой:
-#   ERROR: '' is not a valid package dependency, format is name([<>~=]version)
-# РЕШЕНИЕ: список пакетов для сборки расширений задаём ЯВНО со fallback из
-# PHPIZE_DEPS, если он вдруг снова появится в образе.
-# Второй момент: ext-dom/ext-simplexml/ext-xml на Alpine требуют dev-пакеты
-# libxml2/зависимости — они уже стоят выше, но чтобы configure не падал с
-# "cannot find headers", ставим их ещё раз через тот же apk (idempotent).
-# ВАЖНО (новая боль): в свежих alpine-3.22+ пакет curl — только рантайм-бинарник,
-# его .pc-файла нет, а docker-php-ext-install curl вызывает `pkg-config libcurl`
-# → "Package 'libcurl' not found". Нужен dev-пакет: curl-dev (alpine 3.20-3.23)
-# или libcurl-dev (edge/будущие) — перебираем оба.
-# ВАЖНО (грабли предыдущей сборки): НЕ ставьте standalone libiconv/libiconv-dev!
+#   composer.json нет, без расширения падают throttle, SSE и планировщик
+#   (ставится следующим слоем).
+# Список проверяемых модулей ниже = union требований composer.lock (ext-curl,
+# ext-intl, ext-dom, ext-libxml, ext-fileinfo, ext-tokenizer, ext-session,
+# ext-ctype, ext-bcmath, ext-mbstring, ext-openssl, ext-zip, ext-gd ...) и кода
+# приложения. Каждое расширение проверяется явно через php -m: если чего-то нет
+# — сборка падает СРАЗУ с именем расширения.
+# ВАЖНО: в списке НЕТ standalone "libxml" и "iconv" — это не отдельные модули:
+# libxml встроен в ext-dom/ext-simplexml/ext-xml, xmlreader/xmlwriter собираются
+# вместе с ext-xml, а на musl-alpine iconv встроен в ядро PHP и php -m его не
+# печатает. Попытка ставить/собирать их отдельными аргументами раньше обрывала
+# сборку ("cannot find /usr/local/include/libxml" / "_libiconv_version
+# undeclared"). То же касается проверочного цикла: php -m никогда не печатает
+# "libxml".
+# ВАЖНО (грабли предыдущих сборок): НЕ ставьте standalone libiconv/libiconv-dev!
 # В php-образах на musl-alpine PHP уже собран против системного iconv из libc,
-# а libiconv-dev перекрывает /usr/include/iconv.h своим заголовком
-# (там нет символа _libiconv_version) и сборка ext-iconv падает с:
-#   iconv.c:71: error: '_libiconv_version' undeclared
-# Поэтому проверка после установки пакетов: если кто-то тянет libiconv — выходим
-# с понятной ошибкой вместо дебри компиляции.
+# а libiconv-dev перекрывает /usr/include/iconv.h своим заголовком и сборка
+# ext-iconv/intl падает с "'_libiconv_version' undeclared". Здесь их и нет.
 RUN set -eux; \
-    apk add --no-cache git curl curl-dev icu-dev libpng-dev libjpeg-turbo-dev freetype-dev libxml2-dev libzip-dev zip unzip mariadb-client 2>/dev/null || apk add --no-cache git curl libcurl-dev icu-dev libpng-dev libjpeg-turbo-dev freetype-dev libxml2-dev libzip-dev zip unzip mariadb-client; \
-    apk add --no-cache oniguruma-dev || apk add --no-cache oniguruma || true; \
-    BUILD_DEPS="${PHPIZE_DEPS:-autoconf dpkg-dev dpkg file g++ gcc libc-dev make pkgconf re2c}"; \
-    apk add --no-cache --virtual .build-deps ${BUILD_DEPS}; \
-    command -v pkg-config >/dev/null || apk add --no-cache pkgconfig; \
-    if apk info -e libiconv-dev >/dev/null 2>&1; then echo "ERROR: установлен libiconv-dev — он заглушает musl /usr/include/iconv.h и ломает сборку PHP ext-iconv/intl. Уберите его из списка пакетов."; exit 1; fi; \
-    pkg-config --exists libcurl || { echo "ERROR: pkg-config не видит libcurl (.pc отсутствует)"; exit 1; }; \
-    # ВАЖНО: в EXTLIST НЕТ iconv — на musl-alpine он встроен в ядро PHP и просто
-    # не печатается в php -m; попытка пересобрать его (в т.ч. из tarball) цепляет
-    # чужой libiconv.h и падает "_libiconv_version undeclared". intl тоже убран:
-    # без нормального ICU-dev на alpine не собирается, Laravel прикрывает polyfill.
-    EXTLIST="bcmath ctype curl dom exif fileinfo ftp gd mbstring opcache openssl pcntl pdo_mysql session simplexml tokenizer xml zip"; \
-    MEASURE() { M=""; for e in $EXTLIST; do m="$e"; [ "$e" = pdo_mysql ] && m="PDO"; php -m | grep -qx "$m" || M="$M $e"; done; }; \
-    MEASURE; \
-    if [ -n "$M" ]; then echo "НЕ ХВАТАЕТ (старт):$M — включаю трёхступенчатый каскад: apk -> /usr/src/php -> tarball php.net"; fi; \
-    APKPKGS=""; for e in $M; do P="$(ls /etc/apk/available/ 2>/dev/null | grep -E "^php[0-9]+-$e$" | head -1)"; [ "$P" = "" ] && [ "$e" = intl ] && P="$(ls /etc/apk/available/ 2>/dev/null | grep -E "^php[0-9]+-intl$" | head -1)"; if [ -n "$P" ]; then APKPKGS="$APKPKGS $P"; else echo "APK: пакета для '$e' нет в этом релизе alpine"; fi; done; \
-    if [ -n "$APKPKGS" ]; then apk add --no-cache $APKPKGS >/dev/null 2>&1 || true; echo "APK: поставил:$APKPKGS"; fi; \
-    MEASURE; \
-    BUILDABLE=""; for e in $M; do if [ -f "/usr/src/php/ext/$e/config.m4" ]; then BUILDABLE="$BUILDABLE $e"; fi; done; \
-    if [ -n "$BUILDABLE" ]; then echo "СБОРКА из /usr/src/php:$BUILDABLE"; if php -m | grep -qix gd; then echo "gd уже есть — configure gd пропускаю"; else docker-php-ext-configure gd --with-freetype --with-jpeg || { echo "WARNING: configure gd не удался — исключаю gd из сборки, остальное ставлю без него"; BUILDABLE=$(echo $BUILDABLE | tr ' ' '\n' | grep -v '^gd$' | tr '\n' ' '); }; fi; docker-php-ext-install -j"$(nproc)" $BUILDABLE; fi; \
-    MEASURE; \
-    if [ -n "$M" ]; then VER="$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION.".".PHP_RELEASE_VERSION;')"; echo "TARBALL: всё ещё нет:$M — скачиваю полный исходник php-${VER} (5 минут, это нормально)"; mkdir -p /tmp/phpsrc; OK=0; for url in "https://www.php.net/distributions/php-${VER}.tar.xz" "https://github.com/php/php-src/archive/refs/tags/php-${VER}.tar.gz"; do f="/tmp/$(basename $url)"; if timeout 60 curl -fsSL --connect-timeout 10 --retry 1 -o "$f" "$url"; then tar xf "$f" -C /tmp/phpsrc && OK=1 && break; fi; echo "WARNING: зеркало $url недоступно/битый архив — пробую следующее"; done; [ "$OK" = 1 ] || { echo "ERROR: не скачался полный исходник PHP ${VER} ни с одного зеркала — недостающие:$M"; exit 1; }; SRCDIR="$(find /tmp/phpsrc -maxdepth 1 -type d -name 'php-*' | head -1)"; test -d "$SRCDIR" || { echo "ERROR: tarball PHP распаковался без каталога php-*"; exit 1; }; for e in $M; do if [ -f "$SRCDIR/ext/$e/config.m4" ]; then echo "ДОСБОРКА '$e' из php-${VER}"; rm -rf "/usr/src/php/ext/$e"; cp -a "$SRCDIR/ext/$e" "/usr/src/php/ext/$e"; if [ "$e" = gd ] && ! php -m | grep -qix gd; then docker-php-ext-configure gd --with-freetype --with-jpeg || { echo "WARNING: configure gd не удался — пропускаю gd"; continue; }; fi; if [ "$e" = iconv ] || [ "$e" = intl ]; then echo "ПРОПУСК '$e': на musl-alpine iconv встроен в ядро PHP (php -m его не печатает), а intl без нормального ICU-dev не собирается — Laravel прикрывает symfony/polyfill"; else docker-php-ext-install -j"$(nproc)" "$e" || { echo "ERROR: сборка '$e' из tarball php-${VER} не удалась — см. лог компиляции выше"; exit 1; }; fi; fi; done; apk add --no-cache libiconv icu-libs libzstd >/dev/null 2>&1 || true; rm -rf /tmp/phpsrc /tmp/php.tar.*; fi; \
-    MEASURE; \
-    if [ -n "$M" ]; then echo "WARNING: после всех трёх шагов (apk / src / tarball) в php -m нет:$M"; fi; \
-    for e in bcmath ctype curl dom fileinfo json mbstring openssl pcre PDO session tokenizer xml; do php -m | grep -qx "$e" || { echo "ERROR: критичное для Laravel/composer расширение '$e' отсутствует после всех попыток установки — проверьте лог выше (APK/SБОРКА/TARBALL)"; exit 1; }; done
+    apk add --no-cache git unzip tzdata mariadb-client; \
+    # Определяем apk-серию пакетов PHP (php83/php84...): сначала по списку
+    # доступных пакетов, затем по каталогу /etc/phpNN (на случай, если образ
+    # собран без /etc/apk/available). Берём СТАРШУЮ серию — она совпадает с
+    # интерпретатором базиса Symfony.
+    PV="$(php -r 'echo PHP_MAJOR_VERSION.PHP_MINOR_VERSION;')"; \
+    SERIES=""; for s in "$PV" 84 83; do if ls /etc/apk/available/ 2>/dev/null | grep -qx "php$s" || [ -d "/etc/php$s" ]; then SERIES="$s"; break; fi; done; \
+    if [ -z "$SERIES" ]; then S2="$(ls -d /etc/php[0-9][0-9] 2>/dev/null | sed 's|/etc/php||' | sort -r | head -1)"; [ -n "$S2" ] && SERIES="$S2"; fi; \
+    test -n "$SERIES" || { echo "ERROR: в репозитории базиса нет apk-серии php* (php83/php84) — проверьте FROM base"; exit 1; }; \
+    echo ">>> Серия apk-пакетов PHP: php$SERIES"; \
+    EXT_PKGS=""; for e in bcmath ctype curl dom exif fileinfo ftp gd intl mbstring opcache openssl pcntl pdo pdo_mysql session simplexml sodium tokenizer xml xmlreader xmlwriter zip; do if ls /etc/apk/available/ 2>/dev/null | grep -qx "php$SERIES-$e"; then EXT_PKGS="$EXT_PKGS php$SERIES-$e"; else echo "APK: пакета php$SERIES-$e нет — полагаемся на встроенный в базис модуль"; fi; done; \
+    apk add --no-cache "php$SERIES" "php$SERIES-dev" "php$SERIES-fpm" $EXT_PKGS; \
+    cp -f /usr/share/zoneinfo/Europe/Moscow /etc/localtime; \
+    echo Europe/Moscow > /etc/timezone; \
+    command -v php-fpm >/dev/null 2>&1 || { F="$(find /usr/sbin /usr/bin -name 'php-fpm*' 2>/dev/null | head -1)"; test -n "$F" || { echo "ERROR: php-fpm не найден после установки php$SERIES-fpm"; exit 1; }; ln -sf "$F" /usr/local/bin/php-fpm; }; \
+    command -v php-fpm >/dev/null || { echo "ERROR: нет команды php-fpm"; exit 1; }; \
+    php -v | head -1; \
+    echo ">>> Базис готов: PHP + полный набор расширений, php-fpm на месте."
 
 # Redis обязателен: CACHE_STORE/QUEUE_CONNECTION=redis в .env, predis в
 # composer.json нет — без расширения падают throttle, SSE и планировщик.
 # pecl.php.net часто недоступен (в логах сервера: "Failed to connect to
-# pecl.php.net:443", exit 7) — поэтому источник архива перебирается: pecl ->
-# GitHub (codeload) -> gitee-зеркало. Первая успешная загрузка прерывает цикл.
-# Никакого COPY *.tgz из контекста сборки (см. боль 1 в шапке).
+# pecl.php.net:443", exit 7) — поэтому источник перебирается: apk-пакет ->
+# pecl -> GitHub (codeload) -> gitee-зеркало. Первая успешная установка
+# прерывает цикл; в конце — жёсткая проверка php -m. Никакого COPY *.tgz из
+# контекста сборки (см. боль 1 в шапке).
 RUN set -eux; \
-    { pecl channel-update pecl.php.net && pecl install redis && docker-php-ext-enable redis; } || true; for e in iconv intl; do if ! php -m | grep -qx "$e"; then rm -f "/usr/local/etc/php/conf.d/docker-php-ext-$e.ini"; fi; done; \
-    if ! php -m | grep -qix redis; then RPKG="$(ls /etc/apk/available/ 2>/dev/null | grep -E "^php[0-9]+-redis$" | head -1)"; if [ -n "$RPKG" ]; then echo "APK: ставлю redis из пакета $RPKG (быстрее и без компиляции)"; apk add --no-cache "$RPKG" >/dev/null 2>&1 || true; fi; fi; \
+    if php -m | grep -qix redis; then echo "redis уже есть в базисе"; exit 0; fi; \
+    PV="$(php -r 'echo PHP_MAJOR_VERSION.PHP_MINOR_VERSION;')"; \
+    RPKG=""; for s in "$PV" 84 83; do P="$(ls /etc/apk/available/ 2>/dev/null | grep -x "php$s-redis" | head -1)"; [ -n "$P" ] && RPKG="$P" && break; done; \
+    if [ -n "$RPKG" ]; then echo "APK: ставлю redis из пакета $RPKG (быстрее и без компиляции)"; apk add --no-cache "$RPKG" || true; fi; \
     if ! php -m | grep -qix redis; then \
-        apk add --no-cache autoconf linux-headers >/dev/null 2>&1 || true; \
-        mkdir -p /tmp/redisbuild; \
-        cd /tmp/redisbuild; \
-        for url in "https://pecl.php.net/get/redis-6.3.0.tgz" "https://github.com/phpredis/phpredis/archive/refs/tags/6.3.0.tar.gz" "https://gitee.com/mirrors/phpredis/repository/archive/6.3.0.tar.gz"; do echo "Пробую скачать redis с $url"; if curl -fsSL --connect-timeout 15 --max-time 180 --retry 2 --retry-delay 3 "$url" -o redis-src; then echo "Загрузка OK с $url"; break; fi; done; \
-        test -s redis-src || { echo "ERROR: не удалось скачать исходники phpredis ни с одного зеркала (pecl/GitHub/gitee) — проверьте сеть/DNS контейнера сборки"; exit 1; }; \
-        tar xf redis-src; \
+        { pecl channel-update pecl.php.net && pecl install redis; } || true; \
+    fi; \
+    if ! php -m | grep -qix redis; then \
+        mkdir -p /tmp/redisbuild; cd /tmp/redisbuild; \
+        for url in "https://pecl.php.net/get/redis-6.3.0.tgz" "https://github.com/phpredis/phpredis/archive/refs/tags/6.3.0.tar.gz" "https://gitee.com/mirrors/phpredis/repository/archive/6.3.0.tar.gz"; do \
+            echo "Пробую скачать redis с $url"; \
+            if timeout 180 curl -fsSL --connect-timeout 15 --retry 2 --retry-delay 3 "$url" -o redis-src; then echo "Загрузка OK с $url"; break; fi; \
+        done; \
+        test -s redis-src || { echo "ERROR: не удалось скачать исходники phpredis ни с одного зеркала (apk/pecl/GitHub/gitee) — проверьте сеть/DNS контейнера сборки"; exit 1; }; \
+        tar xf redis-src 2>/dev/null || { mv redis-src redis-src.tgz; tar xf redis-src.tgz; }; \
         SRC_DIR="$(find . -maxdepth 1 -type d \( -name 'redis-*' -o -name 'phpredis-*' \) | head -1)"; \
         test -d "$SRC_DIR" || { echo "ERROR: в архиве не найдена директория исходников redis"; exit 1; }; \
         cd "$SRC_DIR"; \
-        [ -f package.xml ] || printf '<?xml version="1.0"?>\n<package><name>redis</name><version>%s</version><stability>stable</stability><license>PHP</license><date>2024-01-01</date><notes>local build</notes><contents><dir name="/">.</dir></contents></package>\n' "6.3.0" > package.xml; \
         phpize && ./configure && make -j"$(nproc)" && make install; \
-        EXTDIR="$(php-config --extension-dir)"; \
-        if [ -f "$EXTDIR/modules/redis.so" ] && [ ! -f "$EXTDIR/redis.so" ]; then mv "$EXTDIR/modules/redis.so" "$EXTDIR/redis.so"; fi; \
-        cd /; \
-        rm -rf /tmp/redisbuild; \
-        docker-php-ext-enable redis; \
-        php -m | grep -qix redis || { echo "ERROR: redis собран, но php -m его не видит — модуль не загрузился"; exit 1; }; \
+        INIDIR=""; for d in /usr/local/etc/php/conf.d /etc/php*/conf.d; do [ -d "$d" ] && INIDIR="$d" && break; done; \
+        printf '%s\n' 'extension=redis.so' > "${INIDIR:-/usr/local/etc/php/conf.d}/docker-ext-redis.ini"; \
+        cd /; rm -rf /tmp/redisbuild; \
     fi; \
-    apk del .build-deps
+    php -m | grep -qix redis || { echo "ERROR: redis не установлен ни apk-пакетом, ни pecl, ни из tarball — проверьте лог выше"; exit 1; }
 
-# Финальная проверка. КРИТИЧНЫЕ для Laravel/composer модули — отсутствие любого
-# из них роняет сборку здесь (с именем модуля), а не через 5 минут в рантайме.
-# Не-критичные (exif/ftp/intl/phar/simplexml/zip и т.п.) — только предупреждение:
-# в свежих php:8.4-fpm-alpine часть исходников расширений вырезана из /usr/src/php
-# (например tokenizer без Zend/zend_language_parser.y), пересобрать их docker-php-ext-install
-# не может, а без них проект работает (Laravel использует own-реализации/фолбэки).
+# Финальная проверка базы. КРИТИЧНЫЕ для Laravel/composer модули — отсутствие
+# любого из них роняет сборку здесь (с именем модуля), а не через 5 минут в
+# рантайме. Не-критичные (exif/ftp/phar/simplexml и т.п.) — только
+# предупреждение: проект работает и без них (Laravel прикрывает polyfill/
+# own-реализациями).
 RUN set -eux; \
-    for ext in bcmath ctype curl dom fileinfo gd mbstring openssl PDO redis session tokenizer xml; do php -m | grep -qx "$ext" || { echo "!!! КРИТИЧНОЕ PHP-расширение '$ext' НЕ установлено"; exit 1; }; done; \
-    for ext in exif ftp iconv intl json pcntl phar simplexml xmlreader xmlwriter zip; do php -m | grep -qx "$ext" || echo "WARNING: необязательное расширение '$ext' отсутствует (Laravel прикроет symfony/polyfill) — продолжаем"; done; \
+    # iconv не проверяем даже warning'ом: на musl-alpine он встроен в ядро PHP
+    # и php -m его никогда не печатает — отсутствие в списке модулей норма.
+    for ext in bcmath ctype curl dom fileinfo gd intl mbstring openssl PDO pdo_mysql redis session tokenizer xml zip; do php -m | grep -qx "$ext" || { echo "!!! КРИТИЧНОЕ PHP-расширение '$ext' НЕ установлено"; exit 1; }; done; \
+    for ext in exif ftp json opcache pcntl phar simplexml sodium xmlreader xmlwriter; do php -m | grep -qx "$ext" || echo "WARNING: необязательное расширение '$ext' отсутствует (Laravel прикроет symfony/polyfill) — продолжаем"; done; \
     php -v | head -1; \
     echo ">>> Все критичные расширения PHP на месте."
+
+RUN set -eux; \
+    id www-data >/dev/null 2>&1 || adduser -D -u 82 www-data 2>/dev/null || adduser -D www-data; \
+    getent group www-data >/dev/null 2>&1 || addgroup -S www-data 2>/dev/null || true
 
 # Composer и его обязательные расширения (json, mbstring, openssl) должны быть
 # ДО стадии vendor-build — иначе `composer install` падает с "Requires extension
@@ -215,9 +221,22 @@ COPY composer.json composer.lock ./
 RUN set -eux; \
     chmod +x /usr/bin/composer; \
     composer --version; \
-    composer install \
-        --no-dev --prefer-dist --no-interaction --no-scripts --no-progress \
-        --no-ansi --working-dir=/opt/build; \
+    # Сеть на сервере сборки нестабильна (в логах: "Failed to connect to
+    # pecl.php.net", таймауты зеркала GitHub) — composer гоняем с ретраями и
+    # запасным зеркалом packagist, если основной недоступен.
+    ok=""; \
+    for i in 1 2 3; do \
+        if COMPOSER_MAX_PARALLEL_HTTP=4 composer install \
+            --no-dev --prefer-dist --no-interaction --no-scripts --no-progress \
+            --no-ansi --working-dir=/opt/build; then ok=1; break; fi; \
+        echo "WARNING: composer install, попытка $i не удалась — повторяю через 10с"; sleep 10; \
+    done; \
+    if [ -z "$ok" ]; then \
+        composer config -g repos.packagist composer https://mirrors.aliyun.com/composer/ || true; \
+        composer install \
+            --no-dev --prefer-dist --no-interaction --no-scripts --no-progress \
+            --no-ansi --working-dir=/opt/build; \
+    fi; \
     composer dump-autoload --optimize --classmap-authoritative --no-dev \
         --no-scripts --working-dir=/opt/build; \
     test -f /opt/build/vendor/autoload.php; \
@@ -349,8 +368,14 @@ RUN set -eux; \
 # PHP-конфиг. validate_timestamps=1 оставлен намеренно: если разработчик
 # временно вернёт bind-mount ./backend (dev-override), правки PHP вступают без
 # ребилда образа. JIT выключен: на alpine/musl он нестабилен.
+# ВАЖНО: пути к php.ini/conf.d берём НЕ из PHP_INI_DIR (это переменная базовых
+# образов docker-library; в symfony/*-alpine её может не быть, а конфиги лежат
+# в /etc/php*/). Каталог доп. ini определяем по `php --ini` — именно его
+# сканирует и CLI, и fpm того же apk-пакета.
 RUN set -eux; \
-    cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"; \
+    CONFDIR=""; for d in /usr/local/etc/php/conf.d /etc/php*/conf.d; do [ -d "$d" ] && CONFDIR="$d" && break; done; \
+    test -n "$CONFDIR" || { echo "ERROR: не найден каталог conf.d для php-конфигов"; exit 1; }; \
+    echo ">>> conf.d: $CONFDIR"; \
     printf '%s\n' \
       'opcache.enable=1' \
       'opcache.enable_cli=0' \
@@ -367,16 +392,30 @@ RUN set -eux; \
       'date.timezone=Europe/Moscow' \
       'session.cookie_httponly=1' \
       'session.cookie_samesite=Lax' \
-      > /usr/local/etc/php/conf.d/zz-app.ini
+      > "$CONFDIR/zz-app.ini"
 
+# Пользователь www-data: в базисе symfony его может не быть (там root), а
+# пул php-fpm, COPY --chown=www-data:www-data на стадии app и права на
+# storage/bootstrap/cache рассчитаны на www-data — создаём ДО стадий,
+# которые на него ссылляются (идемпотентно).
 # php-fpm слушает TCP 0.0.0.0:9000 (иначе nginx даёт 502 Connection refused —
 # docker/nginx/default.conf использует fastcgi_pass backend:9000).
 # pm=dynamic + request_terminate_timeout: при пиковой нагрузке (много вкладок)
 # воркеры создаются по требованию вместо очереди на 6 статичных процессах;
 # зависший запрос убивается через 120с, а не держит воркера вечно.
+# ВАЖНО: каталог пулов берём НЕ из /usr/local/etc/php-fpm.d (путь образов
+# docker-library): у apk-пакета php*-fpm он свой (/etc/php*/ ... /php-fpm.d или
+# /fpm/pool.d). Ищем первый существующий; дефолтный пул, слушающий unix-сокет,
+# отключаем, чтобы он не конфликтовал с zz-listen.conf.
 RUN set -eux; \
+    POOL=""; \
+    for d in /usr/local/etc/php-fpm.d /etc/php*/php-fpm.d /etc/php*/fpm/pool.d; do [ -d "$d" ] && POOL="$d" && break; done; \
+    [ -n "$POOL" ] || { mkdir -p /usr/local/etc/php-fpm.d; POOL=/usr/local/etc/php-fpm.d; }; \
+    echo ">>> каталог пулов php-fpm: $POOL"; \
     printf '%s\n' \
       '[www]' \
+      'user = www-data' \
+      'group = www-data' \
       'listen = 0.0.0.0:9000' \
       'listen.backlog = 512' \
       'clear_env = no' \
@@ -390,7 +429,11 @@ RUN set -eux; \
       'catch_workers_output = yes' \
       'decorate_worker_output = no' \
       'php_admin_value[memory_limit] = 128M' \
-      > /usr/local/etc/php-fpm.d/zz-listen.conf
+      > "$POOL/zz-listen.conf"; \
+    # Глушим штатный www.conf того же пула: он объявляет [www] повторно и/или
+    # слушает unix-сокет — два одинаковых секции php-fpm не переживает.
+    if [ -f "$POOL/www.conf" ]; then mv "$POOL/www.conf" "$POOL/www.conf.disabled"; fi; \
+    echo ">>> zz-listen.conf готов (listen 0.0.0.0:9000)"
 
 # ---------------------------------------------------------------------------
 # Стадия 5 (ФИНАЛЬНАЯ, target по умолчанию в docker-compose.yml): чистый
