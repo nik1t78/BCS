@@ -12,7 +12,8 @@
 #     скачивается, compose только разворачивает проект.
 # =============================================================================
 
-FROM composer:2 AS composer-stage
+# digest сверен с Docker Hub API 2026-10-23 (тег composer:2, amd64)
+FROM composer:2@sha256:66c00f4ea1c6a01364d75460bb2837886388e1d5b2b1b6e0f22c8788eb4e73ad AS composer-stage
 
 # Базис закреплен digest'ом (сверен с Docker Hub API 2026-10-23): этот образ
 # точно существует и содержит полные исходники PHP в /usr/src/php.tar.xz —
