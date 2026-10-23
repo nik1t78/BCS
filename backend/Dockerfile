@@ -32,15 +32,23 @@ RUN apk add --no-cache unzip mariadb-client tzdata \
 # (require-only в composer.json нет), а компиляция sockets падала на
 # linux/sock_diag.h. Если когда-нибудь понадобится raw-сокет — там же
 # доступен встроенный stream_socket_client() без всякого расширения.
+# ВАЖНО: opcache НЕ компилируется через docker-php-ext-install. В php:8.x-alpine
+# он уже встроен в бинарник php-fpm, а отдельная сборка "shared" версии в PHP 8.5
+# падает на `cp: can't stat 'modules/*'` (не остаётся .so для копирования) и
+# роняла всю сборку backend/queue/scheduler. Включается ниже ini-файлом zz-app.ini.
 RUN set -eux; \
     apk add --no-cache --virtual .build-deps $PHPIZE_DEPS libzip-dev icu-dev \
         libpng-dev libjpeg-turbo-dev freetype-dev oniguruma-dev; \
     docker-php-ext-configure gd --with-freetype --with-jpeg; \
     docker-php-ext-install -j"$(nproc)" \
-        bcmath exif fileinfo gd intl opcache pcntl pdo_mysql zip; \
+        bcmath exif fileinfo gd intl pcntl pdo_mysql zip; \
     pecl install redis; \
     docker-php-ext-enable redis; \
     apk del .build-deps; \
+    # opcache НЕ компилируем отдельно (см. комментарий выше): он уже встроен в
+    # бинарник php-fpm базового образа — просто включаем его ini-файлом ниже
+    # (zz-app.ini: opcache.enable=1). Никаких conf.d/docker-php-ext-opcache.ini
+    # не создаём, иначе php-cli будет искать несуществующий opcache.so.
     # самопроверка: критичные модули на месте (иначе сборка падает здесь, а
     # не через полчаса на невнятном exit 1)
     for e in bcmath ctype curl dom fileinfo gd intl json mbstring openssl \
