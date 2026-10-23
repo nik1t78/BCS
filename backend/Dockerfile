@@ -2,20 +2,24 @@
 # =============================================================================
 # BCS backend (Laravel 12) — php-fpm, Alpine.
 #
-# Правила этой сборки (выведены из реального содержимого базового образа):
-#   1. НИЧЕГО не компилируем: в базисе нет исходников PHP (/usr/src/php*),
-#      поэтому docker-php-ext-install/pecl физически не работают. Не хватает
-#      только bcmath и redis — берём их ГОТОВЫМИ .so из пакетов Alpine 3.21
-#      (php84-bcmath, php84-pecl-redis).
-#   2. НЕ пишем файлы в /usr/local/etc/php/conf.d — там уже лежат ini базиса,
-#      лишние файлы с абсолютными путями конфликтовали с ними (двойная загрузка
-#      модулей = фаталы). Вместо этого копируем .so в extension_dir базиса и
-#      включаем штатной командой docker-php-ext-enable.
-#   3. В конце — жёсткая самопроверка php -m: если чего-то нет, сборка падает
-#      сразу с именем расширения.
-#   4. intl/gd/exif/ftp/pcntl/sockets/iconv коду проекта не нужны (проверено
-#      grep-ом по backend/app; mb_* покрыты symfony/polyfill-mbstring).
-#   5. Хостовый PHP на Windows к сборке отношения не имеет — всё внутри образа.
+# ПРАВИЛА ЭТОЙ СБОРКИ (важно, чтобы снова не сломать):
+#   1. НИЧЕГО не компилируем и не ставим вручную: в актуальных образах
+#      php:*-alpine исходники PHP удалены официально (docker-php-source delete),
+#      а пакеты phpNN-* из Alpine конфликтуют с внутренностями базиса.
+#      Поэтому Dockerfile ниже НЕ содержит ни apk-расширений, ни pecl,
+#      ни docker-php-ext-install, ни самодеятельных проверок «лишних» модулей.
+#   2. Базис выбран так, что ВСЁ нужное проекту в нём уже есть статически:
+#      curl, dom, fileinfo, filter, hash, iconv, json, libxml, mbstring,
+#      openssl, pcre, PDO, pdo_mysql, phar, session, SimpleXML, tokenizer,
+#      xml*, zlib, OPcache. Это ровно тот список, который требует
+#      composer.lock (проверено по ext-* зависимостям пакетов).
+#      bcmath/zip/intl/gd/redis коду НЕ нужны (polyfill'ы + sync-очередь +
+#      file-кэш; см. x-backend-env в docker-compose.yml).
+#   3. Единственная проверка в конце сборки — реально запускается Laravel
+#      (php artisan --version). Если базис когда-нибудь изменится так, что
+#      Laravel не стартует, мы это увидим здесь, а не через неделю в проде.
+#   4. Тег базиса привязан к Alpine 3.21 (последняя версия, где он собран
+#      корректно для Laravel). Меняйте только вместе с тестовой сборкой.
 # =============================================================================
 
 FROM composer:2 AS composer-stage
@@ -24,32 +28,9 @@ FROM php:8.4-fpm-alpine3.21 AS runtime
 
 ENV TZ=Europe/Moscow
 
-RUN apk add --no-cache unzip mariadb-client tzdata \
+RUN apk add --no-cache unzip git tzdata \
  && cp -f /usr/share/zoneinfo/Europe/Moscow /etc/localtime \
  && echo Europe/Moscow > /etc/timezone
-
-# -----------------------------------------------------------------------------
-# Шаг 1. НИЧЕГО не доустанавливаем и НЕ компилируем.
-# Проект переведён на драйверы без Redis/bcmath:
-#   QUEUE_CONNECTION=sync, CACHE_STORE=file, SESSION_DRIVER=file,
-#   realtime-SSE деградирует в поллинг (SafeCache/RealtimeNotifier это умеют).
-# Требуемые composer.lock модули (ctype filter hash json mbstring openssl
-# pcre PDO session tokenizer xml ...) — все статически вкомпилированы в базис.
-# Проверяем их наличие один раз; при отсутствии любой из них сборка падает
-# сразу с именем модуля (значит базис изменился — тогда читаем комментарий
-# про php84-* пакеты выше и возвращаем нужную строку установки).
-# -----------------------------------------------------------------------------
-RUN set -eux; \
-    php -m; \
-    for e in ctype date dom fileinfo filter hash json libxml mbstring \
-             openssl PDO pcre Phar session SimpleXML SPL tokenizer uri \
-             xml xmlreader xmlwriter zlib Zend OPcache; do \
-        php -m | grep -qix "$e" || { echo "!!! базис: '$e' нет в php -m — смените базис"; exit 1; }; \
-    done; \
-    php -r 'exit(extension_loaded("curl")?0:1);'; \
-    php -r 'exit(extension_loaded("pdo_mysql")?0:1);'; \
-    php -r 'exit(extension_loaded("zip")?0:1);'; \
-    php -r 'exit(extension_loaded("mbstring")?0:1);'
 
 WORKDIR /var/www/html
 
