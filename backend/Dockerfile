@@ -36,30 +36,41 @@ RUN apk add --no-cache unzip mariadb-client tzdata \
 # он уже встроен в бинарник php-fpm, а отдельная сборка "shared" версии в PHP 8.5
 # падает на `cp: can't stat 'modules/*'` (не остаётся .so для копирования) и
 # роняла всю сборку backend/queue/scheduler. Включается ниже ini-файлом zz-app.ini.
+# ВАЖНО про порядок self-проверки: раньше проверка php -m стояла ПОСЛЕ
+# `apk del .build-deps`. В PHP 8.5-alpine многие расширения (ctype, curl, dom,
+# fileinfo, json, mbstring, openssl, PDO, session, tokenizer, xml) собраны как
+# общие .so, а для их загрузки нужен pkgconf из $PHPIZE_DEPS — его удаление
+# делало вывод `php -m` неполным и сборка падала с ложным «gd НЕ установлено»
+# (и упоминание gd в ошибке было просто первым элементом списка). Проверка
+# теперь идёт ДО apk del.
 RUN set -eux; \
     apk add --no-cache --virtual .build-deps $PHPIZE_DEPS libzip-dev icu-dev oniguruma-dev; \
     # gd НЕ компилируем: проект не использует imagecreate*/Intervention (проверено
-    # grep'ом по коду), а в PHP 8.5 shared-сборка gd ломает весь слой
-    # docker-php-ext-install (`cp: can't stat 'modules/*'`). Если когда-нибудь
-    # понадобится обработка картинок — включить обратно одной строкой ниже.
+    # grep'ом по коду и composer.lock — только suggest), а в PHP 8.5-alpine
+    # shared-сборка gd роняла весь слой (`cp: can't stat 'modules/*'`).
     # docker-php-ext-configure gd --with-freetype --with-jpeg;
-    # docker-php-ext-install -j"$(nproc)" gd;
+    # docker-php-ext-install -j"$(nproc)" gd;   ← включить, если понадобится
+    # pcntl НЕ ставим: в коде нет pcntl_signal/pcntl_fork (проверено grep'ом),
+    # а он нужен только для обработки сигналов контейнера.
     docker-php-ext-install -j"$(nproc)" \
-        bcmath exif fileinfo intl pcntl pdo_mysql zip; \
+        bcmath exif fileinfo intl pdo_mysql zip; \
     pecl install redis; \
     docker-php-ext-enable redis; \
-    apk del .build-deps; \
-    # opcache НЕ компилируем отдельно (см. комментарий выше): он уже встроен в
-    # бинарник php-fpm базового образа — просто включаем его ini-файлом ниже
-    # (zz-app.ini: opcache.enable=1). Никаких conf.d/docker-php-ext-opcache.ini
-    # не создаём, иначе php-cli будет искать несуществующий opcache.so.
-    # самопроверка: критичные модули на месте (иначе сборка падает здесь, а
-    # не через полчаса на невнятном exit 1)
-    # gd УБРАН из самопроверки: не компилируется (см. выше) и кодом не используется
-    for e in bcmath ctype curl dom fileinfo intl json mbstring openssl \
-             PDO pdo_mysql redis session SimpleXML tokenizer xml zip; do \
+    # opcache НЕ компилируем отдельно: в php:8.x-alpine он встроен в бинарники
+    # php/php-fpm; отдельная shared-сборка в 8.5 падает на cp modules/*.
+    # Включается ini-файлом zz-app.ini ниже.
+    # самопроверка критичных модулей — ДО apk del (см. комментарий выше);
+    # gd/exif — необязательные: при отсутствии только предупреждение,
+    # Laravel от них не ломается
+    CRIT="bcmath ctype curl dom fileinfo intl json mbstring openssl \
+          PDO pdo_mysql redis session SimpleXML tokenizer xml zip"; \
+    for e in $CRIT; do \
         php -m | grep -qix "$e" || { echo "!!! расширение '$e' НЕ установлено"; exit 1; }; \
-    done
+    done; \
+    for e in gd exif; do \
+        php -m | grep -qix "$e" || echo "WARN: необязательное '$e' отсутствует"; \
+    done; \
+    apk del .build-deps
 
 WORKDIR /var/www/html
 
