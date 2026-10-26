@@ -106,7 +106,32 @@ export const apiRequest = async (endpoint: string, options: RequestInit = {}, _r
           message = firstMessages.join("; ");
         }
       }
-      const err: any = new Error(message || "Ошибка запроса");
+      // 5xx: Laravel при APP_DEBUG=false отдаёт {"message":"Server Error"} без
+      // деталей — пользователь видел только «проверьте поля». Пытаемся вытащить
+      // реальную причину из нетипичных форм ответа (exception / message в виде
+      // объекта / текстовый ответ nginx/PHP-FPM).
+      if (!message && response.status >= 500) {
+        if (typeof error.message === "object" && error.message) {
+          message = String((error.message as any).message ?? "");
+        } else if (typeof error.exception === "string") {
+          message = error.exception;
+        } else if (typeof error.error === "string") {
+          message = error.error;
+        }
+        if (!message) {
+          try {
+            const text = typeof response.clone === "function" ? await response.clone().text() : "";
+            const m = text.match(/Undefined array key[^<"]*|Column not found[^<"]*|SQLSTATE\[\d+\][^<"]*|Data too long[^<"]*|Base table or view not found[^<"]*/i);
+            if (m) message = m[0];
+          } catch {
+            /* не критично */
+          }
+        }
+      }
+      const err: any = new Error(message || `Ошибка сервера (HTTP ${response.status}). Подробности — в логах: docker compose logs backend`);
+      // Пробрасываем объект errors целиком: store-api извлекает конкретную
+      // причину валидации («время уже прошло» и т.п.) для сообщения в UI.
+      err.errors = error.errors ?? null;
       // Пробрасываем HTTP-статус: компоненты должны различать 401/403/404/5xx
       // и корректно включать fallback-сценарии (например, список залов через
       // /meetings/rooms-availability при 403 на GET /rooms).

@@ -10,7 +10,10 @@ import {
   getUsersForDisplay,
   getTags,
   checkConflictsApi,
+  clearLastMeetingSaveError,
 } from "../store-api";
+// lastMeetingSaveError — mutable export: читаем актуальное значение через namespace-import
+import * as storeApi from "../store-api";
 import TagsSelector from "./TagsSelector";
 import MeetingRsvp from "./MeetingRsvp";
 import { describeRRule } from "../utils/recurrence";
@@ -839,8 +842,10 @@ export default function UserPanel({
       .catch(() => {
         // 403/404 на справочнике GET /rooms (роль «user» или старый бэкенд):
         // каталог залов берём из агрегированного /meetings/rooms-availability.
+        // Дату берём по ЧАСАМ СЕРВЕРА — локальные часы в docker-окружении могут
+        // расходиться, и сервер вернёт пустой список для «своей» даты.
         meetingsAPI
-          .roomsAvailability({ date: localTodayKey() })
+          .roomsAvailability({ date: serverTodayKey() })
           .then((av: any) => {
             const list: any[] = av?.data ?? av ?? [];
             setRoomsCatalog(list.map(mapRoom));
@@ -1143,11 +1148,17 @@ export default function UserPanel({
       payload.link = payload.link.trim();
     }
 
+    clearLastMeetingSaveError();
     const saved = editingMeeting ? await updateMeeting(editingMeeting.id, payload) : await createMeeting(payload);
 
     if (!saved) {
+      // Показываем КОНКРЕТНУЮ причину с сервера (например, «Нельзя создать
+      // встречу в прошедшем времени…»), а не универсальный список полей —
+      // пользователь видел «время не совпадает», хотя поля были в порядке.
       alert(
-        "Не удалось сохранить конференцию. Проверьте поля: время начала должно быть раньше времени окончания, ссылка — корректный URL, напоминание — от 5 до 1440 минут."
+        storeApi.lastMeetingSaveError
+          ? `Не удалось сохранить конференцию: ${storeApi.lastMeetingSaveError}`
+          : "Не удалось сохранить конференцию. Проверьте поля: время начала должно быть раньше времени окончания, ссылка — корректный URL, напоминание — от 5 до 1440 минут."
       );
       return;
     }
@@ -1531,6 +1542,11 @@ export default function UserPanel({
                         <option value={formData.room}>{formData.room}</option>
                       )}
                     </select>
+                    {roomsCatalog.length === 0 && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                        Справочник комнат загрузится автоматически; если список пуст — поле «Комната» можно оставить невыбранным.
+                      </p>
+                    )}
                   </div>
 
                   <div>

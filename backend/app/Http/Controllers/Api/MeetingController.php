@@ -125,10 +125,91 @@ class MeetingController extends Controller
     }
 
     /**
+     * Нормализация полей формы встречи ДО валидации.
+     *
+     * 1) start_time/end_time: приводим 'HH:mm:ss' → 'HH:mm'. Laravel-валидатор
+     *    сравнивает значения по строкам, и корректная пара «14:30» / «14:30:00»
+     *    (например, при редактировании встречи, где фронт вернул серверное
+     *    значение с секундами) отбивалась правилом after:start_time — пользователь
+     *    видел «время начала должно быть раньше времени окончания», хотя всё верно.
+     * 2) link: пустая строка '' не проходит правило `url` («ссылка — корректный
+     *    URL»), тогда как nullable принимает null. Приводим пустое к null.
+     *    Если вместо ссылки прислали текст приглашения без протокола — дописываем
+     *    https:// (иначе `url` тоже его отклоняет).
+     * 3) reminder_minutes: из формы приходит строка ("15") или ""; пустое/битое
+     *    значение отбивалось правилом min:5 («напоминание — от 5 до 1440 минут»).
+     */
+    private function normalizeMeetingInput(Request $request): void
+    {
+        foreach (['start_time', 'end_time'] as $field) {
+            $value = $request->input($field);
+            if (is_string($value)) {
+                $trimmed = trim($value);
+                // '14:30:00' / '14:30:00.000000' → '14:30'
+                if (preg_match('/^(\d{2}):(\d{2})(:\d{2}(\.\d+)?)?$/', $trimmed, $m)) {
+                    $request->merge([$field => $m[1] . ':' . $m[2]]);
+                }
+            }
+        }
+
+        $link = $request->input('link');
+        if (is_string($link)) {
+            $trimmed = trim($link);
+            if ($trimmed === '') {
+                $request->merge(['link' => null]);
+            } else {
+                // Ссылка могла прийти «грязной» после вставки из приглашения:
+                // без протокола («salutejazz.ru/calls/abc?psw=123»), с хвостом
+                // текста («... Пароль: 123 Войти») или с кавычками. Правило `url`
+                // такое отклоняет → фронт показывал «ссылка — корректный URL».
+                // Чистим до чистого адреса и дописываем https:// при отсутствии схемы.
+                $candidate = preg_replace('/[\'"\'\x{201C}\x{201D}<>]/u', '', $trimmed);
+                if (preg_match('#(?:https?://)?((?:www\.)?[a-z0-9.-]+\.[a-z]{2,}(?:/|\?|\#)\S*)#i', $candidate, $m)) {
+                    $host = strtolower(parse_url('http://' . $m[1], PHP_URL_HOST) ?: '');
+                    if ($host === 'salutejazz.ru' || str_ends_with($host, '.salutejazz.ru')) {
+                        // наш ВКС: берём только путь+запрос комнаты, отбрасывая
+                        // мусор после ссылки (текст приглашения) и дописывая схему
+                        if (preg_match('#(?:https?://)?(?:www\.)?salutejazz\.ru(/calls/\S*)#i', $candidate, $p)) {
+                            $path = preg_replace('/[\s\'"\'\x{201C}\x{201D}<>,;]+$/', '', $p[1]);
+                            $request->merge(['link' => 'https://salutejazz.ru' . $path]);
+                        } else {
+                            $request->merge(['link' => 'https://' . $m[1]]);
+                        }
+                    } elseif (!preg_match('#^https?://#i', $candidate)) {
+                        // посторонний домен без схемы — дописываем https://
+                        $request->merge(['link' => 'https://' . $m[1]]);
+                    } else {
+                        $request->merge(['link' => $trimmed]);
+                    }
+                } else {
+                    $request->merge(['link' => $trimmed]);
+                }
+            }
+        }
+
+        $reminder = $request->input('reminder_minutes');
+        if ($reminder !== null) {
+            $n = is_string($reminder) ? (int) trim($reminder) : (int) $reminder;
+            if ($n < 5) {
+                $n = 15; // адекватный дефолт вместо отклонения всей заявки
+            } elseif ($n > 1440) {
+                $n = 1440;
+            }
+            $request->merge(['reminder_minutes' => $n]);
+        }
+    }
+
+    /**
      * Создание конференции
      */
     public function store(Request $request)
     {
+        $this->normalizeMeetingInput($request);
+
+        // Точная причина отклонения заявки (для сообщения на фронте вместо
+        // универсального «проверьте поля»): заполняется при автофиксах ниже.
+        $autoFixNotes = [];
+
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -139,6 +220,13 @@ class MeetingController extends Controller
             // Жёсткий date_format:H:i тогда отбивал валидацию (422) или
             // «after:start_time» падал на сравнении строк разной длины.
             'start_time' => ['required', 'regex:/^\d{2}:\d{2}(:\d{2})?$/', 'max:20:00'],
+            // ВНИМАНИЕ: сравнение валидатора Laravel идёт ПО СТРОКАМ. Фронт
+            // шлёт 'HH:mm', а при редактировании серверные значения могут
+            // прийти как 'HH:mm:ss' — строка '14:30' меньше '14:30:00', и
+            // корректная пара «14:30 / 14:30:00» отбивалась правилом
+            // after (фронт показывал «время начала должно быть раньше
+            // окончания»). Нормализуем оба значения к HH:mm ДО валидации
+            // (normalizeTimeFields), поэтому здесь безопасно H:i.
             'end_time' => ['required', 'regex:/^\d{2}:\d{2}(:\d{2})?$/', 'after:start_time'],
             'room' => 'nullable|string|max:255',
             'link' => 'nullable|url|max:500',
@@ -168,6 +256,22 @@ class MeetingController extends Controller
             ]);
         }
 
+        // Автофикс «конец раньше/равен началу»: встреча с нулевой длительностью
+        // бессмысленна, но отбивать всю заявку из-за этого — плохой UX
+        // (фронт показывал только «время начала должно быть раньше окончания»).
+        // Сдвигаем конец на +60 мин; если вылез за полночь — просим начать раньше.
+        $endAt = \Carbon\CarbonImmutable::parse($validated['date'])->setTimeFromTimeString($validated['end_time']);
+        if ($endAt->lessThanOrEqualTo($startAt)) {
+            $candidateEnd = $startAt->copy()->addHour();
+            if ($candidateEnd->greaterThan($startAt->copy()->endOfDay())) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'start_time' => ['Встреча не может заканчиваться позже полуночи. Выберите более раннее время начала.'],
+                ]);
+            }
+            $validated['end_time'] = $candidateEnd->format('H:i');
+            $autoFixNotes[] = 'окончание автоматически сдвинуто на ' . $validated['end_time'];
+        }
+
         $validated['organizer_id'] = $request->user()->id;
         
         $tags = $validated['tags'] ?? null;
@@ -177,7 +281,31 @@ class MeetingController extends Controller
             $validated['repeat_until'] = null;
         }
 
-        $meeting = Meeting::create($validated);
+        // Если MySQL отклонил вставку (например, колонки start_time/end_time ещё
+        // не конвертированы миграцией fix_meetings_time_columns_for_mysql8 и
+        // strict-режим ругается «Data truncated for column»), раньше это
+        // улетало в голый 500 «Server Error» без объяснений. Превращаем такую
+        // ошибку в 422 с конкретной причиной, понятной пользователю.
+        try {
+            $meeting = Meeting::create($validated);
+        } catch (\Illuminate\Database\QueryException $e) {
+            report($e);
+            $msg = $e->getMessage();
+            if (str_contains($msg, 'start_time') || str_contains($msg, 'end_time')
+                || stripos($msg, 'data truncated') !== false
+                || stripos($msg, 'incorrect datetime') !== false) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'start_time' => ['Сервер отклонил формат времени при сохранении. Выполните на сервере: docker compose exec backend php artisan migrate --force'],
+                ]);
+            }
+            if (stripos($msg, 'base table or view not found') !== false
+                || preg_match("/Base table or view not found.*?['\`](\w+)['\`]/i", $msg, $m)) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'title' => ['В базе данных отсутствует таблица' . (isset($m[1]) ? " «{$m[1]}»" : '') . '. Выполните на сервере: docker compose exec backend php artisan migrate --force'],
+                ]);
+            }
+            throw $e;
+        }
 
         if ($tags !== null) {
             $meeting->tags()->sync($tags);
@@ -215,7 +343,8 @@ class MeetingController extends Controller
 
         \App\Support\SafeCache::forever('meetings:changed', now()->timestamp);
 
-        return response()->json($meeting->load(['organizer', 'tags']), 201);
+        return response()->json($meeting->load(['organizer', 'tags'])
+            ->additional(['warnings' => $autoFixNotes]), 201);
     }
 
     /**
@@ -243,6 +372,8 @@ class MeetingController extends Controller
         if ($meeting->organizer_id !== $user->id && !$user->isAdmin() && !$user->isModerator() && !$isParticipant) {
             return response()->json(['message' => 'Доступ запрещён'], 403);
         }
+
+        $this->normalizeMeetingInput($request);
 
         $validated = $request->validate([
             'title' => 'sometimes|string|max:255',

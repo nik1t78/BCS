@@ -164,14 +164,16 @@ function App() {
         />
       )}
 
-      {/* Sidebar: на мобильных — off-canvas (fixed), на десктопе — статичный.
-          key={sidebarOpen} перемонтирует сайдбар при переключении сворачивания,
-          иначе Tailwind не переопределяет мобильную ширину w-64 и панель «не закрывается» */}
+      {/* Sidebar: на мобильных (<768px) — off-canvas (fixed + translate-x),
+          на десктопах (>=768px) — всегда видимый статичный блок во flex-ряде.
+          key больше НЕ перемонтирует панель: remount сбрасывал анимацию и
+          вызывал «прыжок» layout при сворачивании; вместо него —
+          transition-[transform,width] и h-screen/shrink-0, поэтому панель
+          корректно ведёт себя на мониторах любого размера (в т.ч. 4K). */}
       <aside
-        key={sidebarOpen ? "wide" : "collapsed"}
-        className={`bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transition-all duration-300 z-50 flex flex-col
-          fixed inset-y-0 left-0 w-64 ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 md:static
-          ${sidebarOpen ? "md:w-64" : "md:w-20"}`}
+        className={`bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transition-[transform,width] duration-300 z-50 flex flex-col shrink-0 h-screen
+          fixed inset-y-0 left-0 overflow-y-auto w-64 ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"}
+          md:translate-x-0 md:static md:h-screen ${sidebarOpen ? "md:w-64" : "md:w-20"}`}
       >
         <div className="p-4 border-b border-gray-100 dark:border-gray-700">
           <div className="flex items-center gap-3">

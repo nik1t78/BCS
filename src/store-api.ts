@@ -159,6 +159,11 @@ export function meetingToApi(data: any): any {
     // ссылкам без пароля — это ломает живые комнаты (ссылка перестаёт
     // совпадать с созданной на salutejazz.ru).
     out.link = isVksLink(out.link) ? sanitizeVksLink(out.link) : normalizeVksLink(out.link);
+    // Посторонняя ссылка без схемы («zoom.us/j/123») не проходит серверное
+    // правило `url` → 422 «ссылка — корректный URL». Дописываем https://.
+    if (typeof out.link === "string" && out.link.trim() && !/^https?:\/\//i.test(out.link.trim())) {
+      out.link = "https://" + out.link.trim();
+    }
   } else if ("link" in out) {
     out.link = null;
   }
@@ -459,6 +464,27 @@ export function setCachedUsers(key: string, list: User[]) {
   }
 }
 
+/** Последняя ошибка записи встречи (текст с сервера — конкретная причина:
+ *  «время уже прошло», «напоминание — от 5 до 1440 минут» и т.п.). Фронт
+ *  показывает её вместо универсального «проверьте поля». */
+export let lastMeetingSaveError: string | null = null;
+export function clearLastMeetingSaveError() {
+  lastMeetingSaveError = null;
+}
+
+/** Извлечь человекочитаемое сообщение из ответа Laravel:
+ *  422 → склеиваем errors по полям, остальные коды → message. */
+function extractApiErrorMessage(error: any): string | null {
+  const err = error as any;
+  if (!err) return null;
+  const errors = err.errors ?? err.response?.errors;
+  if (errors && typeof errors === "object") {
+    const msgs = Object.values(errors).flat().map(String).filter(Boolean);
+    if (msgs.length) return msgs.join("; ");
+  }
+  return err.message ? String(err.message) : null;
+}
+
 export async function createMeeting(data: any): Promise<Meeting | null> {
   try {
     // Бэкенд ждёт обязательные поля (priority, reminder_minutes, recurring и
@@ -468,6 +494,7 @@ export async function createMeeting(data: any): Promise<Meeting | null> {
     return mapMeeting(unwrapOne(response));
   } catch (error) {
     console.error("Create meeting error:", error);
+    lastMeetingSaveError = extractApiErrorMessage(error);
     return null;
   }
 }
@@ -479,6 +506,7 @@ export async function updateMeeting(id: string, data: any): Promise<Meeting | nu
     return mapMeeting(unwrapOne(response));
   } catch (error) {
     console.error("Update meeting error:", error);
+    lastMeetingSaveError = extractApiErrorMessage(error);
     return null;
   }
 }
