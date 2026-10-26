@@ -474,7 +474,7 @@ export function clearLastMeetingSaveError() {
 
 /** Извлечь человекочитаемое сообщение из ответа Laravel:
  *  422 → склеиваем errors по полям, остальные коды → message. */
-function extractApiErrorMessage(error: any): string | null {
+export function extractApiErrorMessage(error: any): string | null {
   const err = error as any;
   if (!err) return null;
   const errors = err.errors ?? err.response?.errors;
@@ -486,28 +486,43 @@ function extractApiErrorMessage(error: any): string | null {
 }
 
 export async function createMeeting(data: any): Promise<Meeting | null> {
+  let response: any;
   try {
     // Бэкенд ждёт обязательные поля (priority, reminder_minutes, recurring и
     // формат времени H:i). Отправляем только валидные поля в snake_case.
-    const response = await meetingsAPI.create(meetingToApi(data));
-    invalidateMeetingsCache();
-    return mapMeeting(unwrapOne(response));
+    response = await meetingsAPI.create(meetingToApi(data));
   } catch (error) {
     console.error("Create meeting error:", error);
     lastMeetingSaveError = extractApiErrorMessage(error);
     return null;
   }
+  try {
+    // Маппинг ответа — только после успешного сохранения. Раньше исключение
+    // здесь (битый ответ) ловился тем же catch: пользователь видел «не
+    // удалось сохранить», а встреча в базе уже создавалась.
+    invalidateMeetingsCache();
+    return mapMeeting(unwrapOne(response));
+  } catch (error) {
+    console.error("Create meeting: server saved but response mapping failed:", error);
+    return {} as Meeting;
+  }
 }
 
 export async function updateMeeting(id: string, data: any): Promise<Meeting | null> {
+  let response: any;
   try {
-    const response = await meetingsAPI.update(id, meetingToApi(data));
-    invalidateMeetingsCache();
-    return mapMeeting(unwrapOne(response));
+    response = await meetingsAPI.update(id, meetingToApi(data));
   } catch (error) {
     console.error("Update meeting error:", error);
     lastMeetingSaveError = extractApiErrorMessage(error);
     return null;
+  }
+  try {
+    invalidateMeetingsCache();
+    return mapMeeting(unwrapOne(response));
+  } catch (error) {
+    console.error("Update meeting: server saved but response mapping failed:", error);
+    return {} as Meeting;
   }
 }
 

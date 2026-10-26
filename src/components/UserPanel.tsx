@@ -1163,6 +1163,14 @@ export default function UserPanel({
       return;
     }
 
+    // Сервер мог выполнить автофикс (например, сдвинуть окончание на +60 мин,
+    // если конец совпал с началом) — честно показываем это пользователю,
+    // иначе сохранённая встреча «расходится» с формой без объяснений.
+    const warnings: string[] = Array.isArray((saved as any)?.warnings) ? (saved as any).warnings : [];
+    if (warnings.length) {
+      alert("Встреча сохранена с изменениями: " + warnings.join("; "));
+    }
+
     loadData();
     setShowForm(false);
     setEditingMeeting(null);

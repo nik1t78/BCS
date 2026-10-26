@@ -290,21 +290,29 @@ class MeetingController extends Controller
             $meeting = Meeting::create($validated);
         } catch (\Illuminate\Database\QueryException $e) {
             report($e);
-            $msg = $e->getMessage();
-            if (str_contains($msg, 'start_time') || str_contains($msg, 'end_time')
-                || stripos($msg, 'data truncated') !== false
-                || stripos($msg, 'incorrect datetime') !== false) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
-                    'start_time' => ['Сервер отклонил формат времени при сохранении. Выполните на сервере: docker compose exec backend php artisan migrate --force'],
-                ]);
+            $friendly = self::friendlyDbError($e);
+            if ($friendly !== null) {
+                throw \Illuminate\Validation\ValidationException::withMessages([$friendly[0] => [$friendly[1]]]);
             }
-            if (stripos($msg, 'base table or view not found') !== false
-                || preg_match("/Base table or view not found.*?['\`](\w+)['\`]/i", $msg, $m)) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
-                    'title' => ['В базе данных отсутствует таблица' . (isset($m[1]) ? " «{$m[1]}»" : '') . '. Выполните на сервере: docker compose exec backend php artisan migrate --force'],
-                ]);
-            }
-            throw $e;
+            // Неизвестная ошибка БД: вместо голого 500 «Server Error» отдаём
+            // 422 — фронт покажет текст причины, а полная трассировка
+            // останется в storage/logs/laravel.log.
+            throw new \Symfony\Component\HttpKernel\Exception\HttpException(
+                422,
+                'Сервер отклонил запись встречи в базу данных. Подробности — в логах бэкенда (storage/logs/laravel.log).',
+                $e,
+            );
+        } catch (\Throwable $e) {
+            // Любая неожиданная ошибка (несовпадение кода и схемы после
+            // деплоя, отсутствующая колонка/таблица и т.п.) больше не
+            // превращается в необъяснимый 500: логируем и отдаём 422 с
+            // человеческим текстом — пользователь видит причину сразу.
+            report($e);
+            throw new \Symfony\Component\HttpKernel\Exception\HttpException(
+                422,
+                'Не удалось сохранить встречу на сервере: ' . $e->getMessage(),
+                $e,
+            );
         }
 
         if ($tags !== null) {
@@ -625,6 +633,28 @@ class MeetingController extends Controller
      * (rooms.department_id), могут бронировать только сотрудники этого отдела,
      * admin/moderator. Комнаты без department_id — публичные (любые).
      */
+    /**
+     * Перевод типичных ошибок MySQL в понятные сообщения для пользователя
+     * (вместо голого 500 «Server Error»). Возвращает [поле, сообщение] или null.
+     */
+    private static function friendlyDbError(\Illuminate\Database\QueryException $e): ?array
+    {
+        $msg = strtolower($e->getMessage());
+        if (str_contains($msg, 'data truncated') || str_contains($msg, 'incorrect datetime')
+            || str_contains($msg, 'start_time') || str_contains($msg, 'end_time')) {
+            return ['start_time', 'Сервер отклонил формат времени при сохранении. Выполните на сервере: docker compose exec backend php artisan migrate --force'];
+        }
+        if (str_contains($msg, 'base table or view not found')) {
+            $table = preg_match("/base table or view not found:.*?\s(?:table|view)\s+['`\"]?(\w+)/i", $e->getMessage(), $m) ? $m[1] : null;
+            return ['title', 'В базе данных отсутствует таблица' . ($table ? " \u00ab{$table}\u00bb" : '') . '. Выполните на сервере: docker compose exec backend php artisan migrate --force'];
+        }
+        if (str_contains($msg, 'unknown column')) {
+            $col = preg_match("/unknown column ['`\"]?(\w+)/i", $e->getMessage(), $m) ? $m[1] : null;
+            return ['title', 'Схема базы данных устарела' . ($col ? ": отсутствует колонка \u00ab{$col}\u00bb" : '') . '. Выполните на сервере: docker compose exec backend php artisan migrate --force'];
+        }
+        return null;
+    }
+
     private function validateRoomAccess(Request $request, ?string $roomName): void
     {
         if ($roomName === null || trim($roomName) === '') {
