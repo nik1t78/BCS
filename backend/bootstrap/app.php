@@ -61,5 +61,41 @@ return Application::configure(basePath: dirname(__DIR__))
                  ->withoutOverlapping();
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        //
+        // Глобальный обработчик ошибок API. Без него любая фатальная ошибка
+        // внутри /api/* (например, на этапе подготовки ответа после того, как
+        // валидация и запись в БД уже прошли успешно) отдаётся Laravel как
+        // безликий 500 {"message":"Server Error"} — пользователь видит только
+        // «не удалось сохранить конференцию» без причины, а админ гадает по
+        // логам. Здесь:
+        //  1) пишем в laravel.log строку [API-ERROR] POST/GET <url> => класс:
+        //     сообщение @файл:строка — её можно найти одной командой;
+        //  2) для api-запросов добавляем в JSON-ответ поле detail с текстом
+        //     исключения — фронт показывает его вместо «Server Error», и
+        //     причина видна сразу в браузере (F12 → Console).
+        // Ничего не скрываем от логов: report() штатно пишет трассировку.
+        $exceptions->render(function (\Throwable $e, $request) {
+            if (!$request->is('api/*') && !$request->expectsJson()) {
+                return null; // обычные веб-страницы — стандартный рендер Laravel
+            }
+
+            \Illuminate\Support\Facades\Log::error(
+                '[API-ERROR] ' . $request->method() . ' ' . $request->fullUrl() .
+                ' => ' . get_class($e) . ': ' . $e->getMessage() .
+                ' @ ' . $e->getFile() . ':' . $e->getLine()
+            );
+
+            if ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface) {
+                return null; // 404/429/403 и т.п. отдаём штатно
+            }
+
+            $status = method_exists($e, 'getStatusCode') ? $e->getStatusCode() : 500;
+            if ($status < 400 || $status > 599) {
+                $status = 500;
+            }
+
+            return response()->json([
+                'message' => $e->getMessage() ?: 'Server Error',
+                'detail' => get_class($e) . ': ' . $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine(),
+            ], $status);
+        });
     })->create();

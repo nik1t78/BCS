@@ -99,12 +99,17 @@ export const apiRequest = async (endpoint: string, options: RequestInit = {}, _r
       const error = await response.json().catch(() => ({}) as any);
       // Laravel при валидации (422) возвращает { message, errors: { field: [msgs] } },
       // а не поле "message" с текстом ошибки — достаём текст из errors
-      let message = error.message;
+      let message = typeof error.message === "string" ? error.message : undefined;
       if (!message && error.errors) {
         const firstMessages = Object.values(error.errors).flat() as string[];
         if (firstMessages.length > 0) {
           message = firstMessages.join("; ");
         }
+      }
+      // Кастомный рендер ошибок бэкенда (bootstrap/app.php) кладёт точную
+      // причину в поле detail — показываем её, если message неинформативен.
+      if ((!message || message === "Server Error") && typeof error.detail === "string" && error.detail) {
+        message = error.detail;
       }
       // 5xx: Laravel при APP_DEBUG=false отдаёт {"message":"Server Error"} без
       // деталей — пользователь видел только «проверьте поля». Пытаемся вытащить
