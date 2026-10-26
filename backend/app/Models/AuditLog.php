@@ -32,15 +32,22 @@ class AuditLog extends Model
      */
     public static function log(?\Illuminate\Http\Request $request, string $action, ?Model $subject = null, array $old = [], array $new = []): void
     {
-        static::create([
-            'user_id' => $request?->user()?->id,
-            'action' => $action,
-            'auditable_type' => $subject ? class_basename($subject) : null,
-            'auditable_id' => $subject?->getKey(),
-            'old_values' => $old ?: null,
-            'new_values' => $new ?: null,
-            'ip_address' => $request?->ip(),
-            'user_agent' => $request?->userAgent(),
-        ]);
+        // Аудит — второстепенная запись: он никогда не должен ронять бизнес-операцию
+        // (например, превращать POST /api/auth/login в 500 из-за отсутствующей таблицы,
+        // битого внешнего ключа audit_logs.user_id или слишком длинного user_agent).
+        try {
+            static::create([
+                'user_id' => $request?->user()?->id,
+                'action' => $action,
+                'auditable_type' => $subject ? class_basename($subject) : null,
+                'auditable_id' => $subject?->getKey(),
+                'old_values' => $old ?: null,
+                'new_values' => $new ?: null,
+                'ip_address' => $request?->ip(),
+                'user_agent' => $request?->userAgent(),
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 }
