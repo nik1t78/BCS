@@ -133,8 +133,13 @@ class MeetingController extends Controller
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'date' => 'required|date',
-            'start_time' => 'required|date_format:H:i|max:20:00',
-            'end_time' => 'required|date_format:H:i|after:start_time',
+            // Формат времени принимаем и HH:mm, и HH:mm:ss — серверные колонки
+            // TIME могут хранить значение с секундами ('14:30:00'), и при
+            // редактировании встречи фронт отправляет их обратно как есть.
+            // Жёсткий date_format:H:i тогда отбивал валидацию (422) или
+            // «after:start_time» падал на сравнении строк разной длины.
+            'start_time' => ['required', 'regex:/^\d{2}:\d{2}(:\d{2})?$/', 'max:20:00'],
+            'end_time' => ['required', 'regex:/^\d{2}:\d{2}(:\d{2})?$/', 'after:start_time'],
             'room' => 'nullable|string|max:255',
             'link' => 'nullable|url|max:500',
             'priority' => 'required|in:low,medium,high',
@@ -243,8 +248,8 @@ class MeetingController extends Controller
             'title' => 'sometimes|string|max:255',
             'description' => 'nullable|string',
             'date' => 'sometimes|date',
-            'start_time' => 'sometimes|date_format:H:i|max:20:00',
-            'end_time' => 'sometimes|date_format:H:i|after:start_time',
+            'start_time' => ['sometimes', 'regex:/^\d{2}:\d{2}(:\d{2})?$/', 'max:20:00'],
+            'end_time' => ['sometimes', 'regex:/^\d{2}:\d{2}(:\d{2})?$/', 'after:start_time'],
             'room' => 'nullable|string|max:255',
             'link' => 'nullable|url|max:500',
             'status' => 'sometimes|in:scheduled,in-progress,completed,cancelled',

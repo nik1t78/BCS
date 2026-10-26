@@ -124,6 +124,27 @@ const getDefaultReminder = (): number => {
   return 15;
 };
 
+/** Надёжное чтение reminderMinutes: если в localStorage («myMeetings» профиль,
+ *  шаблон, предзаполнение) затёрлось/повредилось значение (undefined, NaN, 0,
+ *  «abc»), сервер отклонял заявку с «напоминание — от 5 до 1440 минут».
+ *  Возвращаем валидное число всегда. */
+export const normalizeReminderMinutes = (v: unknown): number => {
+  const n = typeof v === "string" ? parseInt(v, 10) : Number(v);
+  if (!Number.isFinite(n)) return getDefaultReminder();
+  if (n < 5) return 5;
+  if (n > 1440) return 1440;
+  return Math.round(n);
+};
+
+/** Приведение времени к формату HH:mm (сервер может вернуть '14:30:00',
+ *  фронт отправляет обратно — жёсткая валидация H:i отваливалась на этом). */
+export const normHm = (v: unknown): string => {
+  const s = String(v ?? "");
+  const m = s.match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return s;
+  return `${String(parseInt(m[1], 10)).padStart(2, "0")}:${m[2]}`;
+};
+
 // Копирование текста в буфер обмена (код конференции / пароль ВКС)
 const copyText = async (text: string): Promise<boolean> => {
   try {
@@ -1032,6 +1053,18 @@ export default function UserPanel({
     // (422 валидация, истёкший токен и т.п.) — без проверки форма
     // «тихо» закрывалась, и казалось, что создание конференции не работает.
     const payload: Meeting = { ...formData };
+    // Страховки от «сервер отклонил заявку»: значения полей приводим к тем
+    // форматам, которые принимает бэкенд (HH:mm, reminder_minutes 5..1440).
+    payload.startTime = normHm(payload.startTime);
+    payload.endTime = normHm(payload.endTime);
+    payload.reminderMinutes = normalizeReminderMinutes(payload.reminderMinutes);
+    if (payload.endTime <= payload.startTime) {
+      // конец не позже начала — авто-сдвигаем (+60 мин), иначе валидация
+      // 'after:start_time' на сервере вернёт ошибку и встреча не сохранится
+      const [h, m] = payload.startTime.split(":").map((x) => parseInt(x, 10) || 0);
+      const total = Math.min(h * 60 + m + 60, 23 * 60 + 59);
+      payload.endTime = `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+    }
     if (payload.recurring === "none") delete payload.repeatUntil;
     else if (payload.repeatUntil && payload.repeatUntil < payload.date) {
       alert("Дата окончания повтора не может быть раньше даты встречи");
@@ -1131,7 +1164,15 @@ export default function UserPanel({
 
   const handleEdit = (meeting: Meeting) => {
     setEditingMeeting(meeting);
-    setFormData(meeting);
+    // Нормализуем время/напоминание перед открытием формы: сервер может
+    // вернуть '14:30:00' — input[type=time] такое значение не показывает,
+    // а reminderMinutes из устаревшего кэша мог быть пустым.
+    setFormData({
+      ...meeting,
+      startTime: normHm(meeting.startTime),
+      endTime: normHm(meeting.endTime),
+      reminderMinutes: normalizeReminderMinutes(meeting.reminderMinutes),
+    });
     setShowForm(true);
     setConflicts([]);
     setConflictChecked(false);
