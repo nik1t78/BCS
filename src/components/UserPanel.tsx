@@ -352,7 +352,7 @@ function CreateMeetingForm({
             <option value="">— Выберите комнату —</option>
             {roomsCatalog.map((r) => (
               <option key={r.name} value={r.name}>
-                {`${r.name} (${r.capacity} мест${r.equipment.length ? " • " + r.equipment.join(", ") : ""})`}
+                {r.name}
               </option>
             ))}
             {/* Если введённой ранее комнаты нет в каталоге — не теряем её */}
@@ -1543,7 +1543,7 @@ export default function UserPanel({
                       <option value="">— Выберите комнату —</option>
                       {roomsCatalog.map((r) => (
                         <option key={r.name} value={r.name}>
-                          {`${r.name} (${r.capacity} мест${r.equipment.length ? " • " + r.equipment.join(", ") : ""})`}
+                          {r.name}
                         </option>
                       ))}
                       {formData.room && !roomsCatalog.some((r) => r.name === formData.room) && (
