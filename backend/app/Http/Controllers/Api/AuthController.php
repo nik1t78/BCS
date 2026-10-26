@@ -102,34 +102,41 @@ class AuthController extends Controller
         // индекса по name). Со временем таблица разрастается «мусором»:
         // истёкшие access-токены и неиспользованные refresh-токены (у каждого
         // входа их пара, а старые аннулируются только при refresh/logout).
-        // Удаляем их в фоне (registerShutdownFunction — НЕ блокирует ответ,
-        // nginx уже отправит клиенту 200 до того, как начнётся DELETE): иначе
-        // именно этот запрос превращал каждый вход в «сайт долго логает».
+        // Удаляем их в фоне (defer() выполняется middleware InvokeDeferredCallbacks
+        // ПОСЛЕ отправки ответа клиенту — НЕ блокирует ответ): иначе именно этот
+        // запрос превращал каждый вход в «сайт долго логает».
         //
-        // ВАЖНО: раньше здесь использовался Queue::afterResponse(). В Laravel
-        // 11+ фасад Queue больше не регистрирует callback-хранилище
-        // after_response (метод стал @deprecated/no-op), поэтому вызов
-        // бросал BadMethodCallException («Method ...afterResponse does not
-        // exist») ДО попытки входа — и POST /api/auth/login отдавал 500
-        // вместо нормального ответа/422.
-        app()->registerShutdownFunction(function () {
-            try {
-                $cutoff = now()->subDays(30);
-                \DB::table('personal_access_tokens')
-                    ->where(function ($q) use ($cutoff) {
-                        $q->whereNotNull('expires_at')->where('expires_at', '<', $cutoff)
-                          ->orWhere(function ($q2) use ($cutoff) {
-                              $q2->where('name', 'like', 'refresh_token:%')
-                                 ->where('created_at', '<', $cutoff);
-                          });
-                    })
-                    ->limit(5000)
-                    ->delete();
-            } catch (\Throwable $e) {
-                // чистка не должна влиять на ответ пользователю
-                report($e);
-            }
-        });
+        // ВАЖНО (история падений этого места, обе давали 500 на login):
+        //  1) Queue::afterResponse() — в Laravel 11+ фасад Queue больше не
+        //     регистрирует хранилище after-response callbacks, вызов бросал
+        //     BadMethodCallException.
+        //  2) app()->registerShutdownFunction() — такого метода на Application
+        //     НЕТ никогда не было (в стеке так же: BadMethodCallException at
+        //     Macroable.php:117). Единственный штатный способ отложить работу
+        //     за момент отправки ответа — глобальный helper defer().
+        // На всякий случай весь блок обёрнут в try/catch: фоновая гигиена
+        // токенов не имеет права ронять вход в 500 ни при каких условиях.
+        try {
+            defer(function () {
+                try {
+                    $cutoff = now()->subDays(30);
+                    \DB::table('personal_access_tokens')
+                        ->where(function ($q) use ($cutoff) {
+                            $q->whereNotNull('expires_at')->where('expires_at', '<', $cutoff)
+                              ->orWhere(function ($q2) use ($cutoff) {
+                                  $q2->where('name', 'like', 'refresh_token:%')
+                                     ->where('created_at', '<', $cutoff);
+                              });
+                        })
+                        ->limit(5000)
+                        ->delete();
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+            });
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         // Самодиагностика «вечного» бага: старые аккаунты (созданные версиями
         // кода с двойным bcrypt-хэшированием) имеют хэш длиной > 60 символов —
