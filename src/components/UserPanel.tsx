@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { User, Meeting, Tag, ScheduleConflict } from "../types";
-import { roomsAPI, meetingsAPI } from "../api/client";
+import { roomsAPI, meetingsAPI, syncServerTime, serverNowDate } from "../api/client";
 import {
   getMeetings,
   createMeeting,
@@ -38,6 +38,50 @@ import { isLateTime, LATE_CREATE_LIMIT_HM } from "../utils/freeSlots";
 export const localTodayKey = (): string => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+/** «Сегодня» по ЧАСАМ СЕРВЕРА (с поправкой offset из синхронизации /api/time).
+ *  Используется в форме создания встречи: сервер проверяет «прошедшее время»
+ *  по своим часам (в docker TZ=Europe/Moscow). Если часы браузера расходятся,
+ *  локальная дата/время «не совпадают» с серверными и корректный выбор
+ *  отклоняется. min даты и проверка прошлого считаются от серверного «сейчас». */
+export const serverTodayKey = (): string => {
+  const d = serverNowDate();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+/** «Сейчас» (HH:mm) по часам сервера — нижняя граница времени начала встречи сегодня. */
+export const serverNowHm = (): string => {
+  const d = serverNowDate();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
+
+/** Нижняя граница для поля «Начало» (type=time): если встреча сегодня —
+ *  не раньше текущего серверного времени (с поправкой offset из /api/time),
+ *  иначе можно выбрать уже прошедший слот и сервер отклонит заявку. */
+export const minStartHm = (dateKey: string): string => {
+  return dateKey === serverTodayKey() ? serverNowHm() : "00:00";
+};
+
+/** Автоподгонка времени под выбранную дату/границы (см. эффекты в форме):
+ *  начало сдвигается на «сейчас» (серверные часы), конец — минимум +30 мин. */
+export const clampFormTimes = (
+  date: string,
+  startTime: string,
+  endTime: string
+): { startTime: string; endTime: string } => {
+  let s = startTime || "10:00";
+  let e = endTime || "";
+  const minS = minStartHm(date);
+  if (s < minS) s = minS;
+  // не позже предела вечернего создания (20:00)
+  if (isLateTime(s)) s = LATE_CREATE_LIMIT_HM;
+  if (!e || e <= s) {
+    const [h, m] = s.split(":").map((x) => parseInt(x, 10) || 0);
+    const total = Math.min(h * 60 + m + 30, 23 * 60 + 59);
+    e = `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+  }
+  return { startTime: s, endTime: e };
 };
 
 /** Предзаполнение формы создания конференции (например, из блока «Свободные залы» на главной) */
@@ -252,31 +296,46 @@ function CreateMeetingForm({
           <input
             type="date"
             required
-            min={localTodayKey()}
+            min={serverTodayKey()}
             value={formData.date}
-            onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+            onChange={(e) => {
+              const date = e.target.value;
+              setFormData((f) => {
+                const next = { ...f, date };
+                // «всё уехало»: при смене даты на сегодня автоподгоняем
+                // прошедшее время начала/окончания под серверные часы.
+                if (!editing) {
+                  const clamped = clampFormTimes(date, next.startTime, next.endTime);
+                  next.startTime = clamped.startTime;
+                  next.endTime = clamped.endTime;
+                }
+                return next;
+              });
+            }}
             className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
           />
         </div>
 
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Комната</label>
-          <input
-            type="text"
-            list="rooms-catalog"
+          <select
             value={formData.room}
             onChange={(e) => setFormData({ ...formData, room: e.target.value })}
             className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
-            placeholder="Переговорная №1"
-          />
-          <datalist id="rooms-catalog">
+          >
+            {/* Комната всегда должна открываться для выбора: пустая опция
+                разворачивает список, а каталог залов заполняется из API */}
+            <option value="">— Выберите комнату —</option>
             {roomsCatalog.map((r) => (
-              <option
-                key={r.name}
-                value={r.name}
-              >{`${r.capacity} мест${r.equipment.length ? " • " + r.equipment.join(", ") : ""}`}</option>
+              <option key={r.name} value={r.name}>
+                {`${r.name} (${r.capacity} мест${r.equipment.length ? " • " + r.equipment.join(", ") : ""})`}
+              </option>
             ))}
-          </datalist>
+            {/* Если введённой ранее комнаты нет в каталоге — не теряем её */}
+            {formData.room && !roomsCatalog.some((r) => r.name === formData.room) && (
+              <option value={formData.room}>{formData.room}</option>
+            )}
+          </select>
         </div>
 
         <div>
@@ -284,11 +343,29 @@ function CreateMeetingForm({
           <input
             type="time"
             required
+            min={editing ? undefined : minStartHm(formData.date)}
             max={LATE_CREATE_LIMIT_HM}
             value={formData.startTime}
-            onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+            onChange={(e) => {
+              const startTime = e.target.value;
+              setFormData((f) => {
+                const next = { ...f, startTime };
+                // конец всегда позже начала — иначе 422/500 от сервера
+                if (!next.endTime || next.endTime <= startTime) {
+                  const [h, m] = startTime.split(":").map((x) => parseInt(x, 10) || 0);
+                  const total = Math.min(h * 60 + m + 60, 23 * 60 + 59);
+                  next.endTime = `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+                }
+                return next;
+              });
+            }}
             className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
           />
+          {!editing && formData.date === serverTodayKey() && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Сегодня можно выбрать время не раньше {minStartHm(formData.date)} (по часам сервера).
+            </p>
+          )}
         </div>
 
         <div>
@@ -296,6 +373,7 @@ function CreateMeetingForm({
           <input
             type="time"
             required
+            min={formData.startTime}
             value={formData.endTime}
             onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
             className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
@@ -585,9 +663,20 @@ export default function UserPanel({
     id: "",
     title: "",
     description: "",
-    date: localTodayKey(),
-    startTime: "10:00",
-    endTime: "11:00",
+    date: serverTodayKey(),
+    // Время начала по умолчанию — на 10 минут позже «сейчас» по серверным
+    // часам, чтобы при открытии формы сразу был валидный слот (иначе
+    // дефолт 10:00 оказывается в прошлом и сервер отклоняет заявку).
+    startTime: (() => {
+      const nowD = serverNowDate();
+      const total = Math.min(nowD.getHours() * 60 + nowD.getMinutes() + 10, 20 * 60);
+      return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+    })(),
+    endTime: (() => {
+      const nowD = serverNowDate();
+      const total = Math.min(nowD.getHours() * 60 + nowD.getMinutes() + 70, 20 * 60);
+      return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+    })(),
     organizerId: user.id,
     participants: [user.id],
     participantEmails: [],
@@ -656,6 +745,28 @@ export default function UserPanel({
   useEffect(() => {
     loadData();
   }, [user.id, showForm]);
+
+  // Автоподгонка времени при открытии формы «Новая конференция» (не при
+  // редактировании): если дефолтный/предзаполненный слот уже прошёл по
+  // серверным часам — сдвигаем начало на «сейчас+10 мин», конец +30 мин.
+  // Пользователь потом спокойно меняет время в полях формы.
+  useEffect(() => {
+    if (!showForm || editingMeeting) return;
+    let cancelled = false;
+    syncServerTime().finally(() => {
+      if (cancelled) return;
+      setFormData((f) => {
+        const minS = minStartHm(f.date);
+        if (f.startTime >= minS && f.endTime > f.startTime) return f;
+        const clamped = clampFormTimes(f.date, minS, "");
+        return { ...f, startTime: clamped.startTime, endTime: clamped.endTime };
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showForm]);
 
   const loadData = async () => {
     setLoading(true);
@@ -884,8 +995,8 @@ export default function UserPanel({
     // а если сегодня — начало встречи не раньше текущего момента.
     // (При редактировании существующей встречи проверка не применяется.)
     if (!editingMeeting) {
-      const nowD = new Date();
-      const todayKey = `${nowD.getFullYear()}-${String(nowD.getMonth() + 1).padStart(2, "0")}-${String(nowD.getDate()).padStart(2, "0")}`;
+      const nowD = serverNowDate();
+      const todayKey = serverTodayKey();
       if (formData.date < todayKey) {
         alert("Нельзя создать встречу в прошедшую дату. Выберите сегодня или будущий день.");
         return;
@@ -1341,31 +1452,44 @@ export default function UserPanel({
                     <input
                       type="date"
                       required
-                      min={editingMeeting ? undefined : localTodayKey()}
+                      min={editingMeeting ? undefined : serverTodayKey()}
                       value={formData.date}
-                      onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                      onChange={(e) => {
+                        const date = e.target.value;
+                        setFormData((f) => {
+                          const next = { ...f, date };
+                          // «всё уехало»: при смене даты на сегодня автоподгоняем
+                          // прошедшее время начала/окончания под серверные часы.
+                          if (!editingMeeting) {
+                            const clamped = clampFormTimes(date, next.startTime, next.endTime);
+                            next.startTime = clamped.startTime;
+                            next.endTime = clamped.endTime;
+                          }
+                          return next;
+                        });
+                      }}
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
                     />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Комната</label>
-                    <input
-                      type="text"
-                      list="rooms-catalog"
+                    <select
                       value={formData.room}
                       onChange={(e) => setFormData({ ...formData, room: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
-                      placeholder="Переговорная №1"
-                    />
-                    <datalist id="rooms-catalog">
+                    >
+                      {/* Комната всегда должна открываться для выбора */}
+                      <option value="">— Выберите комнату —</option>
                       {roomsCatalog.map((r) => (
-                        <option
-                          key={r.name}
-                          value={r.name}
-                        >{`${r.capacity} мест${r.equipment.length ? " • " + r.equipment.join(", ") : ""}`}</option>
+                        <option key={r.name} value={r.name}>
+                          {`${r.name} (${r.capacity} мест${r.equipment.length ? " • " + r.equipment.join(", ") : ""})`}
+                        </option>
                       ))}
-                    </datalist>
+                      {formData.room && !roomsCatalog.some((r) => r.name === formData.room) && (
+                        <option value={formData.room}>{formData.room}</option>
+                      )}
+                    </select>
                   </div>
 
                   <div>
@@ -1373,11 +1497,29 @@ export default function UserPanel({
                     <input
                       type="time"
                       required
+                      min={editingMeeting ? undefined : minStartHm(formData.date)}
                       max={LATE_CREATE_LIMIT_HM}
                       value={formData.startTime}
-                      onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                      onChange={(e) => {
+                        const startTime = e.target.value;
+                        setFormData((f) => {
+                          const next = { ...f, startTime };
+                          // конец всегда позже начала — иначе сервер отклоняет заявку
+                          if (!next.endTime || next.endTime <= startTime) {
+                            const [h, m] = startTime.split(":").map((x) => parseInt(x, 10) || 0);
+                            const total = Math.min(h * 60 + m + 60, 23 * 60 + 59);
+                            next.endTime = `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+                          }
+                          return next;
+                        });
+                      }}
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
                     />
+                    {!editingMeeting && formData.date === serverTodayKey() && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Сегодня можно выбрать время не раньше {minStartHm(formData.date)} (по часам сервера).
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -1385,6 +1527,7 @@ export default function UserPanel({
                     <input
                       type="time"
                       required
+                      min={formData.startTime}
                       value={formData.endTime}
                       onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"

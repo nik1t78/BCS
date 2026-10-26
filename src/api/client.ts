@@ -502,6 +502,44 @@ export const healthAPI = {
   check: () => apiRequest("/health"),
 };
 
+// Синхронизация часов с сервером (см. GET /api/time в backend/routes/api.php).
+// Браузерные часы могут расходиться с часами контейнера Laravel — тогда
+// корректный выбор времени в форме создания встречи сервер отклоняет как
+// «прошедшее время» («время не совпадает»). Здесь фронт замеряет смещение
+// offset = serverTime - clientTime, а форма использует «серверное сейчас».
+let timeOffsetMs = 0;
+let timeSyncedAt = 0;
+const TIME_SYNC_TTL_MS = 5 * 60 * 1000; // пересинхронизация не чаще раза в 5 минут
+
+/** Смещение серверных часов относительно локальных (мс). 0 — синхронизация не выполнялась. */
+export function getTimeOffsetMs(): number {
+  return timeOffsetMs;
+}
+
+/** Актуализировать смещение часов (вызывается при открытии формы создания). */
+export async function syncServerTime(): Promise<void> {
+  if (Date.now() - timeSyncedAt < TIME_SYNC_TTL_MS) return;
+  try {
+    const t0 = Date.now();
+    const res = await fetch(`${API_BASE_URL}/time`, { headers: { Accept: "application/json" } });
+    if (!res.ok) return;
+    const t1 = Date.now();
+    const data = await res.json();
+    const serverMs = Date.parse(data?.server_time ?? "");
+    if (Number.isNaN(serverMs)) return;
+    // Оценка серверного «сейчас» на момент t1: прибавляем половину времени запроса
+    timeOffsetMs = serverMs + Math.round((t1 - t0) / 2) - t1;
+    timeSyncedAt = Date.now();
+  } catch {
+    /* сервер времени недоступен — работаем по локальным часам */
+  }
+}
+
+/** «Сейчас» с поправкой на серверные часы (Date учитывает offset). */
+export function serverNowDate(): Date {
+  return new Date(Date.now() + timeOffsetMs);
+}
+
 // ROOMS API — переговорные комнаты и доступность (резервирование)
 export const roomsAPI = {
   list: () => apiRequest("/rooms"),
