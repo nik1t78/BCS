@@ -141,6 +141,35 @@ class MeetingController extends Controller
      */
     private function normalizeMeetingInput(Request $request): void
     {
+        try {
+            $this->doNormalizeMeetingInput($request);
+        } catch (\Throwable $e) {
+            // Нормализация — вспомогательная операция: если внутри неё что-то
+            // пошло не так (например, PCRE-ошибка в регулярке), встреча всё
+            // равно должна быть создана — данные просто пройдут «как есть»
+            // и будут отклонены валидатором с понятной ошибкой 422, а не 500.
+            \Illuminate\Support\Facades\Log::warning('normalizeMeetingInput failed: ' . $e->getMessage(), [
+                'exception' => $e,
+            ]);
+        }
+    }
+
+    /**
+     * Вычёркивает перечисленные символы из строки. Используется вместо
+     * preg_replace с \x{...}: на старых PCRE (Alpine/musl) такие шаблоны не
+     * компилируются («character code point value in \x{} is too large») и
+     * роняли POST /api/meetings с ошибкой 500.
+     */
+    private function stripChars(string $value, array $chars): string
+    {
+        foreach ($chars as $ch) {
+            $value = str_replace($ch, '', $value);
+        }
+        return $value;
+    }
+
+    private function doNormalizeMeetingInput(Request $request): void
+    {
         foreach (['start_time', 'end_time'] as $field) {
             $value = $request->input($field);
             if (is_string($value)) {
@@ -163,14 +192,14 @@ class MeetingController extends Controller
                 // текста («... Пароль: 123 Войти») или с кавычками. Правило `url`
                 // такое отклоняет → фронт показывал «ссылка — корректный URL».
                 // Чистим до чистого адреса и дописываем https:// при отсутствии схемы.
-                $candidate = preg_replace('/[\'"\'\x{201C}\x{201D}<>]/u', '', $trimmed);
+                $candidate = $this->stripChars($trimmed, ["'", '"', "“", "”", "<", ">"]);
                 if (preg_match('#(?:https?://)?((?:www\.)?[a-z0-9.-]+\.[a-z]{2,}(?:/|\?|\#)\S*)#i', $candidate, $m)) {
                     $host = strtolower(parse_url('http://' . $m[1], PHP_URL_HOST) ?: '');
                     if ($host === 'salutejazz.ru' || str_ends_with($host, '.salutejazz.ru')) {
                         // наш ВКС: берём только путь+запрос комнаты, отбрасывая
                         // мусор после ссылки (текст приглашения) и дописывая схему
                         if (preg_match('#(?:https?://)?(?:www\.)?salutejazz\.ru(/calls/\S*)#i', $candidate, $p)) {
-                            $path = preg_replace('/[\s\'"\'\x{201C}\x{201D}<>,;]+$/', '', $p[1]);
+                            $path = rtrim($p[1], " \t\n\r\0\x0B\'\"“”<>,;");
                             $request->merge(['link' => 'https://salutejazz.ru' . $path]);
                         } else {
                             $request->merge(['link' => 'https://' . $m[1]]);
