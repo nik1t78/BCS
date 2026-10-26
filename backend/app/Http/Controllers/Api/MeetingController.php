@@ -248,7 +248,7 @@ class MeetingController extends Controller
             // редактировании встречи фронт отправляет их обратно как есть.
             // Жёсткий date_format:H:i тогда отбивал валидацию (422) или
             // «after:start_time» падал на сравнении строк разной длины.
-            'start_time' => ['required', 'regex:/^\d{2}:\d{2}(:\d{2})?$/', 'max:20:00'],
+            'start_time' => ['required', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
             // ВНИМАНИЕ: сравнение валидатора Laravel идёт ПО СТРОКАМ. Фронт
             // шлёт 'HH:mm', а при редактировании серверные значения могут
             // прийти как 'HH:mm:ss' — строка '14:30' меньше '14:30:00', и
@@ -416,7 +416,7 @@ class MeetingController extends Controller
             'title' => 'sometimes|string|max:255',
             'description' => 'nullable|string',
             'date' => 'sometimes|date',
-            'start_time' => ['sometimes', 'regex:/^\d{2}:\d{2}(:\d{2})?$/', 'max:20:00'],
+            'start_time' => ['sometimes', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
             'end_time' => ['sometimes', 'regex:/^\d{2}:\d{2}(:\d{2})?$/', 'after:start_time'],
             'room' => 'nullable|string|max:255',
             'link' => 'nullable|url|max:500',
