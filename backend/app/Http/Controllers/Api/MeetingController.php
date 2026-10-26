@@ -380,8 +380,13 @@ class MeetingController extends Controller
 
         \App\Support\SafeCache::forever('meetings:changed', now()->timestamp);
 
-        return response()->json($meeting->load(['organizer', 'tags'])
-            ->additional(['warnings' => $autoFixNotes]), 201);
+        // additional() есть не во всех версиях Illuminate — используем совместимый способ
+        $payload = $meeting->load(['organizer', 'tags'])->toArray();
+        if (!empty($autoFixNotes)) {
+            $payload['warnings'] = $autoFixNotes;
+        }
+
+        return response()->json($payload, 201);
     }
 
     /**
