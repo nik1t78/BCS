@@ -214,6 +214,32 @@ class VkxBot:
                 # (подтверждено живым прогоном). Запасной — поиск по тексту через JS,
                 # т.к. XPath translate() не работает с кириллицей (разные длины алфавитов).
                 clicked = False
+
+                def _safe_text(el) -> str:
+                    # Страница SPA может перерисовать DOM между find_elements и
+                    # обращением к элементу (StaleElementReferenceException) —
+                    # текст читаем через JS по самому элементу, с защитой от stale.
+                    try:
+                        return str(driver.execute_script(
+                            "return arguments[0] ? (arguments[0].textContent || '') : '';", el))
+                    except Exception:
+                        return ""
+
+                def _try_click(el) -> bool:
+                    try:
+                        driver.execute_script("arguments[0].scrollIntoView(true);", el)
+                    except Exception:
+                        pass
+                    try:
+                        el.click()
+                        return True
+                    except Exception:
+                        try:
+                            driver.execute_script("arguments[0].click();", el)
+                            return True
+                        except Exception:
+                            return False
+
                 btns = driver.find_elements(By.CSS_SELECTOR, "button[data-testid='createConf']")
                 if not btns:
                     btns = driver.find_elements(
@@ -225,15 +251,13 @@ class VkxBot:
                 if not btns:
                     labels = ("присоединиться", "войти", "создать", "start")
                     btns = [el for el in driver.find_elements(By.TAG_NAME, "button")
-                            if any(lb in (el.text or "").lower() for lb in labels)]
-                if btns:
-                    driver.execute_script("arguments[0].scrollIntoView(true);", btns[0])
-                    try:
-                        btns[0].click()
-                    except Exception:
-                        driver.execute_script("arguments[0].click();", btns[0])
-                    clicked = True
-                    log.info("Нажата кнопка создания: %r", btns[0].text[:40])
+                            if any(lb in _safe_text(el).lower() for lb in labels)]
+                for b in btns:
+                    label = _safe_text(b)[:40]
+                    if _try_click(b):
+                        clicked = True
+                        log.info("Нажата кнопка создания: %r", label)
+                        break
                 if not clicked:
                     raise RuntimeError("Не найдена кнопка создания/входа во встречу")
 
