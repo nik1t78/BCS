@@ -252,12 +252,37 @@ class VkxBot:
                     labels = ("присоединиться", "войти", "создать", "start")
                     btns = [el for el in driver.find_elements(By.TAG_NAME, "button")
                             if any(lb in _safe_text(el).lower() for lb in labels)]
-                for b in btns:
-                    label = _safe_text(b)[:40]
-                    if _try_click(b):
-                        clicked = True
-                        log.info("Нажата кнопка создания: %r", label)
+                def _click_from(cands, note=""):
+                    nonlocal clicked
+                    for b in cands:
+                        label = _safe_text(b)[:40]
+                        if _try_click(b):
+                            clicked = True
+                            log.info("Нажата кнопка создания%s: %r", note, label)
+                            return True
+                    return False
+
+                # Каскад попыток: каждый шаг заново перечитывает DOM, поэтому
+                # устаревшие (stale) ссылки на элементы из предыдущего шага
+                # не используются. Это лечит StaleElementReferenceException,
+                # когда SPA перерисовывает страницу между поиском и кликом.
+                for attempt in range(3):
+                    if clicked:
                         break
+                    if not _click_from(btns):
+                        time.sleep(0.5)
+                    if clicked:
+                        break
+                    # перечитать основные кнопки и попробовать снова
+                    fresh = driver.find_elements(
+                        By.CSS_SELECTOR, "button[data-testid='createConf']")
+                    if not fresh:
+                        fresh = [el for el in driver.find_elements(By.TAG_NAME, "button")
+                                 if any(lb in _safe_text(el).lower()
+                                        for lb in ("присоединиться", "войти",
+                                                   "создать", "join", "start"))]
+                    if fresh and not _click_from(fresh, " (повтор #%d)" % (attempt + 1)):
+                        time.sleep(0.5)
                 if not clicked:
                     raise RuntimeError("Не найдена кнопка создания/входа во встречу")
 
