@@ -14,7 +14,12 @@ return [
 
     'asset_url' => env('ASSET_URL'),
 
-    'timezone' => env('APP_TIMEZONE', 'UTC'),
+    // Europe/Moscow по умолчанию: контейнеры PHP-FPM уже собраны с TZ=Europe/Moscow
+    // (см. backend/Dockerfile), а фронт синхронизирует часы через GET /api/time.
+    // Раньше дефолт был UTC — «время не совпадает» возникало везде, где APP_TIMEZONE
+    // не был прописан в .env (now() возвращал московские wall-clock-часы, но Carbon
+    // помечал их как UTC → расхождение 3 часа при проверках «прошедшего времени»).
+    'timezone' => env('APP_TIMEZONE', 'Europe/Moscow'),
 
     'locale' => env('APP_LOCALE', 'en'),
 

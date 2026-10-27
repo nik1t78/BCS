@@ -59,6 +59,14 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('db:backup --keep=14')
                  ->dailyAt('02:30')
                  ->withoutOverlapping();
+
+        // Мониторинг ВКС-бота (профиль "bot"): каждые 5 минут проверяем /health,
+        // при сбое/восстановлении — алерт админу в MAX (ADMIN_ALERT_CHAT_ID).
+        // Без VKSBOT_EXPECTED=true команда молча пропускает проверку.
+        $schedule->command('bot:monitor')
+                 ->everyFiveMinutes()
+                 ->withoutOverlapping()
+                 ->runInBackground();
     })
     ->withExceptions(function (Exceptions $exceptions) {
         // Глобальный обработчик ошибок API. Без него любая фатальная ошибка
@@ -83,6 +91,24 @@ return Application::configure(basePath: dirname(__DIR__))
                 ' => ' . get_class($e) . ': ' . $e->getMessage() .
                 ' @ ' . $e->getFile() . ':' . $e->getLine()
             );
+
+            // Алерт админу в MAX при 5xx на API (только когда настроен чат —
+            // см. ADMIN_ALERT_CHAT_ID). Дедуп по signature: одна и та же ошибка
+            // не будет спамить чаще, чем раз в 10 минут. Статус берём из
+            // исключения (HttpException и т.п.), иначе считаем 500.
+            try {
+                $errStatus = method_exists($e, 'getStatusCode') ? (int) $e->getStatusCode() : 500;
+                if ($errStatus >= 500 && !($e instanceof \Illuminate\Validation\ValidationException)) {
+                    \App\Services\AdminAlert::throttled(
+                        'api5xx:' . get_class($e) . ':' . $e->getMessage(),
+                        "🔥 Ошибка API: {$request->method()} {$request->path()}\n"
+                            . get_class($e) . ': ' . $e->getMessage() .
+                            ' @ ' . basename($e->getFile()) . ':' . $e->getLine()
+                    );
+                }
+            } catch (\Throwable) {
+                // алерты не должны ломать обработку запроса
+            }
 
             if ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface) {
                 return null; // 404/429/403 и т.п. отдаём штатно

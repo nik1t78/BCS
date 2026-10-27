@@ -46,5 +46,12 @@ class Kernel extends ConsoleKernel
         $schedule->command('db:backup --keep=14')
                  ->dailyAt('02:30')
                  ->withoutOverlapping();
+
+        // Мониторинг ВКС-бота: каждые 5 минут проверяем /health и алертим
+        // админу в MAX при сбое/восстановлении (см. VKSBOT_EXPECTED=true).
+        $schedule->command('bot:monitor')
+                 ->everyFiveMinutes()
+                 ->withoutOverlapping()
+                 ->runInBackground();
     }
 }

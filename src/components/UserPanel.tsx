@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { User, Meeting, Tag, ScheduleConflict } from "../types";
-import { roomsAPI, meetingsAPI, syncServerTime, serverNowDate } from "../api/client";
+import { roomsAPI, meetingsAPI, syncServerTime, serverNowDate, serverTodayKeyTz, serverNowHmTz } from "../api/client";
 import {
   getMeetings,
   createMeeting,
@@ -43,21 +43,17 @@ export const localTodayKey = (): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-/** «Сегодня» по ЧАСАМ СЕРВЕРА (с поправкой offset из синхронизации /api/time).
+/** «Сегодня» по ЧАСАМ СЕРВЕРА И В ПОЯСЕ СЕРВЕРА (Europe/Moscow, см. /api/time).
  *  Используется в форме создания встречи: сервер проверяет «прошедшее время»
- *  по своим часам (в docker TZ=Europe/Moscow). Если часы браузера расходятся,
+ *  по своим часам и своему поясу. Если часы/пояс браузера расходятся,
  *  локальная дата/время «не совпадают» с серверными и корректный выбор
- *  отклоняется. min даты и проверка прошлого считаются от серверного «сейчас». */
-export const serverTodayKey = (): string => {
-  const d = serverNowDate();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
+ *  отклоняется. min даты и проверка прошлого считаются от серверного «сейчас».
+ *  Реализация — через Intl.DateTimeFormat(timeZone сервера), поэтому даже у
+ *  пользователя из другого часового пояса «сегодня» = те же сутки, что у Laravel. */
+export const serverTodayKey = (): string => serverTodayKeyTz();
 
-/** «Сейчас» (HH:mm) по часам сервера — нижняя граница времени начала встречи сегодня. */
-export const serverNowHm = (): string => {
-  const d = serverNowDate();
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-};
+/** «Сейчас» (HH:mm) по часам и поясу сервера — нижняя граница времени начала встречи сегодня. */
+export const serverNowHm = (): string => serverNowHmTz();
 
 /** Нижняя граница для поля «Начало» (type=time): если встреча сегодня —
  *  не раньше текущего серверного времени (с поправкой offset из /api/time),
@@ -692,13 +688,14 @@ export default function UserPanel({
     // часам, чтобы при открытии формы сразу был валидный слот (иначе
     // дефолт 10:00 оказывается в прошлом и сервер отклоняет заявку).
     startTime: (() => {
-      const nowD = serverNowDate();
-      const total = Math.min(nowD.getHours() * 60 + nowD.getMinutes() + 10, 20 * 60);
+      // serverNowHm() уже в поясе сервера (см. /api/time): прибавляем 10 минут
+      const [h, m] = serverNowHm().split(":").map(Number);
+      const total = Math.min(h * 60 + m + 10, 20 * 60);
       return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
     })(),
     endTime: (() => {
-      const nowD = serverNowDate();
-      const total = Math.min(nowD.getHours() * 60 + nowD.getMinutes() + 70, 20 * 60);
+      const [h, m] = serverNowHm().split(":").map(Number);
+      const total = Math.min(h * 60 + m + 70, 20 * 60);
       return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
     })(),
     organizerId: user.id,
@@ -1021,16 +1018,12 @@ export default function UserPanel({
     // а если сегодня — начало встречи не раньше текущего момента.
     // (При редактировании существующей встречи проверка не применяется.)
     if (!editingMeeting) {
-      const nowD = serverNowDate();
       const todayKey = serverTodayKey();
       if (formData.date < todayKey) {
         alert("Нельзя создать встречу в прошедшую дату. Выберите сегодня или будущий день.");
         return;
       }
-      if (
-        formData.date === todayKey &&
-        formData.startTime < `${String(nowD.getHours()).padStart(2, "0")}:${String(nowD.getMinutes()).padStart(2, "0")}`
-      ) {
+      if (formData.date === todayKey && formData.startTime < serverNowHm()) {
         alert("Это время уже прошло. Нельзя создать заявку на прошедшее время — выберите более поздний слот.");
         return;
       }

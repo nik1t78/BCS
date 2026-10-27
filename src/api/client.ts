@@ -560,14 +560,62 @@ export async function syncServerTime(): Promise<void> {
     // Оценка серверного «сейчас» на момент t1: прибавляем половину времени запроса
     timeOffsetMs = serverMs + Math.round((t1 - t0) / 2) - t1;
     timeSyncedAt = Date.now();
+    // Сохраняем таймзону сервера (например "Europe/Moscow") — она нужна,
+    // чтобы пересчитать «серверное сейчас» в корректные HH:mm/дату независимо
+    // от того, в каком поясе живёт браузер пользователя.
+    if (typeof data?.timezone === "string" && data.timezone) {
+      serverTimezone = data.timezone;
+      try {
+        localStorage.setItem("vks_server_tz", data.timezone);
+      } catch {
+        /* приватный режим браузера — не страшно, дефолт Europe/Moscow ниже */
+      }
+    }
   } catch {
     /* сервер времени недоступен — работаем по локальным часам */
   }
 }
 
+/** Таймзона сервера из GET /api/time (дефолт — Europe/Moscow, как в docker-образах). */
+let serverTimezone = (() => {
+  try {
+    return localStorage.getItem("vks_server_tz") || "Europe/Moscow";
+  } catch {
+    return "Europe/Moscow";
+  }
+})();
+
 /** «Сейчас» с поправкой на серверные часы (Date учитывает offset). */
 export function serverNowDate(): Date {
   return new Date(Date.now() + timeOffsetMs);
+}
+
+/** Форматирует «серверное сейчас» в виде YYYY-MM-DD ПО ЧАСОВОЙ ЗОНЕ СЕРВЕРА.
+ *  Важно: Date внутри serverNowDate() абсолютный момент времени, но getFullYear()/
+ *  getHours() читают его в поясе БРАУЗЕРА. Если у пользователя пояс отличается
+ *  от серверного (командировка, VPS в UTC), дата «сегодня» съедет на день.
+ *  Intl.DateTimeFormat с serverTimezone гарантирует те же сутки, что и Laravel. */
+export function serverTodayKeyTz(): string {
+  const parts = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: serverTimezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(serverNowDate());
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+/** «Серверное сейчас» в HH:mm по поясу сервера (нижняя граница слотов формы). */
+export function serverNowHmTz(): string {
+  const parts = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: serverTimezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(serverNowDate());
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "00";
+  return `${get("hour")}:${get("minute")}`;
 }
 
 // ROOMS API — переговорные комнаты и доступность (резервирование)

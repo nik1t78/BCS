@@ -52,6 +52,12 @@ x-backend-env: &backend-env
   APP_KEY: "${APP_KEY:-dev-placeholder-key}"
   APP_ENV: "${APP_ENV:-production}"
   APP_DEBUG: "false"
+  # Единая таймзона приложения (совпадает с TZ контейнеров php-fpm/очередей).
+  # Без неё Carbon считал wall-clock-время как UTC → «время не совпадает» на 3 часа.
+  APP_TIMEZONE: "${APP_TIMEZONE:-Europe/Moscow}"
+  # Явно пробрасываем TZ во ВСЕ php-контейнеры (backend/queue/scheduler),
+  # чтобы date()/cron-расписания жили в одном часовом поясе.
+  TZ: "${TZ:-Europe/Moscow}"
   SESSION_DRIVER: cookie
   # Redis-расширение в образ НЕ ставится (см. backend/Dockerfile):
   # очереди — sync, кэш/сессии — файловые. Redis-контейнер оставлен на будущее:
@@ -244,6 +250,14 @@ services:
       BOT_HEADLESS: "1"
       BOT_PORT: "8090"
       BOT_TOKENS: "${BOT_TOKENS:-}"
+    # Healthcheck: мониторинг доступности бота (используется и bot:monitor,
+    # и `docker compose ps` — статус unhealthy виден сразу).
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; r=urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=4); sys.exit(0 if r.status==200 else 1)\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     networks: [vks-network]
 
 networks:
