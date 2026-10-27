@@ -49,7 +49,9 @@ x-backend-env: &backend-env
   REDIS_PORT: 6379
   REDIS_PASSWORD: "${REDIS_PASSWORD:-vks_2026_redis}"
   APP_URL: "http://${SITE_IP:-localhost}"
-  APP_KEY: "${APP_KEY:-dev-placeholder-key}"
+  # Пустой APP_KEY допустим — Laravel тогда работает без шифрования (CookieCryptoFailed).
+  # Задайте реальный ключ в .env: docker compose run --rm backend php artisan key:generate --show
+  APP_KEY: "${APP_KEY:-}"
   APP_ENV: "${APP_ENV:-production}"
   APP_DEBUG: "false"
   # Единая таймзона приложения (совпадает с TZ контейнеров php-fpm/очередей).

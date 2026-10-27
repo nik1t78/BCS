@@ -219,7 +219,27 @@ Docker compose интерполирует `$s`, `$e`, `$m` внутри entrypoi
 сырой `$listen_ip` заменён на `${LISTEN_IP:-0.0.0.0}` (в `.env` пишите `LISTEN_IP=...`),
 а комментарий про интерполяцию больше не содержит последовательностей `$s`, `$e`, `$m`.
 
-**4. Ошибка сервера (HTTP 500) — «Подробности в логах: docker compose logs backend»**
+**4. Ошибка сервера (HTTP 500) — все `/api/*` отвечают 500 сразу после запуска**
+
+Типичная причина на Windows/PowerShell: `APP_KEY` не задан в `.env`, а контейнеры получают
+значение по умолчанию из `docker-compose.yml`. Признак — `key:generate` пишет
+«APP_KEY is already present in the environment» (внутри контейнера переменная окружения
+есть всегда), при этом реального ключа в `.env` нет. Диагностика (PowerShell):
+
+```powershell
+# какой ключ реально видит контейнер:
+docker compose exec backend php -r "echo getenv('APP_KEY');"
+# если вывод пустой или dev-placeholder-key — починить:
+docker compose run --rm backend php artisan key:generate --show   # скопировать вывод
+notepad .env    # вставить APP_KEY=base64:... в строку APP_KEY=
+docker compose up -d --force-recreate backend queue scheduler
+docker compose exec backend php artisan optimize:clear
+```
+
+(В `docker-compose.yml` смените `APP_KEY: "${APP_KEY:-dev-placeholder-key}"`
+на `"${APP_KEY:-}"`, чтобы заглушка не подменяла отсутствующий ключ.)
+
+Если ключ корректный, но 500 остаётся — смотрите стектрейс:
 
 Три типовые причины, проверяются по порядку:
 
