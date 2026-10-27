@@ -650,7 +650,9 @@ export default function UserPanel({
   // Модальное окно просмотра конференции (доступен всем участникам)
   const [viewMeeting, setViewMeeting] = useState<Meeting | null>(null);
   // Фильтры, календарь, избранное, массовые действия, история изменений
-  const [statusFilter, setStatusFilter] = useState<"all" | "upcoming" | "past" | "cancelled">("all");
+  // По умолчанию — «Предстоящие»: старые (завершённые) и отменённые встречи
+  // не захламляют список; посмотреть их можно, выбрав соответствующий фильтр.
+  const [statusFilter, setStatusFilter] = useState<"all" | "upcoming" | "past" | "cancelled">("upcoming");
   const [roomFilter, setRoomFilter] = useState("");
   const [roomsCatalog, setRoomsCatalog] = useState<{ name: string; capacity: number; equipment: string[] }[]>([]);
   const [tagFilter, setTagFilter] = useState("");
@@ -882,12 +884,24 @@ export default function UserPanel({
       if (!isPast || m.status === "cancelled") return false;
     }
     if (statusFilter === "upcoming") {
-      const isUpcoming = m.status === "scheduled" || m.status === "in-progress";
-      if (!isUpcoming || `${m.date}T${m.endTime || "23:59"}` < nowIso()) return false;
+      // Только статус: scheduled / in-progress. Раньше была доп. отсечка по
+      // endTime — из-за неё сегодняшние встречи со сдвинутым/пустым временем
+      // исчезали из «Предстоящих», хотя они ещё активны.
+      return m.status === "scheduled" || m.status === "in-progress";
     }
     return matchSearch(m);
   });
-  const sortedMeetings = sortMeetings(filteredMeetings, sortMode);
+  const sortedMeetings = (() => {
+    // «Предстоящие» (фильтр по умолчанию): показываем только активные встречи —
+    // запланированные/идущие, ещё не завершившиеся по времени. Встречи из
+    // прошлого (зависшие в статусе scheduled, т.к. бэкенд не авто-завершает их)
+    // здесь НЕ показываем — они доступны в фильтре «Прошедшие».
+    if (statusFilter !== "upcoming") return sortMeetings(filteredMeetings, sortMode);
+    return sortMeetings(
+      filteredMeetings.filter((m) => `${m.date}T${m.endTime || m.startTime || "23:59"}` >= nowIso()),
+      sortMode
+    );
+  })();
   // В «умном» режиме группы показываем заголовками-разделителями
   const showGroups = sortMode === "smart";
 
@@ -2237,8 +2251,9 @@ export default function UserPanel({
           {(() => {
             // В «умном» режиме вставляем заголовки групп (Сегодня / Завтра / …)
             let lastGroup = "";
-            // На странице «Все» показываем ВСЕ конференции целиком (со скроллом),
-            // на главной — только первые TEASER_COUNT карточек.
+            // И на главной, и на странице «Все» показываем только актуальные
+            // конференции (старые/завершённые скрыты фильтром «Предстоящие»);
+            // главная ограничена первыми TEASER_COUNT карточками.
             return sortedMeetings.slice(0, showAllPage ? sortedMeetings.length : Math.min(visibleCount, TEASER_COUNT)).map((meeting) => {
               const group = showGroups ? getMeetingGroup(meeting) : null;
               const header =
