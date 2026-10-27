@@ -109,7 +109,11 @@ interface UserPanelProps {
   onClose?: () => void;
 }
 
+// На главной странице раздела «Мои конференции» показываем первые TEASER_COUNT
+// конференций (10), остальные — отдельной страницей-панелью («Все конференции»)
+// по PAGE_SIZE за подгрузку.
 const PAGE_SIZE = 20;
+const TEASER_COUNT = 10;
 
 // Напоминания по умолчанию для новых конференций — из настроек пользователя
 const getDefaultReminder = (): number => {
@@ -660,7 +664,11 @@ export default function UserPanel({
   const [favorites, setFavorites] = useState<Set<string>>(() => getFavoriteIds(user.id));
   const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  // «Все конференции» — отдельная страница-панель поверх раздела; visibleCount
+  // на ней растёт кнопкой «Показать ещё». На главной странице списка всегда
+  // видно не больше TEASER_COUNT карточек.
+  const [showAllPage, setShowAllPage] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(TEASER_COUNT);
   // Компактный режим списка (адаптивен для мобильных и «плотного» просмотра)
   const [compact, setCompact] = useState<boolean>(() => {
     try {
@@ -883,11 +891,12 @@ export default function UserPanel({
   // В «умном» режиме группы показываем заголовками-разделителями
   const showGroups = sortMode === "smart";
 
-  // Сброс пагинации при смене фильтров
+  // Сброс пагинации при смене фильтров (на панели «Все конференции» — до
+  // размера одной страницы, на главной списке — до тизерных 10 карточек)
   useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
+    setVisibleCount(showAllPage ? PAGE_SIZE : TEASER_COUNT);
     setSelected(new Set());
-  }, [statusFilter, roomFilter, tagFilter, search, onlyFavorites, sortMode]);
+  }, [statusFilter, roomFilter, tagFilter, search, onlyFavorites, sortMode, showAllPage]);
 
   const toggleFavoriteMeeting = (id: string) => setFavorites(toggleFavorite(user.id, id));
   const toggleSelect = (id: string) => {
@@ -2213,11 +2222,22 @@ export default function UserPanel({
           </button>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className={showAllPage ? "space-y-3 max-h-[70vh] overflow-y-auto pr-1" : "space-y-3"}>
+          {showAllPage && (
+            <div className="sticky top-0 z-10 flex items-center justify-between rounded-xl bg-blue-600 text-white px-4 py-3 shadow-sm">
+              <h3 className="font-bold flex items-center gap-2">
+                <i className="fas fa-layer-group"></i>
+                Все конференции
+              </h3>
+              <span className="text-sm text-blue-100">
+                Показано {Math.min(visibleCount, sortedMeetings.length)} из {sortedMeetings.length}
+              </span>
+            </div>
+          )}
           {(() => {
             // В «умном» режиме вставляем заголовки групп (Сегодня / Завтра / …)
             let lastGroup = "";
-            return sortedMeetings.slice(0, visibleCount).map((meeting) => {
+            return sortedMeetings.slice(0, showAllPage ? visibleCount : Math.min(visibleCount, TEASER_COUNT)).map((meeting) => {
               const group = showGroups ? getMeetingGroup(meeting) : null;
               const header =
                 group && group.key !== lastGroup ? (
@@ -2381,6 +2401,44 @@ export default function UserPanel({
               );
             });
           })()}
+
+          {/* Панель/страница «Все конференции»: на главной видно только первые
+              TEASER_COUNT карточек, остальные — на отдельной странице-панели */}
+          {!showAllPage && sortedMeetings.length > TEASER_COUNT && (
+            <div className="pt-2">
+              <button
+                onClick={() => {
+                  setShowAllPage(true);
+                  setVisibleCount(PAGE_SIZE);
+                }}
+                className="w-full bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-xl py-3 text-sm font-medium transition-colors"
+              >
+                <i className="fas fa-layer-group mr-2"></i>
+                Показать все конференции (ещё {sortedMeetings.length - TEASER_COUNT})
+              </button>
+            </div>
+          )}
+
+          {showAllPage && (
+            <div className="space-y-3 pt-2">
+              {visibleCount < sortedMeetings.length ? (
+                <button
+                  onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+                  className="w-full bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-xl py-3 text-sm font-medium transition-colors"
+                >
+                  <i className="fas fa-chevron-down mr-2"></i>
+                  Показать ещё ({sortedMeetings.length - visibleCount})
+                </button>
+              ) : null}
+              <button
+                onClick={() => setShowAllPage(false)}
+                className="w-full bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-xl py-3 text-sm transition-colors"
+              >
+                <i className="fas fa-arrow-left mr-2"></i>Назад к последним конференциям
+              </button>
+            </div>
+          )}
+
           {sortedMeetings.length === 0 && (
             <div className="text-center py-12 text-gray-400 dark:text-gray-500 bg-white dark:bg-gray-800 rounded-xl shadow-sm">
               <i className="fas fa-video text-4xl mb-3"></i>
