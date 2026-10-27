@@ -110,9 +110,9 @@ interface UserPanelProps {
 }
 
 // На главной странице раздела «Мои конференции» показываем первые TEASER_COUNT
-// конференций (10), остальные — отдельной страницей-панелью («Все конференции»)
-// по PAGE_SIZE за подгрузку.
-const PAGE_SIZE = 20;
+// конференций (10), остальные — отдельной страницей-панелью («Все конференции»),
+// где сразу видны ВСЕ встречи (включая все ВКС) со слайдер-прокруткой.
+const PAGE_SIZE = 20; // (зарезервировано для подстраничной загрузки, сейчас не нужна)
 const TEASER_COUNT = 10;
 
 // Напоминания по умолчанию для новых конференций — из настроек пользователя
@@ -2222,22 +2222,24 @@ export default function UserPanel({
           </button>
         </div>
       ) : (
-        <div className={showAllPage ? "space-y-3 max-h-[70vh] overflow-y-auto pr-1" : "space-y-3"}>
+        <div className={showAllPage ? "space-y-3 max-h-[85vh] overflow-y-auto pr-1" : "space-y-3"}>
           {showAllPage && (
             <div className="sticky top-0 z-10 flex items-center justify-between rounded-xl bg-blue-600 text-white px-4 py-3 shadow-sm">
               <h3 className="font-bold flex items-center gap-2">
                 <i className="fas fa-layer-group"></i>
-                Все конференции
+                Все конференции — все ВКС видны сразу
               </h3>
               <span className="text-sm text-blue-100">
-                Показано {Math.min(visibleCount, sortedMeetings.length)} из {sortedMeetings.length}
+                {sortedMeetings.length}
               </span>
             </div>
           )}
           {(() => {
             // В «умном» режиме вставляем заголовки групп (Сегодня / Завтра / …)
             let lastGroup = "";
-            return sortedMeetings.slice(0, showAllPage ? visibleCount : Math.min(visibleCount, TEASER_COUNT)).map((meeting) => {
+            // На странице «Все» показываем ВСЕ конференции целиком (со скроллом),
+            // на главной — только первые TEASER_COUNT карточек.
+            return sortedMeetings.slice(0, showAllPage ? sortedMeetings.length : Math.min(visibleCount, TEASER_COUNT)).map((meeting) => {
               const group = showGroups ? getMeetingGroup(meeting) : null;
               const header =
                 group && group.key !== lastGroup ? (
@@ -2421,15 +2423,8 @@ export default function UserPanel({
 
           {showAllPage && (
             <div className="space-y-3 pt-2">
-              {visibleCount < sortedMeetings.length ? (
-                <button
-                  onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
-                  className="w-full bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-xl py-3 text-sm font-medium transition-colors"
-                >
-                  <i className="fas fa-chevron-down mr-2"></i>
-                  Показать ещё ({sortedMeetings.length - visibleCount})
-                </button>
-              ) : null}
+              {/* Подстраничная загрузка не нужна: на странице «Все» сразу видны
+                  все конференции (включая все ВКС), прокрутка — слайдером */}
               <button
                 onClick={() => setShowAllPage(false)}
                 className="w-full bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-xl py-3 text-sm transition-colors"
