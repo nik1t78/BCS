@@ -864,17 +864,38 @@ export default function UserPanel({
   const rooms = Array.from(
     new Set([...(meetings.map((m) => m.room).filter(Boolean) as string[]), ...roomsCatalog.map((r) => r.name)])
   ).sort();
+  // Имя пользователя по id — объявлено раньше matchSearch, чтобы поиск по
+  // участникам не обращался к функции из «мёртвой» TDZ-зоны (getUserName был
+  // ниже в теле компонента → ReferenceError при наборе текста в поиске).
+  const getUserName = (id: string) => users.find((u) => Number(u.id) === Number(id))?.name || "Неизвестный";
+
   const matchSearch = (m: Meeting) => {
     if (!search.trim()) return true;
-    const q = search.trim().toLowerCase();
-    const inTitle = m.title.toLowerCase().includes(q);
-    const inDesc = (m.description ?? "").toLowerCase().includes(q);
-    const inPeople =
-      getUserName(m.organizerId).toLowerCase().includes(q) ||
-      (m.participants ?? []).some((p) => getUserName(p).toLowerCase().includes(q));
-    return inTitle || inDesc || inPeople;
+    // Поиск без учёта регистра и лишних пробелов; ищем по названию, описанию,
+    // организатору/участникам, комнате, тегам, дате, ссылке ВКС и паролю.
+    const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+    const q = norm(search);
+    const hay = [
+      m.title,
+      m.description ?? "",
+      getUserName(m.organizerId),
+      ...(m.participants ?? []).map(getUserName),
+      m.room ?? "",
+      ...(m.tags ?? []).map(String),
+      m.date,
+      m.link ?? "",
+      m.meetingPassword ?? "",
+    ]
+      .filter(Boolean)
+      .map(norm)
+      .join(" • ");
+    return hay.includes(q);
   };
   const filteredMeetings = meetings.filter((m) => {
+    // Поиск применяется ко ВСЕМ фильтрам — раньше он выполнялся только в
+    // ветке «all» (в конце функции), а при статусе «upcoming» (фильтр по
+    // умолчанию) строка поиска игнорировалась: казалось, что поиск не работает.
+    if (!matchSearch(m)) return false;
     if (onlyFavorites && !favorites.has(String(m.id))) return false;
     if (roomFilter && (m.room ?? "") !== roomFilter) return false;
     if (tagFilter && !(m.tags ?? []).map(String).includes(tagFilter)) return false;
@@ -889,7 +910,7 @@ export default function UserPanel({
       // исчезали из «Предстоящих», хотя они ещё активны.
       return m.status === "scheduled" || m.status === "in-progress";
     }
-    return matchSearch(m);
+    return true;
   });
   const sortedMeetings = (() => {
     // «Предстоящие» (фильтр по умолчанию): показываем только активные встречи —
@@ -1233,7 +1254,7 @@ export default function UserPanel({
     setFormData({ ...formData, participants });
   };
 
-  const getUserName = (id: string) => users.find((u) => Number(u.id) === Number(id))?.name || "Неизвестный";
+  // (getUserName объявлена выше — рядом с matchSearch, до её первого использования)
 
   if (loading) {
     return (
@@ -1364,7 +1385,7 @@ export default function UserPanel({
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Поиск по названию, описанию, участникам…"
+              placeholder="Поиск: название, описание, участники, комната, дата, ссылка ВКС…"
               className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
             />
           </div>
