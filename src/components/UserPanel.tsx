@@ -884,7 +884,11 @@ export default function UserPanel({
       ...(m.tags ?? []).map(String),
       m.date,
       m.link ?? "",
-      m.meetingPassword ?? "",
+      // Пароль комнаты живёт НЕ в отдельном поле бэкенда (meetingPassword —
+      // только локальный тип), а внутри ссылки ВКС (?psw=...). Без его
+      // извлечения поиск по паролю ничего не находил.
+      extractPswFromAny(m.link) ?? "",
+      vksRoomCodeFromLink(m.link) ?? "",
     ]
       .filter(Boolean)
       .map(norm)
