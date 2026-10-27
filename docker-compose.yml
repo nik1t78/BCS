@@ -49,9 +49,12 @@ x-backend-env: &backend-env
   REDIS_PORT: 6379
   REDIS_PASSWORD: "${REDIS_PASSWORD:-vks_2026_redis}"
   APP_URL: "http://${SITE_IP:-localhost}"
-  # Пустой APP_KEY допустим — Laravel тогда работает без шифрования (CookieCryptoFailed).
-  # Задайте реальный ключ в .env: docker compose run --rm backend php artisan key:generate --show
-  APP_KEY: "${APP_KEY:-}"
+  # APP_KEY ОБЯЗАТЕЛЕН: SESSION_DRIVER=cookie, поэтому при пустом/битом ключе
+  # любой запрос к /api/* падает с HTTP 500 ("Unsupported cipher or incorrect key length").
+  # Ключ должен начинаться с "base64:" и быть 32 байта в base64. Сгенерируйте:
+  #   docker compose run --rm backend php artisan key:generate --show
+  # и запишите результат в .env:  APP_KEY=base64:....
+  APP_KEY: "${APP_KEY:?APP_KEY не задан! Добавьте в .env строку APP_KEY=base64:... (см. docker compose run --rm backend php artisan key:generate --show)}"
   APP_ENV: "${APP_ENV:-production}"
   APP_DEBUG: "false"
   # Единая таймзона приложения (совпадает с TZ контейнеров php-fpm/очередей).

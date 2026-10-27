@@ -229,26 +229,28 @@ Docker compose интерполирует `$s`, `$e`, `$m` внутри entrypoi
 ```powershell
 # какой ключ реально видит контейнер:
 docker compose exec backend php -r "echo getenv('APP_KEY');"
-# если вывод пустой или dev-placeholder-key — починить:
+# если вывод пустой или без префикса base64: — починить:
 docker compose run --rm backend php artisan key:generate --show   # скопировать вывод
-notepad .env    # вставить APP_KEY=base64:... в строку APP_KEY=
+notepad .env    # вставить APP_KEY=base64:... в строку APP_KEY= (без кавычек и пробелов)
 docker compose up -d --force-recreate backend queue scheduler
 docker compose exec backend php artisan optimize:clear
 ```
 
-(В `docker-compose.yml` смените `APP_KEY: "${APP_KEY:-dev-placeholder-key}"`
-на `"${APP_KEY:-}"`, чтобы заглушка не подменяла отсутствующий ключ.)
+Свежие версии `docker-compose.yml` не стартуют вовсе, если `APP_KEY` пуст —
+Compose сразу выдаст понятную ошибку вместо HTTP 500.
 
 Если ключ корректный, но 500 остаётся — смотрите стектрейс:
 
 Три типовые причины, проверяются по порядку:
 
-- **Пустой `APP_KEY` в `.env`.** В docker-compose.yml стоит запасное значение
-  `dev-placeholder-key`, которое Laravel отвергает как невалидный base64-ключ →
-  любое зашифрованное действие (куки-сессии) падает с 500. Починить:
+- **Пустой/битый `APP_KEY` в `.env`.** Признак в логах:
+  `Unsupported cipher or incorrect key length ... Encrypter.php` — сессии хранятся
+  в куке (`SESSION_DRIVER=cookie`), и любое зашифрованное действие падает с 500.
+  Ключ обязан иметь формат `base64:<32 байта в base64>`, например
+  `APP_KEY=base64:FuNcoxHUUN9QMZe1oEDLSytyWtuLjmgurxN8IpmByek=`. Починить:
   ```bash
   echo "APP_KEY=base64:$(openssl rand -base64 32)" >> .env   # или отредактировать строку APP_KEY=
-  docker compose up -d backend queue scheduler               # пересоздать php-контейнеры
+  docker compose up -d --force-recreate backend queue scheduler
   docker compose exec backend php artisan optimize:clear
   ```
 - **Не выполнены шаги после первого запуска** (миграции / статика public).
