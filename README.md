@@ -219,7 +219,33 @@ Docker compose интерполирует `$s`, `$e`, `$m` внутри entrypoi
 сырой `$listen_ip` заменён на `${LISTEN_IP:-0.0.0.0}` (в `.env` пишите `LISTEN_IP=...`),
 а комментарий про интерполяцию больше не содержит последовательностей `$s`, `$e`, `$m`.
 
-**4. `laravel.log could not be opened in append mode: Permission denied` на шаге `views`**
+**4. Ошибка сервера (HTTP 500) — «Подробности в логах: docker compose logs backend»**
+
+Три типовые причины, проверяются по порядку:
+
+- **Пустой `APP_KEY` в `.env`.** В docker-compose.yml стоит запасное значение
+  `dev-placeholder-key`, которое Laravel отвергает как невалидный base64-ключ →
+  любое зашифрованное действие (куки-сессии) падает с 500. Починить:
+  ```bash
+  echo "APP_KEY=base64:$(openssl rand -base64 32)" >> .env   # или отредактировать строку APP_KEY=
+  docker compose up -d backend queue scheduler               # пересоздать php-контейнеры
+  docker compose exec backend php artisan optimize:clear
+  ```
+- **Не выполнены шаги после первого запуска** (миграции / статика public).
+  Признак в логах: `Base table or view ... doesn't exist`:
+  ```bash
+  docker compose run --rm --no-deps backend-assets
+  docker compose exec backend php artisan migrate --force
+  docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder --force
+  docker compose exec backend php artisan optimize
+  ```
+- **Права на storage** (см. пункт 5 ниже). Точную причину всегда показывает лог:
+  ```bash
+  docker compose logs backend | tail -50
+  docker compose exec backend tail -50 storage/logs/laravel.log
+  ```
+
+**5. `laravel.log could not be opened in append mode: Permission denied` на шаге `views`**
 
 Каталог `backend/storage` смонтирован с хоста bind-маунтом; если на сервере он
 принадлежит root, php-fpm (www-data) не может писать лог. Entrypoint контейнера
