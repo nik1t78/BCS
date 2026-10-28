@@ -14,6 +14,7 @@ class Room extends Model
         'equipment',
         'description',
         'is_active',
+        'tv_token',
     ];
 
     protected $casts = [
@@ -21,4 +22,10 @@ class Room extends Model
         'is_active' => 'boolean',
         'department_id' => 'integer',
     ];
+
+    /**
+     * Скрыть токен экрана по умолчанию: он попадает в ответ /rooms только
+     * администраторам (см. RoomController::index) и нужен лишь для URL телевизора.
+     */
+    protected $hidden = ['tv_token'];
 }

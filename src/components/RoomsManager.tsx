@@ -10,6 +10,36 @@ interface RoomsManagerProps {
 
 const toTime = (t: string) => parseInt(t.slice(0, 2), 10) * 60 + parseInt(t.slice(3, 5), 10);
 
+/** Кнопка «Экран ТВ»: копирует в буфер постоянный URL телевизора для этого зала */
+function TvScreenLinkButton({ roomName, token }: { roomName: string; token: string }) {
+  const [copied, setCopied] = useState(false);
+  const url = `${window.location.origin}/tv/${encodeURIComponent(roomName)}?token=${token}`;
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      /* fallback ниже */
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <button
+      onClick={copy}
+      title={`Открыть превью экрана: ${url}`}
+      onDoubleClick={() => window.open(url, "_blank")}
+      className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+        copied
+          ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/40 dark:text-green-300"
+          : "bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600"
+      }`}
+    >
+      <i className="fas fa-tv mr-1"></i>
+      {copied ? "Ссылка скопирована" : "Экран ТВ"}
+    </button>
+  );
+}
+
 /** Таймлайн занятости комнаты 08:00–20:00 */
 function AvailabilityTimeline({ availability }: { availability: RoomAvailability }) {
   const total = 12 * 60; // 08:00–20:00
@@ -87,6 +117,7 @@ export default function RoomsManager({ isAdmin, userDepartment }: RoomsManagerPr
         equipment: r.equipment ?? [],
         description: r.description ?? undefined,
         isActive: !!r.is_active,
+        tvToken: r.tv_token ?? null,
       }));
       setRooms(data);
     } catch (e: any) {
@@ -286,6 +317,9 @@ export default function RoomsManager({ isAdmin, userDepartment }: RoomsManagerPr
                   ) : (
                     <span className="ml-auto text-xs text-green-600">свободна весь день</span>
                   ))}
+                {isAdmin && r.tvToken && (
+                  <TvScreenLinkButton roomName={r.name} token={r.tvToken} />
+                )}
                 {isAdmin && (
                   <span className="flex gap-2 ml-2">
                     <button

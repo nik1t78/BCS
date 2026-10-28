@@ -18,9 +18,17 @@ class RoomController extends Controller
         // Справочник комнат доступен всем авторизованным (модалка выбора зала
         // и виджет «Свободные залы» нужны в т.ч. обычной роли «user»).
         // Для совместимости с фронтендом отдаём оба поля статуса.
-        $rooms = Room::orderBy('name')->get()->map(function (Room $room) {
+        // tv_token (доступ к экрану ТВ без логина) показываем ТОЛЬКО администратору.
+        $isAdmin = optional($request->user())->role === 'admin';
+        $rooms = Room::orderBy('name')->get()->map(function (Room $room) use ($isAdmin) {
             $room->setAttribute('is_active', (bool) $room->is_active);
             $room->setAttribute('isActive', (bool) $room->is_active);
+            if ($isAdmin) {
+                if (!$room->tv_token) {
+                    $room->forceFill(['tv_token' => bin2hex(random_bytes(16))])->saveQuietly();
+                }
+                $room->makeVisible('tv_token');
+            }
             return $room;
         });
 

@@ -202,6 +202,8 @@ export interface Room {
   equipment?: string[];
   description?: string;
   isActive: boolean;
+  /** Токен «экрана ожидания» для телевизора в зале (виден только админу) */
+  tvToken?: string | null;
 }
 
 /** Занятость комнаты на день */
