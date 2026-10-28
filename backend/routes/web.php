@@ -20,8 +20,24 @@ Route::get('/', function () {
 // сюда, иначе SPA отдавал бы index.html и JS-модули грузились бы как HTML
 // ("Failed to load module script ... MIME type text/html").
 Route::get('/tv/{room}', function (string $room) {
-    return response()->view('tv-screen', ['room' => $room])
-        ->header('Cache-Control', 'no-store');
+    // Резолвим ПО НАЗВАНИЮ: телевизор открывает человекочитаемый адрес
+    // /tv/Переговорная%20А%20(3%20этаж)?token=..., а не id.
+    // Если зал не найден или выключен — отдаём экран с понятным сообщением
+    // (не 404-заглушку Laravel: на ТВ она выглядит как «белая страница»).
+    $model = \App\Models\Room::where('name', urldecode($room))
+        ->where('is_active', true)
+        ->first();
+    if (!$model) {
+        return response()->view('tv-screen', [
+            'room'    => $room,
+            'missing' => true,
+        ])->header('Cache-Control', 'no-store')->status(404);
+    }
+    return response()->view('tv-screen', [
+        'room'      => $room,
+        'roomId'    => $model->id,
+        'tvTokenOk' => (bool) $model->tv_token,
+    ])->header('Cache-Control', 'no-store');
 })->where('room', '[^/]+');
 
 // Редирект со «старого» короткого формата /m/{id} на вечную ссылку API

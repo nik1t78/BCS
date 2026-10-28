@@ -34,14 +34,27 @@
 </head>
 <body>
 <div class="wrap">
-    <header>
-        <h1 id="room">…</h1>
-        <div id="status" class="time"></div>
-    </header>
-    <div class="clock" id="clock">--:--:--</div>
-    <div class="date" id="today"></div>
-    <ul class="list" id="upcoming"></ul>
-    <div class="empty" id="empty" style="display:none">Свободно. Следующая встреча появится здесь автоматически.</div>
+    @isset($missing)
+        {{-- Зал не найден в справочнике (переименован/удалён) или выключен.
+             Показываем понятную заглушку вместо «вечного» экрана с ошибкой. --}}
+        <h1 id="room">Зал не найден</h1>
+        <p class="empty" style="display:block">
+            Экран открыт по адресу «{!! e(urldecode($room)) !!}», но такого активного зала
+            в справочнике нет.<br><br>
+            Проверьте название в <b>Админ-панели → Комнаты</b> и заново скопируйте
+            ссылку «Экран ТВ» — после переименования зала старый адрес телевизора
+            перестаёт работать.
+        </p>
+    @else
+        <header>
+            <h1 id="room">…</h1>
+            <div id="status" class="time"></div>
+        </header>
+        <div class="clock" id="clock">--:--:--</div>
+        <div class="date" id="today"></div>
+        <ul class="list" id="upcoming"></ul>
+        <div class="empty" id="empty" style="display:none">Свободно. Следующая встреча появится здесь автоматически.</div>
+    @endisset
 </div>
 
 <div class="invite" id="invite">
@@ -55,6 +68,10 @@
 (function () {
     var ROOM = decodeURIComponent(location.pathname.split('/').filter(Boolean)[1] || '');
     var TOKEN = new URLSearchParams(location.search).get('token') || '';
+    // Заглушка «Зал не найден»: поллинг не нужен — зала в справочнике нет.
+@if(isset($missing))
+    return;
+@endif
     var POLL_MS = 10000, INVITE_BEFORE = 120000; // приглашение за 2 минуты
     var nextMeeting = null, serverOffset = 0, joined = false;
 
