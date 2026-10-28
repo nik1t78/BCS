@@ -57,7 +57,7 @@ class TvScreenController extends Controller
                     'title' => $m->title,
                     'start' => $start->toIso8601String(),
                     'end' => $end->toIso8601String(),
-                    'join_url' => '/m/' . $m->id, // «вечная» ссылка — всегда ведёт на актуальную комнату
+                    'join_url' => '/api/m/' . $m->id, // «вечная» ссылка — всегда ведёт на актуальную комнату
                     'live' => $start->lessThanOrEqualTo($now) && $end->greaterThan($now),
                 ];
             })
