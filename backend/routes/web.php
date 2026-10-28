@@ -60,7 +60,13 @@ function tvScreenResponse(array $data, int $status = 200): \Symfony\Component\Ht
 {
     $html = view('tv-screen', $data)->render();
 
-    $csp = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline';"
+    // ВАЖНО: 'unsafe-inline' здесь обязателен. Браузер объединяет ВСЕ
+    // CSP-заголовки ответа (nginx + Laravel) пересечением директив: если
+    // хотя бы одна политика запрещает инлайн-скрипт, он блокируется, и
+    // хэши sha256 из другой политики не спасают. Синтаксис 'unsafe-inline'
+    // игнорируется только там, где есть nonce или hash — поэтому держим и
+    // 'unsafe-inline', и хэш ниже: экран работает при любом раскладе.
+    $csp = "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline';"
         . " img-src 'self' data: blob:; connect-src 'self'; font-src 'self' data:; object-src 'none';"
         . " frame-ancestors 'self'; base-uri 'self'; form-action 'self'; worker-src 'self' blob:";
 
