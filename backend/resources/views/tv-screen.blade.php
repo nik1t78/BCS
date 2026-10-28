@@ -71,6 +71,20 @@
     // Заглушка «Зал не найден»: поллинг не нужен — зала в справочнике нет.
 @if(isset($missing))
     return;
+@elseif(isset($tvTokenOk) && !$tvTokenOk)
+    // Токен в URL отсутствует или не совпадает с rooms.tv_token — поллинг
+    // вернул бы 403, поэтому сразу показываем понятную инструкцию.
+    document.addEventListener('DOMContentLoaded', function () {
+        var el = document.getElementById('status');
+        if (el) el.textContent = 'Неверный токен экрана';
+        var empty = document.getElementById('empty');
+        if (empty) {
+            empty.style.display = 'block';
+            empty.innerHTML = 'Телевизор открыт по адресу без токена (или токен устарел).<br><br>' +
+                'Скопируйте актуальную ссылку в <b>Админ-панель → Комнаты → Экран ТВ</b> ' +
+                'и заново откройте её на телевизоре.';
+        }
+    });
 @endif
     var POLL_MS = 10000, INVITE_BEFORE = 120000; // приглашение за 2 минуты
     var nextMeeting = null, serverOffset = 0, joined = false;

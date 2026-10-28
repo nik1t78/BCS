@@ -36,10 +36,17 @@ Route::get('/tv/{room}', function (string $room) {
             'missing' => true,
         ], 404)->header('Cache-Control', 'no-store');
     }
+    // Токен проверяем уже на этом этапе: без него поллинг /api/tv/... вернёт
+    // 403 и телевизор показывал бы «Неверный токен экрана» вместо расписания.
+    $token = (string) request()->query('token', '');
+    $tvTokenOk = $token !== ''
+        && (bool) $model->tv_token
+        && hash_equals((string) $model->tv_token, $token);
+
     return response()->view('tv-screen', [
         'room'      => $room,
         'roomId'    => $model->id,
-        'tvTokenOk' => (bool) $model->tv_token,
+        'tvTokenOk' => $tvTokenOk,
     ])->header('Cache-Control', 'no-store');
 })->where('room', '[^/]+');
 
