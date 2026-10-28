@@ -59,6 +59,21 @@ Route::middleware('auth:sanctum')->get('/meta/stamps', function (\Illuminate\Htt
 // здесь, контроль сам резолвит пользователя по ?token= через Sanctum::findByToken.
 Route::middleware('throttle:20,1')->get('/notifications/stream', [\App\Http\Controllers\Api\NotificationStreamController::class, 'stream']);
 
+// Пункт 5 плана: «экран ожидания» в зале. Телевизор открывает /tv/{room}?token=...
+// без логина; токен зала (rooms.tv_token) даёт доступ только на чтение нейтральных
+// полей расписания этого зала. Throttle защищает от скрапинга чужими токенами.
+Route::middleware('throttle:30,1')->get('/tv/{room}/next', [\App\Http\Controllers\Api\TvScreenController::class, 'next']);
+
+// Пункт 2 плана: «вечная» ссылка /api/m/{id} — всегда редиректит на актуальную
+// комнату ВКС встречи. Используется в QR-кодах и уведомлениях: даже если
+// автопилот пересоздал комнату, старая ссылка/QR остаются рабочими.
+Route::middleware('throttle:60,1')->get('/m/{meeting}', function (\App\Models\Meeting $meeting) {
+    if (!$meeting->link) {
+        return response()->view('vks-waiting', ['meeting' => $meeting]);
+    }
+    return redirect()->away($meeting->link);
+})->whereNumber('meeting');
+
 // Защищённые маршруты
 Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // Auth
@@ -94,6 +109,13 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // Meetings
     Route::apiResource('meetings', MeetingController::class);
     Route::get('/meetings-stats', [MeetingController::class, 'getStats']);
+
+    // Пункт 8 плана: «Экспресс-бронь» — встреча на N минут в свободном зале одним кликом.
+    Route::post('/express-meeting', [\App\Http\Controllers\Api\ExpressMeetingController::class, 'store']);
+    // Пункт 4 плана: PNG QR-кода вечной ссылки /m/{id}. whereNumber — чтобы путь
+    // не конфликтовал с /meetings/{meeting}/... (apiResource матчит и другие сегменты).
+    Route::get('/meetings/{meeting}/qr', [\App\Http\Controllers\Api\ExpressMeetingController::class, 'qr'])
+        ->whereNumber('meeting');
 
     // Корзина мягко удалённых встреч
     Route::get('/trash', [\App\Http\Controllers\Api\MeetingTrashController::class, 'index']);
@@ -223,6 +245,10 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::get('/admin/heatmap', [\App\Http\Controllers\Api\AnalyticsController::class, 'heatmap']);
         // Дашборд нагрузки системы (встречи по дням/часам, топ комнат, активность)
         Route::get('/admin/load', [\App\Http\Controllers\Api\AnalyticsController::class, 'load']);
+
+        // Дневник работы ВКС-бота + SLA-метрики (пункты 6–7 плана)
+        Route::get('/admin/bot-log', [\App\Http\Controllers\Api\BotLogController::class, 'index']);
+        Route::get('/admin/bot-log/stats', [\App\Http\Controllers\Api\BotLogController::class, 'stats']);
 
         // Аудит-лог действий пользователей (только администратор)
         Route::get('/admin/audit-logs', [\App\Http\Controllers\Api\AuditLogController::class, 'index']);

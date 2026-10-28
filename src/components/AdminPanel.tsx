@@ -339,7 +339,7 @@ function LoadDashboard() {
 export default function AdminPanel({ user }: AdminPanelProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
-  const [activeTab, setActiveTab] = useState<"users" | "meetings" | "rooms" | "stats" | "trash" | "audit">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "meetings" | "rooms" | "stats" | "trash" | "audit" | "botlog">("users");
   // Количество переговорных комнат — бейдж на вкладке «Комнаты» (как у
   // «Пользователи» и «Конференции»).
   const [roomsCount, setRoomsCount] = useState<number | undefined>(undefined);
@@ -408,8 +408,49 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   useEffect(() => {
     if (activeTab === "audit") loadAuditLogs(1);
     if (activeTab === "trash") loadTrashed();
+    if (activeTab === "botlog") loadBotLog(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
+
+  // Дневник работы ВКС-бота + SLA-метрики (вкладка «ВКС-бот», пункты 6–7 плана)
+  interface BotLogEntry {
+    id: number;
+    meeting_id: number | null;
+    action: string;
+    trigger: string | null;
+    success: boolean;
+    link: string | null;
+    error: string | null;
+    duration_ms: number | null;
+    created_at: string;
+  }
+  const [botLogs, setBotLogs] = useState<BotLogEntry[]>([]);
+  const [botLogPage, setBotLogPage] = useState(1);
+  const [botLogLastPage, setBotLogLastPage] = useState(1);
+  const [botLogToday, setBotLogToday] = useState(true);
+  const [botLogErrorsOnly, setBotLogErrorsOnly] = useState(false);
+  const [botLogLoading, setBotLogLoading] = useState(false);
+  const [botSla, setBotSla] = useState<any>(null);
+
+  const loadBotLog = async (page = 1, today = botLogToday, errors = botLogErrorsOnly) => {
+    setBotLogLoading(true);
+    try {
+      const params = new URLSearchParams({ per_page: "50", page: String(page) });
+      if (today) params.set("today", "1");
+      if (errors) params.set("errors", "1");
+      const response = await authAPI.rawGet(`/admin/bot-log?${params.toString()}`);
+      setBotLogs(unwrapList(response) as BotLogEntry[]);
+      setBotLogPage(Number(response?.current_page ?? page));
+      setBotLogLastPage(Number(response?.last_page ?? 1));
+      const sla = await authAPI.rawGet("/admin/bot-log/stats?days=7");
+      setBotSla(sla);
+    } catch (e) {
+      console.error("Bot log load error:", e);
+      setBotLogs([]);
+    } finally {
+      setBotLogLoading(false);
+    }
+  };
 
   const [exporting, setExporting] = useState(false);
   const loadTrashed = async () => {
@@ -841,6 +882,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             { id: "stats", label: "Статистика", icon: "fa-chart-bar" },
             ...(user.role === "admin" ? [{ id: "trash", label: "Корзина", icon: "fa-trash-restore" }] : []),
             ...(user.role === "admin" ? [{ id: "audit", label: "Аудит", icon: "fa-shield-alt" }] : []),
+            ...(user.role === "admin" ? [{ id: "botlog", label: "ВКС-бот", icon: "fa-robot" }] : []),
           ].map((tab) => (
             <button
               key={tab.id}
@@ -1866,6 +1908,170 @@ export default function AdminPanel({ user }: AdminPanelProps) {
               <button
                 disabled={auditPage >= auditLastPage}
                 onClick={() => loadAuditLogs(auditPage + 1)}
+                className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-40"
+              >
+                Вперёд<i className="fas fa-chevron-right ml-1"></i>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Дневник работы ВКС-бота + SLA (пункты 6–7 плана) */}
+      {activeTab === "botlog" && user.role === "admin" && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-3 flex-wrap">
+              <h3 className="font-bold text-gray-800 dark:text-gray-100">
+                <i className="fas fa-robot text-blue-600 mr-2"></i>Дневник ВКС-бота
+              </h3>
+              <label className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={botLogToday}
+                  onChange={(e) => {
+                    setBotLogToday(e.target.checked);
+                    loadBotLog(1, e.target.checked, botLogErrorsOnly);
+                  }}
+                  className="rounded"
+                />
+                За сегодня
+              </label>
+              <label className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={botLogErrorsOnly}
+                  onChange={(e) => {
+                    setBotLogErrorsOnly(e.target.checked);
+                    loadBotLog(1, botLogToday, e.target.checked);
+                  }}
+                  className="rounded"
+                />
+                Только ошибки
+              </label>
+            </div>
+            <button
+              onClick={() => loadBotLog(botLogPage)}
+              className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-gray-700 dark:text-gray-200"
+            >
+              <i className={`fas fa-sync-alt mr-1 ${botLogLoading ? "fa-spin" : ""}`}></i>Обновить
+            </button>
+          </div>
+
+          {/* SLA-метрики за 7 дней */}
+          {botSla && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 border-b border-gray-200 dark:border-gray-700">
+              <div className="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg">
+                <div className="text-xs text-gray-500 dark:text-gray-400">Успешность ссылок</div>
+                <div className={`text-xl font-bold ${Number(botSla.success_rate) >= 90 ? "text-green-600" : Number(botSla.success_rate) >= 70 ? "text-yellow-600" : "text-red-600"}`}>
+                  {botSla.success_rate != null ? `${botSla.success_rate}%` : "—"}
+                </div>
+                <div className="text-xs text-gray-400">{botSla.successful}/{botSla.total_attempts} попыток</div>
+              </div>
+              <div className="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg">
+                <div className="text-xs text-gray-500 dark:text-gray-400">Ср. время создания</div>
+                <div className="text-xl font-bold text-gray-800 dark:text-gray-100">
+                  {botSla.avg_duration_ms != null ? `${Math.round(botSla.avg_duration_ms / 1000)} c` : "—"}
+                </div>
+              </div>
+              <div className="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg">
+                <div className="text-xs text-gray-500 dark:text-gray-400">Ручных вмешательств</div>
+                <div className="text-xl font-bold text-gray-800 dark:text-gray-100">{botSla.manual_interventions ?? 0}</div>
+              </div>
+              <div className="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg col-span-2 md:col-span-1">
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Топ причин ошибок</div>
+                {Array.isArray(botSla.top_errors) && botSla.top_errors.length > 0 ? (
+                  <ul className="text-xs text-gray-600 dark:text-gray-300 space-y-0.5">
+                    {botSla.top_errors.slice(0, 3).map((e: any, i: number) => (
+                      <li key={i} className="truncate" title={e.reason}>
+                        • {String(e.reason).slice(0, 60)} ({e.cnt})
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="text-xs text-green-600">ошибок нет 🎉</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 dark:bg-gray-700/50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Время</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Встреча</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Действие</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Запуск</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Результат</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Длит.</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Ссылка / ошибка</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {botLogs.map((log) => (
+                  <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                      {new Date(log.created_at).toLocaleString("ru-RU")}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-800 dark:text-gray-100">
+                      {log.meeting_id ? `#${log.meeting_id}` : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{log.action}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{log.trigger || "—"}</td>
+                    <td className="px-4 py-3 text-sm">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs whitespace-nowrap ${
+                          log.success
+                            ? "bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300"
+                            : "bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300"
+                        }`}
+                      >
+                        {log.success ? "ок" : "ошибка"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                      {log.duration_ms != null ? `${(log.duration_ms / 1000).toFixed(1)} c` : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-xs max-w-md">
+                      {log.success && log.link ? (
+                        <a href={log.link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline truncate block">
+                          {log.link}
+                        </a>
+                      ) : (
+                        <span className="text-red-600 dark:text-red-400 line-clamp-2" title={log.error || ""}>
+                          {log.error || "—"}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {botLogs.length === 0 && !botLogLoading && (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-gray-400 dark:text-gray-500">
+                      Записей нет — бот ещё не создавал ссылки (проверьте VKSBOT_AUTO=true и воркер очереди)
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {botLogLastPage > 1 && (
+            <div className="flex items-center justify-between p-4 border-t border-gray-200 dark:border-gray-700">
+              <button
+                disabled={botLogPage <= 1}
+                onClick={() => loadBotLog(botLogPage - 1)}
+                className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-40"
+              >
+                <i className="fas fa-chevron-left mr-1"></i>Назад
+              </button>
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                Стр. {botLogPage} из {botLogLastPage}
+              </span>
+              <button
+                disabled={botLogPage >= botLogLastPage}
+                onClick={() => loadBotLog(botLogPage + 1)}
                 className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-40"
               >
                 Вперёд<i className="fas fa-chevron-right ml-1"></i>

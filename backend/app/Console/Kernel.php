@@ -69,5 +69,24 @@ class Kernel extends ConsoleKernel
                  ->everyMinute()
                  ->withoutOverlapping()
                  ->runInBackground();
+
+        // Heartbeat воркера очереди (для system:monitor, пункт 9): пишет
+        // timestamp в кэш каждую минуту. Если queue:work упал/завис —
+        // heartbeat перестаёт обновляться и мониторинг шлёт алерт админу.
+        $schedule->call(function () {
+            cache()->put(
+                \App\Console\Commands\MonitorSystem::QUEUE_HEARTBEAT_KEY,
+                now()->getTimestamp(),
+                now()->addDay()
+            );
+        })->everyMinute()->name('queue-heartbeat');
+
+        // Автомониторинг uptime (пункт 9): раз в 5 минут проверка MySQL/Redis/
+        // nginx/queue-worker с дедуплицированными алертами админу.
+        // Включается флагом SYSTEM_MONITOR_ENABLED=true в .env.
+        $schedule->command('system:monitor')
+                 ->everyFiveMinutes()
+                 ->withoutOverlapping()
+                 ->runInBackground();
     }
 }
