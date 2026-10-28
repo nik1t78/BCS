@@ -64,12 +64,17 @@
 </div>
 <div class="badge">Экран зала · обновление каждые 10 с</div>
 
+{{-- Экран рендерится nginx-ом с жёстким CSP (см. docker/nginx/default.conf,
+     location ~ ^/tv/), где script-src запрещает inline-скрипты. Поэтому этот
+     <script> разрешается CSP-хэшем: хэш текста скрипта вычисляется в
+     routes/web.php после рендера blade и добавляется в заголовок
+     Content-Security-Policy ответа ('sha256-...'). --}}
 <script>
 (function () {
     var ROOM = decodeURIComponent(location.pathname.split('/').filter(Boolean)[1] || '');
     var TOKEN = new URLSearchParams(location.search).get('token') || '';
-    // Заглушка «Зал не найден»: поллинг не нужен — зала в справочнике нет.
 @if(isset($missing))
+    // Заглушка «Зал не найден»: поллинг не нужен — зала в справочнике нет.
     return;
 @elseif(isset($tvTokenOk) && !$tvTokenOk)
     // Токен в URL отсутствует или не совпадает с rooms.tv_token — поллинг

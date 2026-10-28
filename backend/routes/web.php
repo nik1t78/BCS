@@ -31,10 +31,10 @@ Route::get('/tv/{room}', function (string $room) {
         // ВАЖНО: ->status() возвращает int, а не Response — поэтому статус
         // задаём первым аргументом response()->view(...), иначе маршрут
         // возвращал бы число 404 и телевизор показывал пустую страницу.
-        return response()->view('tv-screen', [
+        return tvScreenResponse([
             'room'    => $room,
             'missing' => true,
-        ], 404)->header('Cache-Control', 'no-store');
+        ], 404);
     }
     // Токен проверяем уже на этом этапе: без него поллинг /api/tv/... вернёт
     // 403 и телевизор показывал бы «Неверный токен экрана» вместо расписания.
@@ -43,12 +43,41 @@ Route::get('/tv/{room}', function (string $room) {
         && (bool) $model->tv_token
         && hash_equals((string) $model->tv_token, $token);
 
-    return response()->view('tv-screen', [
+    return tvScreenResponse([
         'room'      => $room,
         'roomId'    => $model->id,
         'tvTokenOk' => $tvTokenOk,
-    ])->header('Cache-Control', 'no-store');
+    ]);
 })->where('room', '[^/]+');
+
+// Экран рендерится nginx-ом с CSP script-src 'self' (см. docker/nginx/default.conf):
+// inline-<script> в blade блокировался браузером («Executing inline script
+// violates … Content-Security-Policy») и телевизор не опрашивал API.
+// Решение: после рендера вычисляем sha256 текста скрипта и добавляем его
+// хэш в заголовок CSP этого ответа. Директивы берём из конфига nginx, чтобы
+// политики не разъезжались при правках.
+function tvScreenResponse(array $data, int $status = 200): \Symfony\Component\HttpFoundation\Response
+{
+    $html = view('tv-screen', $data)->render();
+
+    $csp = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline';"
+        . " img-src 'self' data: blob:; connect-src 'self'; font-src 'self' data:; object-src 'none';"
+        . " frame-ancestors 'self'; base-uri 'self'; form-action 'self'; worker-src 'self' blob:";
+
+    if (preg_match_all('#<script[^>]*>(.*?)</script>#s', $html, $m)) {
+        $hashes = [];
+        foreach ($m[1] as $js) {
+            $hashes[] = "'sha256-" . base64_encode(hash('sha256', $js, true)) . "'";
+        }
+        // Вставляем хэши сразу после 'self' в script-src.
+        $csp = str_replace("script-src 'self'", "script-src 'self' " . implode(' ', $hashes), $csp);
+    }
+
+    return response($html, $status)
+        ->header('Content-Type', 'text/html; charset=utf-8')
+        ->header('Cache-Control', 'no-store')
+        ->header('Content-Security-Policy', $csp);
+}
 
 // Редирект со «старого» короткого формата /m/{id} на вечную ссылку API
 // (используется в QR/уведомлениях, если кто-то ввёл адрес вручную).
