@@ -21,6 +21,13 @@ class Kernel extends ConsoleKernel
                  ->withoutOverlapping()
                  ->runInBackground();
 
+        // Автозавершение прошедших конференций (scheduled/in-progress -> completed),
+        // каждый час. Данные становятся «честными»: фронтенду больше не нужно
+        // маскировать статусы фильтром по времени.
+        $schedule->command('meetings:auto-complete')
+                 ->hourly()
+                 ->withoutOverlapping();
+
         // Очистка старых уведомлений (старше 30 дней)
         $schedule->command('notifications:cleanup')
                  ->daily()
