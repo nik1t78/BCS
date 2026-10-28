@@ -389,7 +389,7 @@ class MeetingController extends Controller
         // При QUEUE_CONNECTION=sync джоб выполнится сразу — поведение как
         // раньше, только без ожидания в HTTP-запросе фронтенда.
         try {
-            if (empty($validated['link']) && filter_var(env('VKSBOT_AUTO', false), FILTER_VALIDATE_BOOLEAN)) {
+            if (empty($validated['link']) && config('services.vks_bot.auto', false)) {
                 CreateVksLinkJob::dispatch($meeting->id);
             }
         } catch (\Throwable $e) {

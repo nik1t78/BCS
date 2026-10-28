@@ -42,7 +42,7 @@ class VksAutopilot extends Command
         }
 
         $window = max(5, (int) env('VKSBOT_CHECK_MINUTES', 60));
-        $autoQueue = filter_var(env('VKSBOT_AUTO', false), FILTER_VALIDATE_BOOLEAN);
+        $autoQueue = (bool) config('services.vks_bot.auto', false);
         $now = now();
         $horizon = $now->copy()->addMinutes($window);
 

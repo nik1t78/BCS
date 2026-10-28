@@ -12,9 +12,29 @@ use Illuminate\Support\Facades\Http;
  */
 class VkSBotClient
 {
+    /**
+     * Локальная ссылка в формате платформы (без бота). Совпадает с fallback
+     * в CreateVksLinkJob::failed() — единая точка генерации.
+     *
+     * @return array{ok:bool,link:string,real:false}
+     */
+    public static function localLink(): array
+    {
+        $code = substr(preg_replace('/[^a-z0-9]/', '', strtolower(base64_encode(random_bytes(8)))), 0, 8);
+        $pwd = substr(preg_replace('/[^A-Z0-9]/', '', strtoupper(base64_encode(random_bytes(16)))), 0, 16);
+
+        return ['ok' => false, 'real' => false, 'link' => "https://salutejazz.ru/calls/{$code}?psw={$pwd}"];
+    }
+
     /** @return array{ok:bool,link?:string,error?:string,detail?:string} */
     public function create(string $title, string $name): array
     {
+        // Бот не развёрнут (VKSBOT_EXPECTED=false / профиль bot выключен) —
+        // сразу отдаём локальную ссылку, не дожидаясь таймаута HTTP.
+        if (!filter_var(config('services.vks_bot.expected', env('VKSBOT_EXPECTED', false)), FILTER_VALIDATE_BOOLEAN)) {
+            return self::localLink();
+        }
+
         $url = rtrim((string) config('services.vks_bot.url', 'http://vks-bot:8090'), '/') . '/create';
         // Секрет — первое значение из списка BOT_TOKENS (см. vks-bot/server.py).
         $token = trim(explode(',', (string) env('BOT_TOKENS', ''))[0] ?? '');

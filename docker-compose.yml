@@ -68,7 +68,15 @@ x-backend-env: &backend-env
   # очереди — sync, кэш/сессии — файловые. Redis-контейнер оставлен на будущее:
   # если когда-нибудь поставите phpredis, достаточно переключить эти значения.
   CACHE_STORE: "file"
-  QUEUE_CONNECTION: "sync"
+  # По умолчанию sync (без Redis-расширения в образе). Для ВКС-бота переключите
+  # в .env: QUEUE_CONNECTION=redis — иначе CreateVksLinkJob выполняется
+  # синхронно внутри HTTP-запроса и «Создать конференцию» висит/падает.
+  QUEUE_CONNECTION: "${QUEUE_CONNECTION:-sync}"
+  # Флаги автопилота ВКС-ссылок (см. php artisan vks:autopilot):
+  VKSBOT_EXPECTED: "${VKSBOT_EXPECTED:-false}"
+  VKSBOT_AUTO: "${VKSBOT_AUTO:-true}"
+  VKSBOT_CHECK_MINUTES: "${VKSBOT_CHECK_MINUTES:-60}"
+  BOT_TOKENS: "${BOT_TOKENS:-}"
   MESSENGER: "${MESSENGER:-max}"
   MAX_ENABLED: "${MAX_ENABLED:-true}"
   MAX_API_URL: "${MAX_API_URL:-https://maxapi.ru/v1}"

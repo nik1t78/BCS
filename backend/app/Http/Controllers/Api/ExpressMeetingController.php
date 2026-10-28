@@ -68,7 +68,7 @@ class ExpressMeetingController extends Controller
         ]);
 
         try {
-            if (filter_var(env('VKSBOT_AUTO', false), FILTER_VALIDATE_BOOLEAN)) {
+            if (config('services.vks_bot.auto', false)) {
                 \App\Jobs\CreateVksLinkJob::dispatch($meeting->id);
             }
         } catch (\Throwable $e) {
