@@ -44,7 +44,9 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
     return n.getHours() * 60 + n.getMinutes();
   });
 
-  // «Линия текущего времени» как в Outlook — обновляем раз в минуту
+  // «Линия текущего времени» как в Outlook — обновляем раз в минуту.
+  // Каждую минуту пересчитываем и свободные окна (см. эффект ниже), чтобы
+  // прошедшее время не предлагалось для брони без перезагрузки страницы.
   useEffect(() => {
     const t = setInterval(() => {
       const n = new Date();
@@ -53,11 +55,26 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
     return () => clearInterval(t);
   }, []);
 
+  // Тик «сейчас»: меняется раз в минуту — на нём пересчитываем слоты,
+  // помечая уже наступившее время как прошедшее (isPast).
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((v) => v + 1), 60000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Кэш последнего ответа занятости по дате: на минутном тике обновляем
+  // слоты из кэша БЕСШУМНО (без «Загрузка…»), а не с нуля через API.
+  const cacheRef = React.useRef<{ date: string; active: Room[]; busyById: Record<string, any[]> } | null>(null);
+
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
+    const useCacheOnly = tick > 0 && cacheRef.current?.date === date;
+    if (!useCacheOnly) {
       setLoading(true);
       setError(null);
+    }
+    const load = async () => {
       try {
         // Агрегированный эндпоинт доступен всем авторизованным ролям и
         // возвращает сразу и список активных залов, и их занятость на дату
@@ -84,6 +101,11 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
 
         let active: Room[] = [];
         let busyById: Record<string, any[]> = {};
+        if (useCacheOnly && cacheRef.current) {
+          // Минутный тик по тому же дню — берём данные из кэша, только
+          // пересчитываем «прошедшее время» относительно нового «сейчас».
+          ({ active, busyById } = cacheRef.current);
+        } else {
         try {
           const agg = await fetchAggregated();
           active = agg.active;
@@ -95,6 +117,7 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
             const res: any = await roomsAPI.list();
             const roomsList: Room[] = Array.isArray(res) ? res : (res?.data ?? []);
             active = roomsList.filter((r) => r.isActive !== false);
+            busyById = {};
           } catch (e2: any) {
             if (e2?.status === 401) throw new Error("Сессия истекла — обновите страницу");
             setError(null); // не показываем сырую ошибку — ниже выведем подсказку
@@ -102,6 +125,8 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
             setLoading(false);
             return;
           }
+        }
+        cacheRef.current = { date, active, busyById };
         }
         const results = await Promise.allSettled(
           active.map(async (r) => {
@@ -168,7 +193,7 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date]);
+  }, [date, tick]);
 
   const daySpan = WORK_DAY_END_MIN - WORK_DAY_START_MIN;
   const pct = (min: number) => ((min - WORK_DAY_START_MIN) / daySpan) * 100;
