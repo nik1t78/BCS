@@ -57,3 +57,9 @@ backend/phpredis-6.3.0.tar.gz
 
 # Данные MySQL (bind-mount из docker-compose) — никогда не коммитить
 mysql/
+
+# Локальные артефакты тестов/разработки (не коммитить)
+backend/storage/framework/views/*.php
+backend/storage/framework/cache/data/*
+!backend/storage/framework/cache/.gitkeep
+backend/storage/logs/*.log

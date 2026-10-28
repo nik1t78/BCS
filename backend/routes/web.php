@@ -28,10 +28,13 @@ Route::get('/tv/{room}', function (string $room) {
         ->where('is_active', true)
         ->first();
     if (!$model) {
+        // ВАЖНО: ->status() возвращает int, а не Response — поэтому статус
+        // задаём первым аргументом response()->view(...), иначе маршрут
+        // возвращал бы число 404 и телевизор показывал пустую страницу.
         return response()->view('tv-screen', [
             'room'    => $room,
             'missing' => true,
-        ])->header('Cache-Control', 'no-store')->status(404);
+        ], 404)->header('Cache-Control', 'no-store');
     }
     return response()->view('tv-screen', [
         'room'      => $room,
