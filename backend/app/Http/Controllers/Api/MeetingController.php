@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\CreateVksLinkJob;
 use App\Models\AuditLog;
 use App\Models\Meeting;
 use App\Models\Notification;
@@ -379,6 +380,21 @@ class MeetingController extends Controller
         }
 
         \App\Support\SafeCache::forever('meetings:changed', now()->timestamp);
+
+        // Пункт 1 плана (очередь + автопилот): если ссылка ВКС не задана и
+        // автосоздание через бота включено на сервере (VKSBOT_AUTO=true),
+        // встреча сохраняется БЕЗ ссылки, а живую комнату бот создаёт
+        // асинхронно в очереди (ретраи 30/60 с). Фронт при этом мгновенно
+        // получает ответ и показывает локальную ссылку-заглушку.
+        // При QUEUE_CONNECTION=sync джоб выполнится сразу — поведение как
+        // раньше, только без ожидания в HTTP-запросе фронтенда.
+        try {
+            if (empty($validated['link']) && filter_var(env('VKSBOT_AUTO', false), FILTER_VALIDATE_BOOLEAN)) {
+                CreateVksLinkJob::dispatch($meeting->id);
+            }
+        } catch (\Throwable $e) {
+            report($e); // очередь недоступна — встреча всё равно создана
+        }
 
         // additional() есть не во всех версиях Illuminate — используем совместимый способ
         $payload = $meeting->load(['organizer', 'tags'])->toArray();

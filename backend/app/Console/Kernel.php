@@ -60,5 +60,14 @@ class Kernel extends ConsoleKernel
                  ->everyFiveMinutes()
                  ->withoutOverlapping()
                  ->runInBackground();
+
+        // Автопилот ВКС-ссылок (пункты 1–2): каждую минуту проверяет «живость»
+        // комнат ближайших встреч и ставит проблемные в очередь на пересоздание
+        // (CreateVksLinkJob, воркер vks-queue). Работает только при
+        // VKSBOT_EXPECTED=true; окно проверки — VKSBOT_CHECK_MINUTES (по умолчанию 60 мин).
+        $schedule->command('vks:autopilot')
+                 ->everyMinute()
+                 ->withoutOverlapping()
+                 ->runInBackground();
     }
 }
