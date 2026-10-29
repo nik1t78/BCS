@@ -966,8 +966,16 @@ php artisan optimize / optimize:clear  # кеш config/route/view
 - **Метрики Nginx**: `/nginx-stats` (stub_status), доступ только из внутренних сетей (127.0.0.1, 10/8, 172.16/12, 192.168/16).
 - **Страница «Статус системы»** + предпросмотр экрана ТВ (iframe с токеном) в админке; журнал посещаемости ТВ за 7 дней.
 
-### Отложено (по согласованию)
-- Horizon — решение «ставить или нет» за владельцем (Redis уже есть).
-- WebSocket (Reverb) — выгода только при ≥10 ТВ-экранов; уточнить количество.
-- Sentry — удалён полностью; для возврата нужен аккаунт + DSN.
-- Read-replica MySQL — избыточно при текущем размере базы.
+### Статус отложенных пунктов (решение на 2026-10-29)
+
+| Пункт | Статус | Причина / что нужно от владельца |
+|---|---|---|
+| **Horizon** | ❌ не ставится | Требуется Redis + `composer require laravel/horizon` (Redis уже в compose). Текущий `queue:work --max-time=3600` + heartbeat-мониторинг закрывают наблюдаемость минимально. Ждём решение «ставить или нет». |
+| **WebSocket (Reverb)** | ❌ отложен | С Redis-кэшем доступности (TTL 45 с) поллинг стал дешёвым; выгода заметна только при ≥10 ТВ-экранов. Ждём информацию о количестве экранов. |
+| **Sentry** | ✅ удалён полностью | Из проекта удалены зависимости (`sentry/sentry-laravel`, `@sentry/react`), конфиги, провайдер и все вызовы. Ошибки пишутся в `storage/logs/laravel.log` через `report()`. Для возврата нужны аккаунт, `SENTRY_LARAVEL_DSN` и ключ фронта. |
+| **Read-replica MySQL** | ❌ не делаем | Избыточно при текущем размере базы; рассматривать только при росте нагрузки на чтение. |
+
+### Как включить отложенное (если решение изменится)
+- **Horizon**: `composer require laravel/horizon && php artisan horizon:install`, в `.env` `QUEUE_CONNECTION=redis`, контейнер `queue` заменить на `php artisan horizon`; панель — `/horizon` (доступ по role=admin).
+- **Reverb**: `composer require laravel/reverb && php artisan reverb:install`, контейнер `reverb` (порт 8080/443 wss), клиентская подписка на канал `room.{id}.updated` вместо `setInterval(poll, …)` в `tv-screen.blade.php` и виджетах.
+- **Sentry**: вернуть пакеты, задать `SENTRY_LARAVEL_DSN` и `VITE_SENTRY_DSN`, пересобрать backend+frontend.

@@ -375,6 +375,17 @@ GitHub Actions (`.github/workflows/ci.yml`):
 frontend — `npm ci → eslint → prettier --check → tsc --noEmit → vite build (+ artifact dist)`;
 backend — `composer install → php artisan test`.
 
+## Статус опциональных компонентов (решение на 2026-10-29)
+
+| Компонент | Статус | Комментарий |
+|---|---|---|
+| Horizon | ❌ не ставится | Redis уже в compose; текущий `queue:work --max-time=3600` + heartbeat закрывают наблюдаемость. Ставится по решению владельца (`composer require laravel/horizon`). |
+| WebSocket (Reverb) | ❌ отложен | Поллинг дешёвый благодаря Redis-кэшу доступности (TTL 45 с); выгода только при ≥10 ТВ-экранов. |
+| Sentry | ✅ удалён полностью | Зависимости, конфиги и вызовы удалены из проекта. Ошибки пишутся в `storage/logs/laravel.log`. Для возврата нужны аккаунт, `SENTRY_LARAVEL_DSN` и `VITE_SENTRY_DSN`. |
+| Read-replica MySQL | ❌ не делаем | Избыточно при текущем размере базы. |
+
+Подробности и инструкции по включению — в [DOCS.md](DOCS.md), раздел «Статус отложенных пунктов».
+
 ## Документация
 
 Вся документация — в одном файле **[DOCS.md](DOCS.md)**: запуск (Windows/Linux/Docker/dev),
