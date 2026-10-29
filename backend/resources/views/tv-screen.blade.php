@@ -172,6 +172,17 @@
     }
     poll();
     setInterval(poll, POLL_MS);
+
+    // Автоперезагрузка экрана (защита от «текущих» ТВ-браузеров): раз в 6 часов
+    // в интервале 03:00–04:59 по серверному времени — тихие часы, когда
+    // встреч почти нет. Флаг sessionStorage не нужен: перезагрузка полная.
+    var RELOAD_HOURS = 6;
+    var lastReloadCheck = Date.now();
+    setInterval(function () {
+        if (Date.now() - lastReloadCheck < RELOAD_HOURS * 3600000) return;
+        var h = now().getHours();
+        if (h >= 3 && h < 5) { lastReloadCheck = Date.now(); location.reload(); }
+    }, 60000);
 })();
 </script>
 </body>
