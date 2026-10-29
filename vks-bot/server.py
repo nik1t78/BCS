@@ -148,9 +148,10 @@ def _do_create(title: str, name: str, date: str | None = None) -> dict:
         msk = timezone(timedelta(hours=3))
         d = datetime.now(msk).strftime("%d.%m.%Y")
         log.info("Дата встречи не передана — беру сегодняшнюю по МСК: %s", d)
-    # Защита от двойной даты, если фронт/пользователь уже вписали её в title
-    if not re.search(r"\d{1,2}[./-]\d{1,2}[./-]\d{2,4}", title or ""):
-        title = f"{title} · {d}"
+    # Дата НЕ дописывается в название комнаты: платформа salutejazz.ru никак
+    # не использует текст названия для расписания встречи (комната живёт
+    # «сегодня»), а пользователь просил убрать дату из отображаемого
+    # заголовка. Дата возвращается в поле «date» ответа — её видно во фронтенде.
     log.info("Запрос на создание ВКС: title=%r name=%r date=%r", title, name, d)
     result = bot.create_call(title, name, date=d)
     if not result.get("ok"):

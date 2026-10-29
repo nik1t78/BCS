@@ -64,7 +64,13 @@ async function botAttempt(title: string, name: string, timeoutMs: number, date?:
   const botToken = (import.meta.env.VITE_VKS_BOT_TOKEN as string) || "";
   let resp: Response;
   try {
-    resp = await fetch(`${BOT_URL.replace(/\/$/, "")}/create`, {
+    // ВАЖНО: сервер бота (vks-bot/server.py) принимает POST /create — без
+    // префикса, а nginx проксирует "/vks-bot/" -> корень бота, поэтому путь
+    // должен быть ровно BOT_URL + "/create". Раньше при относительном
+    // BOT_URL="/vks-bot" запрос шёл в "/create" (мимо nginx-префикса => 404),
+    // и фронт всегда тихо фолбэчил на локальную ссылку («бот не работает»).
+    const createUrl = `${BOT_URL.replace(/\/$/, "")}/create`;
+    resp = await fetch(createUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
