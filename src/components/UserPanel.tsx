@@ -1141,7 +1141,7 @@ export default function UserPanel({
     if (!payload.link) {
       setSavingNote("Создаём ссылку ВКС на salutejazz.ru…");
       try {
-        const botRes = await createVksViaBot(payload.title || "Встреча", user.name);
+        const botRes = await createVksViaBot(payload.title || "Встреча", user.name, 75_000, payload.date);
         payload.link = botRes.link;
         // skipped=true — автосоздание через бота ВЫКЛЮЧЕНО (VITE_VKS_AUTOBOT=0,
         // штатный режим экономии RAM): предупреждать пользователя не нужно.
@@ -1183,7 +1183,7 @@ export default function UserPanel({
     } else if (!isVksLink(payload.link) && !/^https?:\/\//i.test(String(payload.link).trim())) {
       // не ссылка вовсе (обрывки текста из буфера обмена) — создаём новую
       try {
-        const botRes = await createVksViaBot(payload.title || "Встреча", user.name);
+        const botRes = await createVksViaBot(payload.title || "Встреча", user.name, 75_000, payload.date);
         payload.link = botRes.link;
         if (!botRes.real && !botRes.skipped) {
           alert("Бот недоступен — ссылка сгенерирована локально (комнаты на платформе ещё нет).");

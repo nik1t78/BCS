@@ -46,7 +46,7 @@ class CreateVksLinkJob implements ShouldQueue
         }
 
         $startedAt = microtime(true);
-        $result = $client->create((string) $meeting->title, (string) ($meeting->organizer?->name ?: 'Организатор'));
+        $result = $client->create((string) $meeting->title, (string) ($meeting->organizer?->name ?: 'Организатор'), $meeting->date);
         $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
 
         // Бот не развёрнут (VKSBOT_EXPECTED=false): create() вернул локальную

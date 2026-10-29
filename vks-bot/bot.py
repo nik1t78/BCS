@@ -159,7 +159,8 @@ class VkxBot:
             el, text,
         )
 
-    def create_call(self, title: str, name: str, timeout: int = 60) -> dict:
+    def create_call(self, title: str, name: str, timeout: int = 60,
+                    date: str | None = None) -> dict:
         """Создать встречу на SaluteJazz и вернуть ссылку.
 
         Возвращает: {"ok": True, "link": ..., "room": ..., "password": ...}
@@ -339,6 +340,7 @@ class VkxBot:
                     "room": room,
                     "password": password,
                     "title": title,
+                    "date": date,
                     "name": name,
                     "created_at": datetime.now(tz_msk).strftime("%Y-%m-%d %H:%M:%S%z"),
                 }

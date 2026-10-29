@@ -269,6 +269,8 @@ services:
       BOT_HEADLESS: "1"
       BOT_PORT: "8090"
       BOT_TOKENS: "${BOT_TOKENS:-}"
+      VKSBOT_ENGINE: "${VKSBOT_ENGINE:-playwright}"
+      TZ: "${TZ:-Europe/Moscow}"
     # Healthcheck: мониторинг доступности бота (используется и bot:monitor,
     # и `docker compose ps` — статус unhealthy виден сразу).
     healthcheck:

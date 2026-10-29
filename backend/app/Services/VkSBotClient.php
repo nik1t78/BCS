@@ -26,8 +26,36 @@ class VkSBotClient
         return ['ok' => false, 'real' => false, 'link' => "https://salutejazz.ru/calls/{$code}?psw={$pwd}"];
     }
 
+    /**
+     * Привести дату встречи к виду «ДД.ММ.ГГГГ» для бота и названия комнаты.
+     * Принимает ISO-строку Laravel ("2026-10-29 00:00:00" / "2026-10-29"),
+     * Carbon/DateTime-объект или уже форматированную "29.10.2026".
+     * Возвращает null, если распознать не удалось (бот тогда сам подставит
+     * «сегодня по Москве»).
+     */
+    private function normalizeDate(mixed $date): ?string
+    {
+        if ($date === null || $date === '') {
+            return null;
+        }
+        if ($date instanceof \DateTimeInterface) {
+            return $date->format('d.m.Y');
+        }
+        $s = trim((string) $date);
+        // ISO из БД/фронта: 2026-10-29 или 2026-10-29 00:00:00 или с T
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})/', $s, $m)) {
+            return "{$m[3]}.{$m[2]}.{$m[1]}";
+        }
+        // Уже ДД.ММ.ГГГГ (или ДД/ММ/ГГГГ, ДД-ММ-ГГГГ)
+        if (preg_match('/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})$/', $s, $m)) {
+            $y = strlen($m[3]) === 4 ? $m[3] : '20' . $m[3];
+            return sprintf('%02d.%02d.%s', (int) $m[1], (int) $m[2], $y);
+        }
+        return null;
+    }
+
     /** @return array{ok:bool,link?:string,error?:string,detail?:string} */
-    public function create(string $title, string $name): array
+    public function create(string $title, string $name, mixed $date = null): array
     {
         // Бот не развёрнут (VKSBOT_EXPECTED=false / профиль bot выключен) —
         // сразу отдаём локальную ссылку, не дожидаясь таймаута HTTP.
@@ -39,10 +67,20 @@ class VkSBotClient
         // Секрет — первое значение из списка BOT_TOKENS (см. vks-bot/server.py).
         $token = trim(explode(',', (string) env('BOT_TOKENS', ''))[0] ?? '');
 
+        // Дату встречи передаём боту ЯВНО и по Москве: если спросить «сегодня»
+        // у сервера в UTC (или обрезать ISO-строку до первых 10 символов),
+        // вечерний запрос после 21:00 MSK давал «вчера» — встреча на платформе
+        // записывалась на 28 число вместо 29.
+        $payload = ['title' => mb_substr($title, 0, 120), 'name' => mb_substr($name, 0, 80)];
+        $normalized = $this->normalizeDate($date);
+        if ($normalized !== null) {
+            $payload['date'] = $normalized;
+        }
+
         try {
             $response = Http::timeout(120)
                 ->withHeaders($token !== '' ? ['X-Bot-Token' => $token] : [])
-                ->post($url, ['title' => mb_substr($title, 0, 120), 'name' => mb_substr($name, 0, 80)]);
+                ->post($url, $payload);
         } catch (\Throwable $e) {
             return ['ok' => false, 'error' => 'bot unreachable: ' . $e->getMessage()];
         }

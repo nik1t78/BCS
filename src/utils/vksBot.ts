@@ -56,7 +56,7 @@ export interface BotCreateResult {
  * тихо возвращаем локально сгенерированную ссылку в том же формате,
  * чтобы создание конференции никогда не блокировалось.
  */
-async function botAttempt(title: string, name: string, timeoutMs: number): Promise<BotCreateResult> {
+async function botAttempt(title: string, name: string, timeoutMs: number, date?: string): Promise<BotCreateResult> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   // Секрет бота (заголовок X-Bot-Token) — то же значение, что BOT_TOKENS в .env.
@@ -70,7 +70,10 @@ async function botAttempt(title: string, name: string, timeoutMs: number): Promi
         "Content-Type": "application/json",
         ...(botToken ? { "X-Bot-Token": botToken } : {}),
       },
-      body: JSON.stringify({ title, name }),
+      // Дату встречи передаём ЯВНО (ДД.ММ.ГГГГ или ISO): иначе сервер бота
+      // вычисляет «сегодня» по своим часам и вечерняя встреча могла
+      // записываться на предыдущие сутки.
+      body: JSON.stringify(date ? { title, name, date } : { title, name }),
       signal: ctrl.signal,
     });
   } finally {
@@ -102,7 +105,12 @@ async function botAttempt(title: string, name: string, timeoutMs: number): Promi
   throw new Error(data?.error || "бот не вернул ссылку");
 }
 
-export async function createVksViaBot(title: string, name: string, timeoutMs = 75_000): Promise<BotCreateResult> {
+/**
+ * @param date дата встречи в формате ДД.ММ.ГГГГ (или ISO YYYY-MM-DD) —
+ *   прокидывается боту, чтобы комната на salutejazz.ru создавалась на верные
+ *   сутки. Если не передана, бот подставит «сегодня» по Москве.
+ */
+export async function createVksViaBot(title: string, name: string, timeoutMs = 75_000, date?: string): Promise<BotCreateResult> {
   if (!AUTOBOT_ENABLED) {
     // Бот выключен (экономия RAM контейнера vks-bot) — мгновенная
     // локальная генерация ссылки в эталонном формате платформы.
@@ -115,7 +123,7 @@ export async function createVksViaBot(title: string, name: string, timeoutMs = 7
   let lastError = "";
   for (let i = 0; i < BOT_ATTEMPTS; i++) {
     try {
-      return await botAttempt(title, name, timeoutMs);
+      return await botAttempt(title, name, timeoutMs, date);
     } catch (e) {
       lastError = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
