@@ -23,6 +23,10 @@
         ul.list li { background: #1e293b; border-radius: 12px; padding: .9rem 1.2rem; display: flex; justify-content: space-between; gap: 1rem }
         .time { color: #38bdf8; font-variant-numeric: tabular-nums; white-space: nowrap }
         .empty { color: #64748b; text-align: center; margin-top: 2rem }
+        ul.list li { flex-direction: column; align-items: stretch; gap: .5rem }
+        ul.list .row { display: flex; justify-content: space-between; gap: 1rem }
+        .joinbtn { display: block; text-align: center; background: #0ea5e9; color: #fff; text-decoration: none; border-radius: 10px; padding: .55rem 1rem; font-weight: 700; font-size: 1.05rem }
+        .joinbtn.live { background: #16a34a }
         /* Полноэкранное приглашение (за 2 минуты до старта) */
         .invite { position: fixed; inset: 0; background: linear-gradient(160deg, #0c1730, #12335c); display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 2rem; z-index: 10 }
         .invite.on { display: flex }
@@ -129,9 +133,20 @@
         ul.innerHTML = '';
         rows.forEach(function (m) {
             var li = document.createElement('li');
+            var row = document.createElement('div'); row.className = 'row';
             var n = document.createElement('span'); n.textContent = m.title;
             var s = document.createElement('span'); s.className = 'time'; s.textContent = hhmm(m.start) + '–' + hhmm(m.end);
-            li.appendChild(n); li.appendChild(s); ul.appendChild(li);
+            row.appendChild(n); row.appendChild(s); li.appendChild(row);
+            // Кнопка «Войти в ВКС» под каждой встречей — доступна заранее,
+            // не только в момент старта. join_url — «вечная» ссылка /api/m/{id}.
+            if (m.join_url) {
+                var b = document.createElement('a');
+                b.className = 'joinbtn' + (m.live ? ' live' : '');
+                b.href = m.join_url;
+                b.textContent = m.live ? 'Идёт встреча — войти сейчас' : 'Войти в ВКС';
+                li.appendChild(b);
+            }
+            ul.appendChild(li);
         });
         document.getElementById('empty').style.display = rows.length ? 'none' : 'block';
     }

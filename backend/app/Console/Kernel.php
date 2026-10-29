@@ -117,18 +117,7 @@ class Kernel extends ConsoleKernel
         // файл, filemtime() = 0 → «Ещё не запускался». Теперь запись атомарна:
         // пишем во временный файл + rename (POSIX atomic), с проверкой результата.
         $schedule->call(function () {
-            $dir = storage_path('logs');
-            if (!is_dir($dir)) {
-                @mkdir($dir, 0775, true);
-            }
-            $target = storage_path('logs/cron_heartbeat.log');
-            $tmp = @tempnam($dir, 'hb');
-            if ($tmp === false || @file_put_contents($tmp, (string) time()) === false) {
-                if ($tmp !== false && is_file($tmp)) @unlink($tmp);
-                return;
-            }
-            @chmod($tmp, 0775);
-            @rename($tmp, $target);
+            \App\Support\CronHeartbeat::write();
         })->everyMinute()->name('scheduler-heartbeat')->withoutOverlapping(2);
 
         // Подчистка журнала посещаемости ТВ: строки, невидевшиеся 30 дней,
