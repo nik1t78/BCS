@@ -150,14 +150,14 @@ class RoomController extends Controller
      */
     private function availabilityResponse(\Carbon\CarbonImmutable $day): \Illuminate\Http\JsonResponse
     {
-        // rawInt: детерминированное чтение метки как int независимо от драйвера
-        // redis (phpredis/predis) — строковая метка раньше попадала в кэш-ключ
-        // и при некоторых сочетаниях приводила к 500 на эндпоинте.
-        $version = (string) SafeCache::rawInt('meetings:changed', 0);
-        $key = 'rooms:avail:' . $version . ':' . $day->toDateString();
+        // Ключ содержит только дату (без версии): bump() больше не пишет в
+        // Redis микросекундную метку — иначе каждый запрос после любого
+        // изменения встреч становился cache-miss и гонял тяжёлую выборку
+        // заново. Актуальность обеспечивается коротким TTL + явным
+        // Cache::forget() во MeetingCache::bump().
+        $key = 'rooms:avail:v2:' . $day->toDateString();
 
-        // Короткий TTL: виджет поллит каждые 30–60 с, а инвалидация идёт по
-        // метке версий, поэтому устаревание по времени — лишь страховка.
+        // Короткий TTL: виджет поллит каждые 30–60 с.
         try {
             $payload = Cache::remember($key, 45, function () use ($day) {
                 return [
@@ -172,10 +172,10 @@ class RoomController extends Controller
             $payload = null;
         }
 
-        // Страховка от «битого» кэша (например, значение записано другим
-        // драйвером/версией приложения): если структура не та — пересобираем
-        // payload напрямую, минуя кэш. Иначе любой exception при сериализации
-        // ответа давал бы 500.
+        // Страховка от «битого» кэша (значение записано другим драйвером/
+        // версией приложения): если структура не та — пересобираем payload
+        // напрямую, минуя кэш. Иначе любой exception при сериализации ответа
+        // давал бы 500.
         if (!is_array($payload) || !isset($payload['data']) || !is_array($payload['data'])) {
             try {
                 Cache::forget($key);
@@ -195,6 +195,7 @@ class RoomController extends Controller
                 // Фронт получит пустой список — виджет покажет «нет данных»,
                 // но приложение останется рабочим. Причина — в laravel.log
                 // ([API-ERROR]) и в алерте админу (bootstrap/app.php).
+                $this->logAvailabilityFailure($e, $request = request());
                 report($e);
 
                 $fallbackRooms = [];
@@ -223,6 +224,59 @@ class RoomController extends Controller
         }
 
         return response()->json($payload);
+    }
+
+    /**
+     * Диагностика 500 на эндпоинте доступности: пишет в laravel.log компактную
+     * сводку состояния (драйвер кэша, версия БД, число залов/встреч, класс и
+     * место исходной ошибки). Раньше причина была доступна только через
+     * браузер (APP_DEBUG=false скрывал detail), и фиксы вслепую не сходились.
+     */
+    private function logAvailabilityFailure(\Throwable $e, $request): void
+    {
+        try {
+            $detail = [
+                'msg'   => get_class($e) . ': ' . $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine(),
+                'cache' => config('cache.default'),
+                'db'    => config('database.default'),
+            ];
+            try {
+                $detail['rooms'] = \Illuminate\Support\Facades\DB::table('rooms')->count();
+            } catch (\Throwable $t) {
+                $detail['rooms'] = 'ERR:' . $t->getMessage();
+            }
+            try {
+                $detail['meetings'] = \Illuminate\Support\Facades\DB::table('meetings')->count();
+            } catch (\Throwable $t) {
+                $detail['meetings'] = 'ERR:' . $t->getMessage();
+            }
+            // Колонки, без которых buildAllAvailability падает: schedule у
+            // rooms и rrule/repeat_until/recurring/status у meetings. Если
+            // миграция применилась частично — здесь это будет видно в логе.
+            try {
+                $roomCols = \Illuminate\Support\Facades\Schema::getColumnListing('rooms');
+                $detail['room_schedule'] = in_array('schedule', $roomCols, true) ? 'ok' : 'MISSING';
+            } catch (\Throwable $t) {
+                $detail['room_schedule'] = 'ERR:' . $t->getMessage();
+            }
+            try {
+                $mCols = \Illuminate\Support\Facades\Schema::getColumnListing('meetings');
+                $detail['meeting_cols'] = implode(',', array_values(array_intersect(
+                    ['recurring', 'repeat_until', 'rrule', 'status', 'room', 'date', 'start_time', 'end_time'],
+                    $mCols
+                )));
+            } catch (\Throwable $t) {
+                $detail['meeting_cols'] = 'ERR:' . $t->getMessage();
+            }
+            try {
+                $detail['url'] = $request?->fullUrl();
+            } catch (\Throwable) {
+            }
+
+            \Illuminate\Support\Facades\Log::error('[AVAIL-DIAG] ' . json_encode($detail, JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable) {
+            // диагностика не должна ломать ответ
+        }
     }
 
     /**
