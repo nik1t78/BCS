@@ -220,7 +220,10 @@ services:
     build: *backend-build
     container_name: vks-queue
     restart: unless-stopped
-    command: sh -c 'php artisan migrate --force || true; exec php artisan queue:work --sleep=3 --tries=3 --max-time=3600'
+    # queue:heartbeat пишет timestamp в общий volume storage каждые ~20 c —
+    # по нему «Статус системы»/system:monitor честно видят, жив ли воркер
+    # (упал queue:work или весь контейнер — файл перестаёт обновляться).
+    command: sh -c 'php artisan migrate --force || true; php artisan queue:heartbeat >/dev/null 2>&1 & exec php artisan queue:work --sleep=3 --tries=3 --max-time=3600'
     volumes: *backend-volumes
     environment: *backend-env
     depends_on:

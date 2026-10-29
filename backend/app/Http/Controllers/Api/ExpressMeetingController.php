@@ -75,7 +75,7 @@ class ExpressMeetingController extends Controller
             report($e);
         }
 
-        \App\Support\SafeCache::forever('meetings:changed', now()->timestamp);
+        \App\Support\MeetingCache::bump(\App\Support\MeetingCache::roomIdsFromNames([$meeting->room ?? null]));
 
         return response()->json($meeting->load(['organizer']), 201);
     }

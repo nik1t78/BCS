@@ -93,16 +93,12 @@ class Kernel extends ConsoleKernel
                  ->withoutOverlapping()
                  ->runInBackground();
 
-        // Heartbeat воркера очереди (для system:monitor, пункт 9): пишет
-        // timestamp в кэш каждую минуту. Если queue:work упал/завис —
-        // heartbeat перестаёт обновляться и мониторинг шлёт алерт админу.
-        $schedule->call(function () {
-            cache()->put(
-                \App\Console\Commands\MonitorSystem::QUEUE_HEARTBEAT_KEY,
-                now()->getTimestamp(),
-                now()->addDay()
-            );
-        })->everyMinute()->name('queue-heartbeat');
+        // NOTE: heartbeat воркера очереди пишет отдельный процесс
+        // `php artisan queue:heartbeat` внутри контейнера queue
+        // (см. docker-compose.yml). Планировщик ниже отмечает СВОЙ цикл —
+        // файл cron_heartbeat.log, по которому «Статус системы» различает
+        // scheduler и queue-worker (раньше оба читали один heartbeat, и
+        // падение любого из них выглядело как отказ обоих).
 
         // Автомониторинг uptime (пункт 9): раз в 5 минут проверка MySQL/Redis/
         // nginx/queue-worker с дедуплицированными алертами админу.
@@ -111,5 +107,15 @@ class Kernel extends ConsoleKernel
                  ->everyFiveMinutes()
                  ->withoutOverlapping()
                  ->runInBackground();
+
+        // Heartbeat планировщика: в конце каждого цикла schedule:run трогаем
+        // файл на общем volume storage — backend читает его mtime в system-status.
+        $schedule->call(function () {
+            $dir = storage_path('logs');
+            if (!is_dir($dir)) {
+                @mkdir($dir, 0775, true);
+            }
+            @file_put_contents(storage_path('logs/cron_heartbeat.log'), (string) time());
+        })->everyMinute()->name('scheduler-heartbeat')->withoutOverlapping();
     }
 }

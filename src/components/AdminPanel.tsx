@@ -2163,7 +2163,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     </div>
                     <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-1">Queue-worker</p>
-                      {pill(!!svc.queue_worker?.ok, svc.queue_worker?.ok ? `OK · heartbeat ${svc.queue_worker.heartbeat_age_s ?? "?"} с` : "Не отвечает")}
+                      {pill(!!svc.queue_worker?.ok, svc.queue_worker?.ok ? `OK · heartbeat ${svc.queue_worker.heartbeat_age_s ?? "?"} с` : (svc.queue_worker?.heartbeat_age_s == null ? "Нет heartbeat" : `Молчит ${svc.queue_worker.heartbeat_age_s} с`))}
                     </div>
                     <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-1">Очередь</p>
@@ -2171,7 +2171,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     </div>
                     <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-1">Планировщик</p>
-                      {pill(!!svc.scheduler?.ok, svc.scheduler?.ok ? "Активен" : "Молчит >2 мин")}
+                      {pill(!!svc.scheduler?.ok, svc.scheduler?.ok ? `Активен · цикл ${svc.scheduler.cron_age_s ?? "?"} с назад` : (svc.scheduler?.cron_age_s == null ? "Ещё не запускался" : `Молчит ${Math.round(svc.scheduler.cron_age_s / 60)} мин`))}
                     </div>
                     <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-1">ВКС-бот (24ч)</p>

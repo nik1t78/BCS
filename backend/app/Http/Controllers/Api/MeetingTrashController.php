@@ -52,7 +52,7 @@ class MeetingTrashController extends Controller
 
         AuditLog::log($request, 'meeting_restored', $meeting, ['deleted_at' => now()->toIso8601String()], ['restored' => true]);
 
-        \App\Support\SafeCache::forever('meetings:changed', now()->timestamp);
+        \App\Support\MeetingCache::bump(\App\Support\MeetingCache::roomIdsFromNames([$meeting->room ?? null]));
 
         return response()->json($meeting->load(['organizer', 'tags']));
     }

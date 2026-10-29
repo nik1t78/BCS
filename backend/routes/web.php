@@ -71,7 +71,7 @@ function tvScreenResponse(array $data, int $status = 200): \Symfony\Component\Ht
     // or nonce value is present» — так браузер и предупреждал). Инлайн-скрипт
     // экрана разрешён единственной политикой через 'unsafe-inline'.
     $csp = "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline';"
-        . " img-src 'self' data: blob:; connect-src 'self'; font-src 'self' data:; object-src 'none';"
+        . " img-src 'self' data: blob:; connect-src 'self' ws: wss:; font-src 'self' data:; object-src 'none';"
         . " frame-ancestors 'self'; base-uri 'self'; form-action 'self'; worker-src 'self' blob:";
 
     return response($html, $status)

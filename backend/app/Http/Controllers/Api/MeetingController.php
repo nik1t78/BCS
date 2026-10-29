@@ -380,7 +380,7 @@ class MeetingController extends Controller
             report($e);
         }
 
-        \App\Support\SafeCache::forever('meetings:changed', now()->timestamp);
+        MeetingCache::bump([$this->roomIdOf($meeting->room)]);
 
         // Пункт 1 плана (очередь + автопилот): если ссылка ВКС не задана и
         // автосоздание через бота включено на сервере (VKSBOT_AUTO=true),
@@ -396,6 +396,9 @@ class MeetingController extends Controller
         } catch (\Throwable $e) {
             report($e); // очередь недоступна — встреча всё равно создана
         }
+
+        // WebSocket-уведомление экранам ТВ зала о появлении новой встречи.
+        MeetingCache::bump([$this->roomIdOf($meeting->room)]);
 
         // additional() есть не во всех версиях Illuminate — используем совместимый способ
         $payload = $meeting->load(['organizer', 'tags'])->toArray();
@@ -424,6 +427,7 @@ class MeetingController extends Controller
     public function update(Request $request, Meeting $meeting)
     {
         $user = $request->user();
+        $oldRoomName = $meeting->room;
 
         // Право редактировать: организатор, админ, модератор или участник встречи
         // (по запросу участников они могут править название/время и смотреть описание).
@@ -506,7 +510,7 @@ class MeetingController extends Controller
             }
         }
 
-        MeetingCache::bump();
+        MeetingCache::bump(array_filter([\App\Support\MeetingCache::roomIdsFromNames([$oldRoomName ?? null, $meeting->room ?? null])]));
 
         return response()->json($meeting->load(['organizer', 'tags']));
     }
@@ -551,7 +555,7 @@ class MeetingController extends Controller
 
         $meeting->delete();
 
-        \App\Support\SafeCache::forever('meetings:changed', now()->timestamp);
+        MeetingCache::bump([$this->roomIdOf($meeting->room)]);
 
         return response()->json(['message' => 'Конференция перемещена в корзину']);
     }
@@ -601,7 +605,7 @@ class MeetingController extends Controller
             report($e);
         }
 
-        \App\Support\SafeCache::forever('meetings:changed', now()->timestamp);
+        MeetingCache::bump([$this->roomIdOf($meeting->room)]);
 
         return response()->json($meeting->load(['organizer', 'tags']));
     }
@@ -648,6 +652,7 @@ class MeetingController extends Controller
             }
         }
 
+        $oldRoomName = $meeting->room;
         $oldDate = $meeting->date->toDateString();
         $oldStart = substr((string) $meeting->start_time, 0, 5);
 
@@ -679,7 +684,7 @@ class MeetingController extends Controller
             ['date' => $meeting->date->toDateString(), 'start_time' => $validated['start_time']]);
 
         // Инвалидация кэша доступности залов (перенос меняет занятость обеих дат).
-        MeetingCache::bump();
+        MeetingCache::bump(array_filter([\App\Support\MeetingCache::roomIdsFromNames([$oldRoomName ?? null, $meeting->room ?? null])]));
 
         return response()->json($meeting->load(['organizer', 'tags']));
     }
@@ -732,6 +737,18 @@ class MeetingController extends Controller
         }
         return null;
     }
+
+    /**
+     * ID зала из справочника по названию встречи (для WebSocket-уведомлений экранам ТВ).
+     */
+    private function roomIdOf(?string $roomName): ?int
+    {
+        if ($roomName === null || trim($roomName) === '') {
+            return null;
+        }
+        return \App\Models\Room::where('name', trim($roomName))->value('id');
+    }
+
 
     private function validateRoomAccess(Request $request, ?string $roomName): void
     {

@@ -58,9 +58,9 @@ class SystemStatusController extends Controller
             $out['services']['cache'] = ['ok' => false, 'driver' => $cacheDriver, 'error' => mb_substr($e->getMessage(), 0, 160)];
         }
 
-        // Очереди: heartbeat воркера + глубина
-        $hb = cache()->get(MonitorSystem::QUEUE_HEARTBEAT_KEY);
-        $hbAge = is_numeric($hb) ? now()->getTimestamp() - (int) $hb : null;
+        // Очереди: heartbeat воркера (файл от queue:heartbeat, fallback — кэш) + глубина
+        $hb = MonitorSystem::queueHeartbeatTs();
+        $hbAge = $hb !== null ? now()->getTimestamp() - $hb : null;
         $out['services']['queue_worker'] = [
             'ok' => $hbAge !== null && $hbAge <= max(60, (int) env('QUEUE_HEARTBEAT_MAX_AGE', 180)),
             'heartbeat_age_s' => $hbAge,
@@ -75,8 +75,17 @@ class SystemStatusController extends Controller
             $out['services']['queue'] = ['ok' => false, 'error' => mb_substr($e->getMessage(), 0, 160)];
         }
 
-        // Планировщик (контейнер scheduler): признак — свежий heartbeat < 2 мин
-        $out['services']['scheduler'] = ['ok' => $hbAge !== null && $hbAge <= 120];
+        // Планировщик (контейнер scheduler) и воркер очереди проверяются
+        // РАЗНО: scheduler пишет в файл storage/cron_heartbeat.log после
+        // каждого цикла schedule:run; queue — через queue:heartbeat.
+        $cronFile = storage_path('logs/cron_heartbeat.log');
+        $cronAge = is_file($cronFile) ? max(0, now()->getTimestamp() - (int) @filemtime($cronFile)) : null;
+        $queueMax = max(60, (int) env('QUEUE_HEARTBEAT_MAX_AGE', 180));
+        $out['services']['scheduler'] = [
+            'ok' => $cronAge !== null && $cronAge <= 150,
+            'cron_age_s' => $cronAge,
+        ];
+        $out['services']['queue_worker']['ok'] = $hbAge !== null && $hbAge <= $queueMax;
 
         // ВКС-бот: сутки + последние события
         $since = now()->subDay();

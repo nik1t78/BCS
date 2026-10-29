@@ -69,6 +69,10 @@
      <script> разрешается CSP-хэшем: хэш текста скрипта вычисляется в
      routes/web.php после рендера blade и добавляется в заголовок
      Content-Security-Policy ответа ('sha256-...'). --}}
+@if(config('broadcasting.connections.reverb.app_key'))
+{{-- pusher-js кладётся локально (CSP script-src 'self'): cp backend/public/js/pusher.min.js --}}
+<script src="/js/pusher.min.js" onerror="window.__noPusher=1"></script>
+@endif
 <script>
 (function () {
     var ROOM = decodeURIComponent(location.pathname.split('/').filter(Boolean)[1] || '');
@@ -172,6 +176,29 @@
     }
     poll();
     setInterval(poll, POLL_MS);
+
+    @if(config('broadcasting.connections.reverb.app_key'))
+    // --- WebSocket (Laravel Reverb): мгновенное обновление экрана при изменениях расписания.
+    // Событие транслируется в канал vks.room.{id} (Broadcast::channel, auth = csrf-токен).
+    // При обрыве соединения поллинг каждые 60 с работает как резервный канал.
+    if (typeof Pusher === 'undefined') { /* библиотека не загрузилась — остаёмся на поллинге */ }
+    else try {
+        var wsHost = @json(env('REVERB_HOST', request()->getHost()));
+        var wsPort = parseInt(@json(env('REVERB_PORT', 8080)), 10);
+        var useTls = location.protocol === 'https:';
+        var chanName = 'vks-public.room.' + ROOM_API;
+        var pusher = new Pusher(@json(config('broadcasting.connections.reverb.app_key')), {
+            wsHost: wsHost, wsPort: wsPort, wssPort: wsPort, forceTLS: useTls,
+            enableStats: false, enabledTransports: useTls ? ['wss'] : ['ws'],
+            // Публичный канал vks-public.room.{id} — авторизация не нужна.
+            authorizer: { subscribe: function (cb) { cb({}); }, unsubscribe: function () {}, error: function () {} }
+        });
+        var channel = pusher.subscribe(chanName);
+        channel.bind('.MeetingUpdated', function () { poll(); });
+        pusher.connection.bind('connected', function () { clearInterval(window.__tvPoll); window.__tvPoll = setInterval(poll, 60000); });
+        pusher.connection.bind('disconnected', function () { clearInterval(window.__tvPoll); window.__tvPoll = setInterval(poll, POLL_MS); });
+    } catch (e) { /* нет WS — остаёмся на обычном поллинге */ }
+    @endif
 
     // Автоперезагрузка экрана (защита от «текущих» ТВ-браузеров): раз в 6 часов
     // в интервале 03:00–04:59 по серверному времени — тихие часы, когда

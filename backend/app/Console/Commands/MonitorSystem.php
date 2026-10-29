@@ -29,8 +29,36 @@ class MonitorSystem extends Command
 
     protected $description = 'Проверить доступность MySQL/Redis/nginx/queue-worker и оповестить админа при сбое';
 
-    /** Ключ кэша-флага воркера: обновляется каждые N секунд процессом queue:work. */
+    /** Ключ кэша для heartbeat воркера (совместимость старых версий). */
     public const QUEUE_HEARTBEAT_KEY = 'queue_worker_heartbeat';
+
+    /**
+     * Файл heartbeat: пишет команда queue:heartbeat, запущенная внутри
+     * контейнера queue рядом с queue:work (см. docker-compose.yml).
+     * Абсолютный путь — общий volume backend_storage примонтирован в
+     * /var/www/html/storage у backend/queue/scheduler, поэтому все сервисы
+     * видят одну и ту же запись. Это честный признак: процесс живёт ровно
+     * столько, сколько жив воркер (в отличие от записи из планировщика,
+     * которая «оживляла» даже мёртвый воркер).
+     */
+    public static function queueHeartbeatFile(): string
+    {
+        return storage_path('app/heartbeat/queue_worker_heartbeat');
+    }
+
+    /** Прочитать timestamp heartbeat (файл приоритетнее кэша). */
+    public static function queueHeartbeatTs()
+    {
+        $file = self::queueHeartbeatFile();
+        if (is_file($file)) {
+            $v = @file_get_contents($file);
+            if (is_numeric(trim((string) $v))) {
+                return (int) trim($v);
+            }
+        }
+        $cached = cache()->get(self::QUEUE_HEARTBEAT_KEY);
+        return is_numeric($cached) ? (int) $cached : null;
+    }
 
     private const STATE_PREFIX = 'sysmon_down_';
 
@@ -100,19 +128,19 @@ class MonitorSystem extends Command
     private function checkQueueWorker(): array
     {
         $maxAge = max(60, (int) env('QUEUE_HEARTBEAT_MAX_AGE', 180));
-        $last = cache()->get(self::QUEUE_HEARTBEAT_KEY);
-        if (!is_numeric($last)) {
-            return [false, "нет heartbeat (воркер не запускался или key '{$this->keyHint()}' пуст)"];
+        $last = self::queueHeartbeatTs();
+        if ($last === null) {
+            return [false, "нет heartbeat (контейнер queue не пишет 'php artisan queue:heartbeat')"];
         }
-        if (now()->getTimestamp() - (int) $last > $maxAge) {
-            return [false, 'heartbeat устарел на ' . (now()->getTimestamp() - (int) $last) . ' c'];
+        if (now()->getTimestamp() - $last > $maxAge) {
+            return [false, 'heartbeat устарел на ' . (now()->getTimestamp() - $last) . ' c'];
         }
         return [true, null];
     }
 
     private function keyHint(): string
     {
-        return self::QUEUE_HEARTBEAT_KEY;
+        return self::queueHeartbeatFile();
     }
 
     /** Дедупликация алертов: пишем/чистим флаг состояния + шлём сообщение при переходах. */

@@ -979,3 +979,21 @@ php artisan optimize / optimize:clear  # кеш config/route/view
 - **Horizon**: `composer require laravel/horizon && php artisan horizon:install`, в `.env` `QUEUE_CONNECTION=redis`, контейнер `queue` заменить на `php artisan horizon`; панель — `/horizon` (доступ по role=admin).
 - **Reverb**: `composer require laravel/reverb && php artisan reverb:install`, контейнер `reverb` (порт 8080/443 wss), клиентская подписка на канал `room.{id}.updated` вместо `setInterval(poll, …)` в `tv-screen.blade.php` и виджетах.
 - **Sentry**: вернуть пакеты, задать `SENTRY_LARAVEL_DSN` и `VITE_SENTRY_DSN`, пересобрать backend+frontend.
+
+### Мониторинг «Планировщик / Queue-worker» (2026-10-29)
+
+Симптом: на вкладке «Статус системы» оба сервиса показывали «Не отвечает / Молчит >2 мин».
+Причина: heartbeat воркера очереди писался **из планировщика** в Redis-кэш — при
+перезапуске контейнеров кэш пустел и оба индикатора гасли, даже когда всё работало;
+кроме того, один и тот же признак использовался для scheduler и queue.
+
+Исправление:
+- новая команда `php artisan queue:heartbeat` — пишет timestamp каждые ~20 с в файл
+  `storage/app/heartbeat/queue_worker_heartbeat` (общий volume backend_storage);
+  запускается как фоновый процесс внутри контейнера `queue` рядом с `queue:work`;
+- планировщик отмечает СВОЙ цикл файлом `storage/logs/cron_heartbeat.log` (каждую минуту);
+- `/api/admin/system-status` читает признаки раздельно: `queue_worker` — файл heartbeat
+  (fallback: старый кеш-ключ), `scheduler` — mtime cron_heartbeat.log (порог 150 с);
+- UI показывает возраст сигнала («heartbeat N с», «цикл N с назад», «Ещё не запускался»).
+
+Флаги `.env`: `QUEUE_HEARTBEAT_INTERVAL=20`, `QUEUE_HEARTBEAT_MAX_AGE=180`.
