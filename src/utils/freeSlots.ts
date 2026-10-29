@@ -83,10 +83,12 @@ export function splitSlotIntoBlocks(slot: FreeSlot, step: number = SLOT_STEP_MIN
 /**
  * Из списка занятых интервалов (строки ISO или HH:MM) получить свободные окна
  * в пределах рабочего дня. Для todayFrom — обрезаем всё, что уже прошло.
+ * dayStartMin/dayEndMin — гибкий график зала на дату (см. utils/roomSchedule);
+ * по умолчанию — старая шкала 00:00–20:00 для совместимости со старым бэкендом.
  */
 export function computeFreeSlots(
   busy: { start: string; end: string }[],
-  opts: { isToday: boolean; nowMin: number }
+  opts: { isToday: boolean; nowMin: number; dayStartMin?: number; dayEndMin?: number }
 ): FreeSlot[] {
   // Нормализуем занятые интервалы к минутам дня
   const toMin = (s: string): number => {
@@ -101,8 +103,8 @@ export function computeFreeSlots(
 
   // Шкала строится от начала рабочего дня — прошедшие окна тоже видны,
   // но помечены isPast и забронировать их нельзя (как в Outlook).
-  const from = WORK_DAY_START_MIN;
-  const to = WORK_DAY_END_MIN;
+  const from = opts.dayStartMin ?? WORK_DAY_START_MIN;
+  const to = opts.dayEndMin ?? WORK_DAY_END_MIN;
   const pastLimit = opts.isToday ? opts.nowMin : WORK_DAY_START_MIN;
   if (to <= from) return [];
 

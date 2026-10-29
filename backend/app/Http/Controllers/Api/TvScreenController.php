@@ -34,35 +34,45 @@ class TvScreenController extends Controller
             ->whereDate('date', '<=', $now->copy()->addDays(7)->toDateString())
             ->get(['id', 'title', 'date', 'start_time', 'end_time', 'link', 'recurring', 'repeat_until', 'rrule', 'status'])
             ->map(function (Meeting $m) use ($now) {
-                $day = $m->date->toDateString();
-                $start = \Carbon\CarbonImmutable::parse($day . ' ' . substr((string) $m->start_time, 0, 5));
-                $endRaw = substr((string) $m->end_time, 0, 5);
-                $end = \Carbon\CarbonImmutable::parse($day . ' ' . $endRaw);
-                if ($end->lessThan($start)) {
-                    $end = $end->addDay(); // встреча через полночь
-                }
-                // Повторяющиеся серии: приводим к ближайшему будущему occurrence.
-                // Если серия уже «происходит» сегодня, но её время вышло —
-                // ищем следующий день серии в горизонте 30 дней.
-                if ($m->recurring !== 'none' && $end->lessThan($now)) {
-                    for ($d = 1; $d <= 30; $d++) {
-                        $day2 = $now->copy()->addDays($d)->toDateString();
-                        if (\App\Services\RecurrenceService::occursOn($m, \Carbon\CarbonImmutable::parse($day2))) {
-                            $start = \Carbon\CarbonImmutable::parse($day2 . ' ' . substr((string) $m->start_time, 0, 5));
-                            $end = \Carbon\CarbonImmutable::parse($day2 . ' ' . $endRaw);
-                            break;
+                // Одна «битая» запись (например, пустое start_time или невалидный rrule)
+                // не должна ронять весь экран ТВ с 500 — пропускаем её.
+                try {
+                    $day = $m->date->toDateString();
+                    $startHm = substr((string) $m->start_time, 0, 5);
+                    $endRaw = substr((string) $m->end_time, 0, 5);
+                    if ($startHm === '' || $endRaw === '') return null;
+                    $start = \Carbon\CarbonImmutable::parse($day . ' ' . $startHm);
+                    $end = \Carbon\CarbonImmutable::parse($day . ' ' . $endRaw);
+                    if ($end->lessThan($start)) {
+                        $end = $end->addDay(); // встреча через полночь
+                    }
+                    // Повторяющиеся серии: приводим к ближайшему будущему occurrence.
+                    // Если серия уже «происходит» сегодня, но её время вышло —
+                    // ищем следующий день серии в горизонте 30 дней.
+                    if ($m->recurring !== 'none' && $end->lessThan($now)) {
+                        for ($d = 1; $d <= 30; $d++) {
+                            $day2 = $now->copy()->addDays($d)->toDateString();
+                            if (\App\Services\RecurrenceService::occursOn($m, $day2)) {
+                                $start = \Carbon\CarbonImmutable::parse($day2 . ' ' . $startHm);
+                                $end = \Carbon\CarbonImmutable::parse($day2 . ' ' . $endRaw);
+                                break;
+                            }
                         }
                     }
+                    return [
+                        'id' => $m->id,
+                        'title' => $m->title,
+                        'start' => $start->toIso8601String(),
+                        'end' => $end->toIso8601String(),
+                        'join_url' => '/api/m/' . $m->id, // «вечная» ссылка — всегда ведёт на актуальную комнату
+                        'live' => $start->lessThanOrEqualTo($now) && $end->greaterThan($now),
+                    ];
+                } catch (\Throwable $e) {
+                    report($e);
+                    return null;
                 }
-                return [
-                    'id' => $m->id,
-                    'title' => $m->title,
-                    'start' => $start->toIso8601String(),
-                    'end' => $end->toIso8601String(),
-                    'join_url' => '/api/m/' . $m->id, // «вечная» ссылка — всегда ведёт на актуальную комнату
-                    'live' => $start->lessThanOrEqualTo($now) && $end->greaterThan($now),
-                ];
             })
+            ->filter()
             ->filter(fn ($row) => \Carbon\CarbonImmutable::parse($row['end'])->greaterThan($now))
             ->sortBy('start')
             ->take(10)

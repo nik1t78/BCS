@@ -204,6 +204,8 @@ export interface Room {
   isActive: boolean;
   /** Токен «экрана ожидания» для телевизора в зале (виден только админу) */
   tvToken?: string | null;
+  /** Гибкий график зала (рабочие часы по дням недели + праздники). null — дефолт. */
+  schedule?: import("./utils/roomSchedule").RoomSchedule | null;
 }
 
 /** Занятость комнаты на день */
@@ -213,6 +215,8 @@ export interface RoomAvailability {
   busy: { meetingId: string; title: string; start: string; end: string }[];
   free: { start: string; end: string }[];
   available: boolean;
+  /** Рабочие часы зала на дату (гибкий график); null — зал закрыт (выходной/праздник) */
+  hours?: { start: string; end: string } | null;
 }
 
 /** Статус интеграции с мессенджером MAX */

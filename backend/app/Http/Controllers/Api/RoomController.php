@@ -76,19 +76,25 @@ class RoomController extends Controller
             'end' => substr((string) $m->end_time, 0, 5),
         ])->values();
 
-        // Свободные слоты в рабочих часах 08:00–20:00
+        // Гибкий график зала (рабочие часы по дням недели + праздники).
+        // До фикса был жёстко зашит 08:00–20:00.
+        $hours = $room->hoursForDate($day->toDateString());
+        $dayStart = $hours['start'] ?? '08:00';
+        $dayEnd = $hours['end'] ?? '20:00';
+
+        // Свободные слоты в рабочих часах зала на эту дату
         $free = [];
-        $cursor = '08:00';
+        $cursor = $dayStart;
         foreach ($busy as $b) {
             if ($b['start'] > $cursor) {
-                $free[] = ['start' => $cursor, 'end' => $b['start']];
+                $free[] = ['start' => $cursor, 'end' => min($b['start'], $dayEnd)];
             }
             if ($b['end'] > $cursor) {
                 $cursor = $b['end'];
             }
         }
-        if ($cursor < '20:00') {
-            $free[] = ['start' => $cursor, 'end' => '20:00'];
+        if ($cursor < $dayEnd) {
+            $free[] = ['start' => $cursor, 'end' => $dayEnd];
         }
 
         // Проверка конкретного интервала (для формы создания встречи)
@@ -105,6 +111,7 @@ class RoomController extends Controller
             'busy' => $busy,
             'free' => $free,
             'available' => $available,
+            'hours' => $hours, // null = зал закрыт на эту дату (праздник/выходной)
         ]);
     }
 
@@ -142,7 +149,7 @@ class RoomController extends Controller
             ->filter(fn (Meeting $m) => $m->date->toDateString() === $day->toDateString()
                 || \App\Services\RecurrenceService::occursOn($m, $day));
 
-        $result = $rooms->map(function (Room $room) use ($bookings) {
+        $result = $rooms->map(function (Room $room) use ($bookings, $day) {
             $busy = $bookings
                 ->where('room', $room->name)
                 ->map(fn ($m) => [
@@ -152,18 +159,23 @@ class RoomController extends Controller
                     'end' => substr((string) $m->end_time, 0, 5),
                 ])->values();
 
+            // Гибкий график зала: рабочие часы по дням недели + праздники.
+            $hours = $room->hoursForDate($day->toDateString());
+            $dayStart = $hours['start'] ?? '08:00';
+            $dayEnd = $hours['end'] ?? '20:00';
+
             $free = [];
-            $cursor = '08:00';
+            $cursor = $dayStart;
             foreach ($busy as $b) {
                 if ($b['start'] > $cursor) {
-                    $free[] = ['start' => $cursor, 'end' => $b['start']];
+                    $free[] = ['start' => $cursor, 'end' => min($b['start'], $dayEnd)];
                 }
                 if ($b['end'] > $cursor) {
                     $cursor = $b['end'];
                 }
             }
-            if ($cursor < '20:00') {
-                $free[] = ['start' => $cursor, 'end' => '20:00'];
+            if ($cursor < $dayEnd) {
+                $free[] = ['start' => $cursor, 'end' => $dayEnd];
             }
 
             return [
@@ -172,6 +184,7 @@ class RoomController extends Controller
                 'capacity' => $room->capacity,
                 'busy' => $busy,
                 'free' => $free,
+                'hours' => $hours, // null — зал закрыт на эту дату
             ];
         })->values();
 
@@ -194,7 +207,16 @@ class RoomController extends Controller
             'equipment.*' => 'string|max:100',
             'description' => 'nullable|string|max:1000',
             'is_active' => 'nullable|boolean',
+            // Гибкий график: {"days":{"mon":{"start":"08:00","end":"20:00"},...},"closed":["2026-11-04"]}
+            'schedule' => 'nullable|array',
+            'schedule.days' => 'nullable|array',
+            'schedule.closed' => 'nullable|array',
+            'schedule.closed.*' => 'date_format:Y-m-d',
         ]);
+
+        if (array_key_exists('schedule', $validated)) {
+            $validated['schedule'] = is_null($validated['schedule']) ? null : Room::normalizeSchedule($validated['schedule']);
+        }
 
         $room = Room::create($validated);
 
@@ -212,7 +234,15 @@ class RoomController extends Controller
             'equipment.*' => 'string|max:100',
             'description' => 'nullable|string|max:1000',
             'is_active' => 'nullable|boolean',
+            'schedule' => 'nullable|array',
+            'schedule.days' => 'nullable|array',
+            'schedule.closed' => 'nullable|array',
+            'schedule.closed.*' => 'date_format:Y-m-d',
         ]);
+
+        if (array_key_exists('schedule', $validated)) {
+            $validated['schedule'] = is_null($validated['schedule']) ? null : Room::normalizeSchedule($validated['schedule']);
+        }
 
         $room->update($validated);
 

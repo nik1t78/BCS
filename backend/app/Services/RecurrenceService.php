@@ -27,8 +27,15 @@ class RecurrenceService
     /**
      * Проверяет, «происходит» ли встреча в указанный день (с учётом повторов).
      */
-    public static function occursOn(Meeting $meeting, CarbonImmutable $date): bool
+    public static function occursOn(Meeting $meeting, $date): bool
     {
+        // Защита от 500: вызывающий код может передать строку или mutable Carbon
+        // (например, now() из контроллера). Приводим к CarbonImmutable в начале дня —
+        // иначе TypeError внутри map()/filter() роняет эндпоинт (см. /api/tv/{id}/next).
+        if (!$date instanceof CarbonImmutable) {
+            $date = CarbonImmutable::parse($date);
+        }
+        $date = $date->startOfDay();
         $base = CarbonImmutable::parse($meeting->date)->startOfDay();
         $dayKey = $date->toDateString();
 

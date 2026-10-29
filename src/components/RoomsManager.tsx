@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { roomsAPI } from "../api/client";
 import type { Room, RoomAvailability } from "../types";
+import type { RoomSchedule } from "../utils/roomSchedule";
+import ScheduleEditor from "./ScheduleEditor";
 
 interface RoomsManagerProps {
   isAdmin: boolean;
@@ -80,6 +82,8 @@ export default function RoomsManager({ isAdmin, userDepartment }: RoomsManagerPr
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [form, setForm] = useState({ name: "", capacity: 6, location: "", equipment: "", departmentId: "" });
+  // Гибкий график редактируемого зала (null — дефолт пн–пт 08:00–20:00)
+  const [formSchedule, setFormSchedule] = useState<RoomSchedule | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [avail, setAvail] = useState<Record<string, RoomAvailability>>({});
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
@@ -118,6 +122,7 @@ export default function RoomsManager({ isAdmin, userDepartment }: RoomsManagerPr
         description: r.description ?? undefined,
         isActive: !!r.is_active,
         tvToken: r.tv_token ?? null,
+        schedule: r.schedule ?? null,
       }));
       setRooms(data);
     } catch (e: any) {
@@ -145,6 +150,7 @@ export default function RoomsManager({ isAdmin, userDepartment }: RoomsManagerPr
                 end: b.end,
               })),
               free: res.free || [],
+              hours: res.hours ?? undefined,
             },
           }));
         }
@@ -176,11 +182,14 @@ export default function RoomsManager({ isAdmin, userDepartment }: RoomsManagerPr
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean),
+      // Гибкий график зала (null — сервер применит дефолт пн–пт 08:00–20:00)
+      schedule: formSchedule,
     };
     try {
       if (editingId) await roomsAPI.update(editingId, payload as any);
       else await roomsAPI.create(payload as any);
       setForm({ name: "", capacity: 6, location: "", equipment: "", departmentId: "" });
+      setFormSchedule(null);
       setEditingId(null);
       load();
     } catch (e: any) {
@@ -262,6 +271,8 @@ export default function RoomsManager({ isAdmin, userDepartment }: RoomsManagerPr
                 </option>
               ))}
           </select>
+          {/* Гибкий график: рабочие часы по дням недели + нерабочие дни (праздники) */}
+          <ScheduleEditor value={formSchedule} onChange={setFormSchedule} />
           <button
             onClick={submit}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
@@ -333,6 +344,7 @@ export default function RoomsManager({ isAdmin, userDepartment }: RoomsManagerPr
                           equipment: (r.equipment || []).join(", "),
                           departmentId: r.departmentId != null ? String(r.departmentId) : "",
                         });
+                        setFormSchedule(r.schedule ?? null);
                       }}
                     >
                       Изменить
