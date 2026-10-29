@@ -875,6 +875,11 @@ php artisan optimize / optimize:clear  # кеш config/route/view
   браузер блокировал инлайн-скрипт поллинга (`Executing inline script violates … script-src 'self'`)
   и расписание на телевизоре не отображалось. Если CSP отдавали и nginx, и Laravel одновременно,
   браузер брал пересечение политик и хэш sha256 терялся — поэтому дублирующий CSP из nginx убран.
+  Финальный вариант (проверено на nginx 1.22): в `location ~ ^/tv/` лежит ОДИН CSP с
+  `'unsafe-inline'` + sha256; server-уровневый строгий CSP туда НЕ попадает, т.к. директивы
+  `add_header` не наследуются в location, где есть свои `add_header`. Если браузер всё ещё
+  видит старый заголовок — это кэш/nginx без перезапуска: `docker compose restart nginx` и
+  полное закрытие страницы на ТВ.
 - **Бот ВКС / автопилот ссылок**: `VKSBOT_AUTO=true` по умолчанию в docker-compose и прокинут
   в backend/queue/scheduler; значения читаются через `config()` (работает после `config:cache`).
   При невыпущенном контейнере бота (`VKSBOT_EXPECTED=false`) задача `CreateVksLinkJob` мгновенно
