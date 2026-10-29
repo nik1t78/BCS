@@ -73,6 +73,11 @@
 (function () {
     var ROOM = decodeURIComponent(location.pathname.split('/').filter(Boolean)[1] || '');
     var TOKEN = new URLSearchParams(location.search).get('token') || '';
+    // Сегмент для API-поллинга: серверный маршрут /api/tv/{room}/next резолвит
+    // зал и по id, и по названию — но страница /tv/ всегда отдаётся только для
+    // СУЩЕСТВУЮЩИХ активных залов (см. routes/web.php), поэтому берём точный
+    // id из blade ($roomId): он не зависит от кодировки скобок/пробелов в URL.
+    var ROOM_API = @json(isset($roomId) ? (string) $roomId : ROOM);
 @if(isset($missing))
     // Заглушка «Зал не найден»: поллинг не нужен — зала в справочнике нет.
     return;
@@ -140,7 +145,7 @@
     setInterval(tickInvite, 1000);
 
     function poll() {
-        fetch('/api/tv/' + encodeURIComponent(ROOM) + '/next?token=' + encodeURIComponent(TOKEN), { headers: { Accept: 'application/json' } })
+        fetch('/api/tv/' + encodeURIComponent(ROOM_API) + '/next?token=' + encodeURIComponent(TOKEN), { headers: { Accept: 'application/json' } })
             .then(function (r) {
                 if (r.status === 403) throw new Error('Неверный токен экрана');
                 if (!r.ok) throw new Error('HTTP ' + r.status);

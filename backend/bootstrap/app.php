@@ -37,6 +37,16 @@ return Application::configure(basePath: dirname(__DIR__))
                  ->withoutOverlapping()
                  ->runInBackground();
 
+        // Фикс «Свободные залы показывают прошедшие брони»: встречи, у которых
+        // закончилось время, оставались в статусе scheduled/in-progress до
+        // ручного запуска meetings:auto-complete — их слоты продолжали красить
+        // сетку занятости и зал выглядел занятым/пустым некорректно. Теперь
+        // автозавершение гоняется каждую минуту (команда идемпотентна).
+        $schedule->command('meetings:auto-complete')
+                 ->everyMinute()
+                 ->withoutOverlapping()
+                 ->runInBackground();
+
         $schedule->command('meetings:send-notifications')
                  ->everyFifteenMinutes()
                  ->withoutOverlapping();

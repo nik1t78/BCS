@@ -62,7 +62,21 @@ Route::middleware('throttle:20,1')->get('/notifications/stream', [\App\Http\Cont
 // Пункт 5 плана: «экран ожидания» в зале. Телевизор открывает /tv/{room}?token=...
 // без логина; токен зала (rooms.tv_token) даёт доступ только на чтение нейтральных
 // полей расписания этого зала. Throttle защищает от скрапинга чужими токенами.
-Route::middleware('throttle:30,1')->get('/tv/{room}/next', [\App\Http\Controllers\Api\TvScreenController::class, 'next']);
+// Маршрут принимает {room} и ПО НАЗВАНИЮ, и по id: страница /tv/ резолвит зал
+// по name (человекочитаемый адрес для телевизора), поэтому JS при поллинге
+// передаёт ровно тот сегмент, что стоит в URL экрана. Привязка модели по id
+// на таких адресах давала 404 («Not Found») — экран не мог получить расписание.
+Route::middleware('throttle:30,1')->get('/tv/{room}/next', function (\Illuminate\Http\Request $request, string $room) {
+    $model = \Illuminate\Support\Str::isNumeric($room)
+        ? \App\Models\Room::find((int) $room)
+        : \App\Models\Room::where('name', urldecode($room))->first();
+    if (!$model || !$model->is_active) {
+        return response()->json(['message' => 'Зал не найден'], 404);
+    }
+    // Вызываем контроллер явно, передав резолвленную модель: внутри идёт
+    // hash_equals сверка токена (403 при неверном) и выдача расписания зала.
+    return app(\App\Http\Controllers\Api\TvScreenController::class)->next($request, $model);
+});
 
 // Пункт 2 плана: «вечная» ссылка /api/m/{id} — всегда редиректит на актуальную
 // комнату ВКС встречи. Используется в QR-кодах и уведомлениях: даже если
