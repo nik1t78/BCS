@@ -32,7 +32,10 @@ class MeetingCache
 
     public static function bump(?array $roomIds = null): void
     {
-        \App\Support\SafeCache::forever('meetings:changed', now()->timestamp);
+        // microtime*1e6 => микросекундная метка: два bump() в одну секунду
+        // всё равно дадут разные ключи кэша (раньше при now()->timestamp
+        // одинаковом в пределах секунды фронт мог видеть устаревший ответ).
+        \App\Support\SafeCache::forever('meetings:changed', (int) round(microtime(true) * 1_000_000));
 
         // WebSocket (Reverb): мгновенно уведомляем экраны ТВ затронутых залов.
         // Вещание включается только при настроенном REVERB_APP_KEY; без него

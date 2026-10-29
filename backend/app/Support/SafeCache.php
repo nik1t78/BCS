@@ -45,4 +45,44 @@ class SafeCache
             return $default;
         }
     }
+
+    /**
+     * Прочитать значение как СЫРОЕ (без unserialize). Используется для ключей,
+     * которые пишутся и читаются только через SafeCache (например, метка
+     * «meetings:changed» — целый timestamp).
+     *
+     * Зачем: Laravel-хранилище сериализует значения с сохранением типа, а
+     * Cache::forever() из phpredis пишет число как строку. При смешении
+     * драйверов (в контейнере phpredis, в другой сборке — predis) или после
+     * миграции redis Cache::get на таком ключе выдаёт строку вместо int.
+     * Строковая версия попадает в кэш-ключ доступности залов и далее в
+     * CarbonImmutable::parse(...) / now()->addSeconds(...) — это давало
+     * 500 на /api/meetings/rooms-availability. Приведение к int здесь
+     * делает чтение детерминированным независимо от драйвера.
+     */
+    public static function rawInt(string $key, int $default = 0): int
+    {
+        try {
+            $value = Cache::connection()->client()
+                ->get(Cache::getStore()->getPrefix() . $key);
+        } catch (Throwable $e) {
+            report($e);
+            return $default;
+        }
+
+        if ($value === false || $value === null || $value === '') {
+            return $default;
+        }
+
+        // predis может вернуть php-сериализованное значение даже на raw-get
+        if (is_string($value) && preg_match('/^i:\d+;$|^s:\d+:/', $value)) {
+            try {
+                $value = @unserialize($value);
+            } catch (Throwable) {
+                return $default;
+            }
+        }
+
+        return is_numeric($value) ? (int) $value : $default;
+    }
 }

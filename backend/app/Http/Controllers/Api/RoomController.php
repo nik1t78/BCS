@@ -7,6 +7,7 @@ use App\Models\Meeting;
 use App\Models\Room;
 use App\Support\SafeCache;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class RoomController extends Controller
 {
@@ -149,15 +150,77 @@ class RoomController extends Controller
      */
     private function availabilityResponse(\Carbon\CarbonImmutable $day): \Illuminate\Http\JsonResponse
     {
-        $version = (string) SafeCache::get('meetings:changed', 'v0');
+        // rawInt: детерминированное чтение метки как int независимо от драйвера
+        // redis (phpredis/predis) — строковая метка раньше попадала в кэш-ключ
+        // и при некоторых сочетаниях приводила к 500 на эндпоинте.
+        $version = (string) SafeCache::rawInt('meetings:changed', 0);
         $key = 'rooms:avail:' . $version . ':' . $day->toDateString();
 
-        $payload = \Illuminate\Support\Facades\Cache::remember($key, now()->addSeconds(45), function () use ($day) {
-            return [
-                'data' => $this->buildAllAvailability($day),
-                'date' => $day->toDateString(),
-            ];
-        });
+        // Короткий TTL: виджет поллит каждые 30–60 с, а инвалидация идёт по
+        // метке версий, поэтому устаревание по времени — лишь страховка.
+        try {
+            $payload = Cache::remember($key, 45, function () use ($day) {
+                return [
+                    'data' => $this->buildAllAvailability($day),
+                    'date' => $day->toDateString(),
+                ];
+            });
+        } catch (\Throwable $e) {
+            // Redis упал/недоступен или значение в кэше повреждено —
+            // отдаём «живой» расчёт вместо 500 (данные всё равно корректны).
+            report($e);
+            $payload = null;
+        }
+
+        // Страховка от «битого» кэша (например, значение записано другим
+        // драйвером/версией приложения): если структура не та — пересобираем
+        // payload напрямую, минуя кэш. Иначе любой exception при сериализации
+        // ответа давал бы 500.
+        if (!is_array($payload) || !isset($payload['data']) || !is_array($payload['data'])) {
+            try {
+                Cache::forget($key);
+            } catch (\Throwable) {
+                // недоступный кэш не должен мешать ответу
+            }
+
+            try {
+                $payload = [
+                    'data' => $this->buildAllAvailability($day),
+                    'date' => $day->toDateString(),
+                ];
+            } catch (\Throwable $e) {
+                // Аварийный минимум: без него любая ошибка в тяжёлом запросе
+                // (кривая серия повторов, отсутствующая колонка schedule после
+                // частичной миграции и т.п.) роняла весь эндпоинт с 500.
+                // Фронт получит пустой список — виджет покажет «нет данных»,
+                // но приложение останется рабочим. Причина — в laravel.log
+                // ([API-ERROR]) и в алерте админу (bootstrap/app.php).
+                report($e);
+
+                $fallbackRooms = [];
+                try {
+                    $fallbackRooms = Room::where('is_active', true)
+                        ->orderBy('name')
+                        ->get(['id', 'name', 'capacity'])
+                        ->map(fn (Room $r) => [
+                            'id' => $r->id,
+                            'name' => $r->name,
+                            'capacity' => $r->capacity,
+                            'busy' => [],
+                            'free' => [],
+                            'hours' => null,
+                        ])->all();
+                } catch (\Throwable $inner) {
+                    report($inner);
+                }
+
+                $payload = [
+                    'data' => $fallbackRooms,
+                    'date' => $day->toDateString(),
+                    'degraded' => true,
+                ];
+            }
+        }
 
         return response()->json($payload);
     }
