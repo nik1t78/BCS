@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { User, Meeting, Tag, ScheduleConflict } from "../types";
-import { roomsAPI, meetingsAPI, syncServerTime, serverNowDate, serverTodayKeyTz, serverNowHmTz } from "../api/client";
+import { roomsAPI, meetingsAPI, syncServerTime, serverTodayKeyTz, serverNowHmTz } from "../api/client";
 import {
   getMeetings,
   createMeeting,
@@ -831,12 +831,11 @@ export default function UserPanel({
   // дата на устройстве расходились с сервером (Europe/Moscow), только что
   // созданная будущая встреча мгновенно считалась «прошедшей» и пропадала
   // из фильтра «Предстоящие». Теперь берём серверные часы и серверную дату
-  // (синхронизация /api/time, см. serverNowDate/serverTodayKeyTz) — та же
+  // (синхронизация /api/time, см. serverNowHmTz/serverTodayKeyTz) — та же
   // база, что использует форма создания и серверная валидация прошлого.
-  const nowIso = () => {
-    const n = serverNowDate();
-    return `${serverTodayKeyTz()}T${String(n.getHours()).padStart(2, "0")}:${String(n.getMinutes()).padStart(2, "0")}`;
-  };
+  // ВАЖНО: serverNowHmTz() читает HH:mm через Intl В ПОЯСЕ СЕРВЕРА; getHours()
+  // от Date вернул бы локальный час браузера (расхождение до ±3ч для MSK).
+  const nowIso = () => `${serverTodayKeyTz()}T${serverNowHmTz()}`;
   useEffect(() => {
     // Актуализируем смещение часов при загрузке панели и каждые 5 минут,
     // чтобы фильтры «Предстоящие/Прошедшие» не уплывали при расхождении

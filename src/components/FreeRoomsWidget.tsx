@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Room, RoomAvailability } from "../types";
-import { roomsAPI, meetingsAPI, syncServerTime, serverNowDate, serverTodayKeyTz } from "../api/client";
+import { roomsAPI, meetingsAPI, syncServerTime, serverNowHmTz, serverTodayKeyTz } from "../api/client";
 import {
   computeFreeSlots,
   splitSlotIntoBlocks,
@@ -11,14 +11,16 @@ import {
   type FreeSlot,
 } from "../utils/freeSlots";
 
-/** «Сейчас» в минутах дня ПО ЧАСАМ СЕРВЕРА (Europe/Moscow, см. /api/time).
+/** «Сейчас» в минутах дня ПО ЧАСАМ И ПОЯСУ СЕРВЕРА (Europe/Moscow, см. /api/time).
  *  Фикс «Свободные залы пустеют после обновления страницы»: расчёт свободных
  *  окон шёл по локальным часам браузера. Если часы устройства расходились с
  *  сервером или пояс браузера не московский, все окна дня ошибочно помечались
- *  прошедшими (isPast) и исчезали из зелёной зоны — виджет выглядел пустым. */
+ *  прошедшими (isPast) и исчезали из зелёной зоны — виджет выглядел пустым.
+ *  Важно: serverNowHmTz() читает время через Intl в поясе сервера; getHours()
+ *  от Date вернул бы локальный час браузера (расхождение до ±3ч для MSK). */
 const serverNowMin = (): number => {
-  const n = serverNowDate();
-  return n.getHours() * 60 + n.getMinutes();
+  const [h, m] = serverNowHmTz().split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
 };
 
 interface RoomInfo {

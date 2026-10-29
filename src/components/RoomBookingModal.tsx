@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Room, RoomAvailability } from "../types";
-import { roomsAPI, meetingsAPI } from "../api/client";
+import { roomsAPI, meetingsAPI, syncServerTime, serverNowHmTz, serverTodayKeyTz } from "../api/client";
 import { computeFreeSlots, minToHm, hmToMin, WORK_DAY_START_MIN, WORK_DAY_END_MIN } from "../utils/freeSlots";
 
 interface RoomBookingModalProps {
@@ -19,9 +19,16 @@ interface RoomBookingModalProps {
   onConfirm: (roomName: string, date: string, startTime: string, endTime: string) => void;
 }
 
-const todayKey = (): string => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+// «Сегодня» по ДАТЕ И ПОЯСУ СЕРВЕРА (Europe/Moscow) — та же база, что у
+// виджета «Свободные залы» и серверной валидации прошлого. Локальный
+// todayKey() расходился с сервером при других часах/поясе устройства:
+// слоты будущего времени ошибочно помечались прошедшими и пропадали.
+const todayKey = (): string => serverTodayKeyTz();
+
+/** «Сейчас» в минутах дня по серверным часам и поясу (Intl, см. /api/time). */
+const serverNowMin = (): number => {
+  const [h, m] = serverNowHmTz().split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
 };
 
 /** «HH:MM» → минуты; поддержка 24:00 */
@@ -65,16 +72,15 @@ export default function RoomBookingModal({
     const d = hmToMin(endTime) - hmToMin(startTime || "00:00");
     return d >= SNAP && d <= 24 * 60 ? d : 60;
   });
-  const [nowMin, setNowMin] = useState(() => {
-    const n = new Date();
-    return n.getHours() * 60 + n.getMinutes();
-  });
+  const [nowMin, setNowMin] = useState(() => serverNowMin());
 
   useEffect(() => {
     if (!open) return;
+    // Сверяемся с серверными часами (/api/time) и пересчитываем «сейчас» —
+    // иначе при расхождении часов устройства будущие слоты помечаются прошедшими.
+    syncServerTime().finally(() => setNowMin(serverNowMin()));
     const t = setInterval(() => {
-      const n = new Date();
-      setNowMin(n.getHours() * 60 + n.getMinutes());
+      syncServerTime().finally(() => setNowMin(serverNowMin()));
     }, 60000);
     return () => clearInterval(t);
   }, [open]);
