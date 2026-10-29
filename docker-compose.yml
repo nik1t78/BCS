@@ -34,6 +34,9 @@ x-backend-volumes: &backend-volumes
     source: backend_storage
     target: /var/www/html/storage
   - type: volume
+    source: db_backups
+    target: /var/www/html/storage/app/backups
+  - type: volume
     source: backend_bootstrap_cache
     target: /var/www/html/bootstrap/cache
 
@@ -280,5 +283,10 @@ networks:
 volumes:
   frontend_build:
   backend_storage:
+  # Отдельный том для бэкапов БД (db:backup): бэкапы переживают пересоздание
+  # основного storage-тома и не зависят от его заполнения. Монтируется
+  # поверх /var/www/html/storage/app/backups в сервисах, использующих
+  # x-backend-volumes.
+  db_backups:
   backend_bootstrap_cache:
   backend_public:

@@ -9,11 +9,26 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [loginValue, setLoginValue] = useState("");
   const [password, setPassword] = useState("");
+  const [password2, setPassword2] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [department, setDepartment] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Кнопка-«глазик» показа/скрытия пароля
+  const EyeToggle = ({ shown, onToggle }: { shown: boolean; onToggle: () => void }) => (
+    <button
+      type="button"
+      onClick={onToggle}
+      tabIndex={-1}
+      aria-label={shown ? "Скрыть пароль" : "Показать пароль"}
+      className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-gray-400 hover:text-blue-600 transition-colors"
+    >
+      <i className={`fas ${shown ? "fa-eye-slash" : "fa-eye"}`}></i>
+    </button>
+  );
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,6 +59,28 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
     }
     if (password.length < 6) {
       setError("Пароль должен быть не менее 6 символов");
+      return;
+    }
+    // Проверка ФИО: только буквы, пробелы и дефисы (кириллица/латиница), минимум два слова
+    const fio = name.trim().replace(/\s+/g, " ");
+    if (!/^[А-Яа-яЁёA-Za-z]+(?:[ -][А-Яа-яЁёA-Za-z]+)+$/.test(fio)) {
+      setError("Укажите ФИО полностью: фамилия и имя (только буквы, без цифр и символов)");
+      return;
+    }
+    if (!/[A-Za-zА-Яа-яЁё]/.test(password) || !/[0-9]/.test(password)) {
+      setError("Пароль должен содержать хотя бы одну букву и одну цифру");
+      return;
+    }
+    if (password2 !== password) {
+      setError("Пароли не совпадают — проверьте поле «Подтверждение пароля»");
+      return;
+    }
+    if (phone && !/^\+?[\d\s()-]{7,18}$/.test(phone.trim())) {
+      setError("Телефон указан неверно (пример: +7 (999) 123-45-67)");
+      return;
+    }
+    if (!department.trim()) {
+      setError("Укажите отдел — он нужен для корректного отображения в системе");
       return;
     }
 
@@ -122,14 +159,17 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Пароль</label>
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  placeholder="••••••••"
-                />
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full px-3 py-2.5 pr-10 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
+                    placeholder="••••••••"
+                  />
+                  <EyeToggle shown={showPassword} onToggle={() => setShowPassword((v) => !v)} />
+                </div>
               </div>
               <button
                 type="submit"
@@ -165,14 +205,38 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Пароль *</label>
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  placeholder="Минимум 6 символов"
-                />
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full px-3 py-2.5 pr-10 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
+                    placeholder="Минимум 6 символов: буквы и цифры"
+                  />
+                  <EyeToggle shown={showPassword} onToggle={() => setShowPassword((v) => !v)} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Подтверждение пароля *</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={password2}
+                    onChange={(e) => setPassword2(e.target.value)}
+                    className={`w-full px-3 py-2.5 pr-10 border rounded-lg focus:outline-none ${
+                      password2 && password2 !== password
+                        ? "border-red-300 focus:border-red-500"
+                        : "border-gray-200 focus:border-blue-500"
+                    }`}
+                    placeholder="Повторите пароль"
+                  />
+                  <EyeToggle shown={showPassword} onToggle={() => setShowPassword((v) => !v)} />
+                </div>
+                {password2 && password2 !== password && (
+                  <p className="mt-1 text-xs text-red-600">Пароли не совпадают</p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Телефон</label>

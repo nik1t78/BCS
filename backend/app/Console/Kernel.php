@@ -54,6 +54,29 @@ class Kernel extends ConsoleKernel
                  ->dailyAt('02:30')
                  ->withoutOverlapping();
 
+        // Еженедельный бэкап (доп. копия вне суточного цикла, хранение 8 копий):
+        // стабильность на месяцы вперёд — при порче суточных бэкапов остаётся
+        // недельная линейка history.
+        $schedule->command('db:backup --keep=8')
+                 ->weekly()
+                 ->sundayAt('04:00')
+                 ->withoutOverlapping();
+
+        // Ротация дневника ВКС-бота: строки старше 90 дней удаляются раз в
+        // сутки (таблица растёт с каждой генерацией ссылки и без чистки
+        // раздувает БД; полноценное партиционирование MySQL требует DDL на
+        // уровне инстанса, поэтому выбрана безопасная TTL-чистка).
+        $schedule->call(function () {
+            \App\Models\BotLog::where('created_at', '<', now()->subDays(90))
+                ->chunkById(1000, fn ($rows) => $rows->each->delete());
+        })->dailyAt('03:30')->name('bot-logs-prune');
+
+        // Ротация журнала посещаемости ТВ: строки, чей последний сигнал старше
+        // 60 дней, удаляются (живые экраны продлевают last_seen поллингом).
+        $schedule->call(function () {
+            \App\Models\TvViewLog::where('last_seen_at', '<', now()->subDays(60))->limit(5000)->delete();
+        })->dailyAt('03:40')->name('tv-view-logs-prune');
+
         // Мониторинг ВКС-бота: каждые 5 минут проверяем /health и алертим
         // админу в MAX при сбое/восстановлении (см. VKSBOT_EXPECTED=true).
         $schedule->command('bot:monitor')

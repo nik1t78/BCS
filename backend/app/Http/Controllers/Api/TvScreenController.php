@@ -23,6 +23,14 @@ class TvScreenController extends Controller
             return response()->json(['message' => 'Неверный токен экрана'], 403);
         }
 
+        // Журнал посещаемости ТВ (пишется «скользко», не чаще раза в минуту
+        // на экран; ошибки журнала не должны ронять экран).
+        try {
+            $this->touchViewLog($request, $room, $token);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
         $now = now();
 
         // Встречи этого зала: сегодня + occurrence'ы повторяющихся серий
@@ -84,5 +92,43 @@ class TvScreenController extends Controller
             'next' => $meetings->first(),
             'upcoming' => $meetings,
         ]);
+    }
+
+    /**
+     * Upsert записи журнала посещаемости. Скольжение по времени: если
+     * последний апдейт был < минуты назад — только инкремент счётчика в
+     * кэше (без UPDATE строки). Токен храним только как sha256-хэш.
+     */
+    private function touchViewLog(Request $request, Room $room, string $token): void
+    {
+        $screenId = mb_substr((string) $request->query('screen', ''), 0, 64) ?: null;
+        $hash = hash('sha256', $token);
+
+        // Дедупликация записи через кэш (key ≤ 60 с), чтобы поллинг раз в
+        // 10 с не писал БД каждые 10 секунд.
+        $gateKey = 'tvview_gate_' . $room->id . '_' . substr($hash, 0, 16) . '_' . ($screenId ?? 'x');
+        if (cache()->get($gateKey)) {
+            return;
+        }
+        cache()->put($gateKey, 1, now()->addSeconds(55));
+
+        $match = [
+            'room_id'    => $room->id,
+            'token_hash' => $hash,
+            'screen_id'  => $screenId,
+        ];
+        $row = \App\Models\TvViewLog::firstOrNew($match);
+        $isNew = !$row->exists;
+        $row->ip = $request->ip();
+        $row->ua = mb_substr((string) $request->userAgent(), 0, 200);
+        $row->last_seen_at = now();
+        if ($isNew) {
+            $row->first_seen_at = now();
+            $row->polls = 1;
+        } else {
+            // Атомарный инкремент счётчика опросов вместо read-modify-write.
+            $row->increment('polls');
+        }
+        $row->save();
     }
 }

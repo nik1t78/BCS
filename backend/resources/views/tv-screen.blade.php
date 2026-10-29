@@ -73,6 +73,15 @@
 (function () {
     var ROOM = decodeURIComponent(location.pathname.split('/').filter(Boolean)[1] || '');
     var TOKEN = new URLSearchParams(location.search).get('token') || '';
+    // Идентификатор экземпляра экрана для журнала посещаемости (tv_view_logs):
+    // переживает перезагрузку страницы в sessionStorage, уникален на ТВ.
+    var SCREEN_ID = (function () {
+        try {
+            var s = sessionStorage.getItem('vks_tv_screen');
+            if (!s) { s = Math.random().toString(36).slice(2, 10) + Date.now().toString(36); sessionStorage.setItem('vks_tv_screen', s); }
+            return s;
+        } catch (e) { return 'tv'; }
+    })();
     // Сегмент для API-поллинга: серверный маршрут /api/tv/{room}/next резолвит
     // зал и по id, и по названию — но страница /tv/ всегда отдаётся только для
     // СУЩЕСТВУЮЩИХ активных залов (см. routes/web.php), поэтому берём точный
@@ -145,7 +154,7 @@
     setInterval(tickInvite, 1000);
 
     function poll() {
-        fetch('/api/tv/' + encodeURIComponent(ROOM_API) + '/next?token=' + encodeURIComponent(TOKEN), { headers: { Accept: 'application/json' } })
+        fetch('/api/tv/' + encodeURIComponent(ROOM_API) + '/next?token=' + encodeURIComponent(TOKEN) + '&screen=' + encodeURIComponent(SCREEN_ID), { headers: { Accept: 'application/json' } })
             .then(function (r) {
                 if (r.status === 403) throw new Error('Неверный токен экрана');
                 if (!r.ok) throw new Error('HTTP ' + r.status);

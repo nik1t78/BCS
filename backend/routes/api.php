@@ -264,6 +264,10 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::get('/admin/bot-log', [\App\Http\Controllers\Api\BotLogController::class, 'index']);
         Route::get('/admin/bot-log/stats', [\App\Http\Controllers\Api\BotLogController::class, 'stats']);
 
+        // Статус системы: uptime/MySQL/Redis/очереди/бот/экраны ТВ + журнал посещаемости ТВ
+        Route::get('/admin/system-status', [\App\Http\Controllers\Api\SystemStatusController::class, 'show']);
+        Route::get('/admin/tv-views', [\App\Http\Controllers\Api\SystemStatusController::class, 'tvViews']);
+
         // Аудит-лог действий пользователей (только администратор)
         Route::get('/admin/audit-logs', [\App\Http\Controllers\Api\AuditLogController::class, 'index']);
         Route::get('/admin/audit-logs/export', [\App\Http\Controllers\Api\AuditLogController::class, 'export']);

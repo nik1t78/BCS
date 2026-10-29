@@ -8,6 +8,7 @@ use App\Models\AuditLog;
 use App\Models\Meeting;
 use App\Models\Notification;
 use App\Models\Room;
+use App\Support\MeetingCache;
 use Illuminate\Http\Request;
 
 class MeetingController extends Controller
@@ -481,7 +482,31 @@ class MeetingController extends Controller
             report($e); // аудит не должен ломать уже выполненное обновление (500)
         }
 
-        \App\Support\SafeCache::forever('meetings:changed', now()->timestamp);
+        // Уведомление организатору, если встречу изменил НЕ он (перенос/правка
+        // участником). Раньше владелец узнавал об изменении только по факту —
+        // функционал «отмена/перенос участником с уведомлением владельца»
+        // был реализован лишь для reschedule/cancel, но не для update.
+        if ((int) $meeting->organizer_id !== (int) $user->id) {
+            $scheduleChanged = ($oldValues['date'] ?? null) != $meeting->date?->toDateString()
+                || substr((string) ($oldValues['start_time'] ?? ''), 0, 5) !== substr((string) $meeting->start_time, 0, 5);
+            $titleChanged = ($oldValues['title'] ?? null) !== null && $oldValues['title'] !== $meeting->title;
+            $what = $scheduleChanged
+                ? 'изменено время: ' . $meeting->date->format('d.m.Y') . ' ' . substr((string) $meeting->start_time, 0, 5)
+                : ($titleChanged ? "новое название: \"{$meeting->title}\"" : 'обновлены данные');
+            try {
+                Notification::create([
+                    'user_id' => $meeting->organizer_id,
+                    'meeting_id' => $meeting->id,
+                    'message' => "✏️ Участник {$user->name} изменил конференцию \"{$meeting->title}\" — {$what}.",
+                    'type' => 'info',
+                    'read' => false,
+                ]);
+            } catch (\Throwable $e) {
+                report($e); // правка уже сохранена — уведомление не должно давать 500
+            }
+        }
+
+        MeetingCache::bump();
 
         return response()->json($meeting->load(['organizer', 'tags']));
     }
@@ -652,6 +677,9 @@ class MeetingController extends Controller
         AuditLog::log($request, 'meeting_rescheduled', $meeting,
             ['date' => $oldDate, 'start_time' => $oldStart],
             ['date' => $meeting->date->toDateString(), 'start_time' => $validated['start_time']]);
+
+        // Инвалидация кэша доступности залов (перенос меняет занятость обеих дат).
+        MeetingCache::bump();
 
         return response()->json($meeting->load(['organizer', 'tags']));
     }

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Meeting;
 use App\Models\Room;
+use App\Support\SafeCache;
 use Illuminate\Http\Request;
 
 class RoomController extends Controller
@@ -129,6 +130,37 @@ class RoomController extends Controller
 
         $day = \Carbon\CarbonImmutable::parse($validated['date']);
 
+        // Кэш доступности (Redis, TTL 45 с): виджет «Свободные залы» поллит
+        // этот эндпоинт каждые 30–60 с, а запрос тяжёлый — раскрывает серии
+        // повторов (RecurrenceService::occursOn) для всех встреч дня.
+        // Инвалидируется MeetingCache::bump() при любом изменении встреч
+        // (создание/перенос/отмена/удаление), поэтому актуальность не страдает.
+        return $this->availabilityResponse($day);
+    }
+
+    /**
+     * Собрать ответ доступности всех залов на дату (с кэшем и меткой версии).
+     */
+    private function availabilityResponse(\Carbon\CarbonImmutable $day): \Illuminate\Http\JsonResponse
+    {
+        $version = (string) SafeCache::get('meetings:changed', 'v0');
+        $key = 'rooms:avail:' . $version . ':' . $day->toDateString();
+
+        $payload = \Illuminate\Support\Facades\Cache::remember($key, now()->addSeconds(45), function () use ($day) {
+            return [
+                'data' => $this->buildAllAvailability($day),
+                'date' => $day->toDateString(),
+            ];
+        });
+
+        return response()->json($payload);
+    }
+
+    /**
+     * Тяжёлая часть: все активные залы + занятость/окна на дату.
+     */
+    private function buildAllAvailability(\Carbon\CarbonImmutable $day)
+    {
         $rooms = Room::where('is_active', true)->orderBy('name')->get(['id', 'name', 'capacity']);
 
         // Все встречи на день (точные + потенциальные occurrence повторяющихся серий)
@@ -188,7 +220,7 @@ class RoomController extends Controller
             ];
         })->values();
 
-        return response()->json(['data' => $result, 'date' => $day->toDateString()]);
+        return $result;
     }
 
     /**
@@ -245,6 +277,9 @@ class RoomController extends Controller
         }
 
         $room->update($validated);
+
+        // График зала влияет на окна «Свободных залов» — сбрасываем кэш доступности.
+        \App\Support\MeetingCache::bump();
 
         return response()->json(['data' => $room]);
     }

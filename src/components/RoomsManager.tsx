@@ -42,6 +42,48 @@ function TvScreenLinkButton({ roomName, token }: { roomName: string; token: stri
   );
 }
 
+/** Админский предпросмотр экрана ТВ: iframe с реальным URL + кнопка «открыть». */
+function TvPreviewModal({ url, onClose }: { url: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-4xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+          <h4 className="font-bold text-gray-800 dark:text-gray-100 text-sm truncate" title={url}>
+            <i className="fas fa-tv text-blue-600 mr-2"></i>Предпросмотр экрана ТВ
+          </h4>
+          <div className="flex gap-2 shrink-0">
+            <a
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+            >
+              <i className="fas fa-external-link-alt mr-1"></i>Открыть
+            </a>
+            <button
+              onClick={onClose}
+              className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600"
+            >
+              Закрыть
+            </button>
+          </div>
+        </div>
+        {/* sandbox без allow-same-origin: страница /tv/ не требует куки/логина,
+            а изоляция исключает доступ превью к сессии админки */}
+        <iframe
+          src={url}
+          title="Экран ТВ — предпросмотр"
+          className="w-full h-[480px] bg-slate-900"
+          sandbox="allow-scripts"
+        />
+      </div>
+    </div>
+  );
+}
+
 /** Таймлайн занятости комнаты 08:00–20:00 */
 function AvailabilityTimeline({ availability }: { availability: RoomAvailability }) {
   const total = 12 * 60; // 08:00–20:00
