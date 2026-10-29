@@ -6,6 +6,7 @@ import { exportToExcel } from "../utils/export";
 import { SortMode, SORT_OPTIONS, sortMeetings } from "../utils/meetingSort";
 import { rescheduleMeeting, checkRescheduleConflicts } from "../store-api";
 import RoomsManager from "./RoomsManager";
+import TvScreenPreview from "./TvScreenPreview";
 import OutlookCalendar, { OutlookView } from "./OutlookCalendar";
 import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { openVksCreatePage } from "../utils/vksBot";
@@ -339,7 +340,7 @@ function LoadDashboard() {
 export default function AdminPanel({ user }: AdminPanelProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
-  const [activeTab, setActiveTab] = useState<"users" | "meetings" | "rooms" | "stats" | "trash" | "audit" | "botlog">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "meetings" | "rooms" | "stats" | "trash" | "audit" | "botlog" | "status">("users");
   // Количество переговорных комнат — бейдж на вкладке «Комнаты» (как у
   // «Пользователи» и «Конференции»).
   const [roomsCount, setRoomsCount] = useState<number | undefined>(undefined);
@@ -405,10 +406,38 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     }
   };
 
+  // ── Вкладка «Статус системы» + предпросмотр экрана ТВ ──────────────────
+  interface SystemStatus {
+    server_time?: string;
+    timezone?: string;
+    php?: { version?: string; uptime_s?: number | null };
+    services?: Record<string, any>;
+    vks_bot?: { expected?: boolean; auto?: boolean; events_24h?: number; success_rate_24h?: number | null; recent?: any[] };
+    tv_screens?: { room: string; screen_id?: string | null; ip?: string; last_seen?: string }[];
+  }
+  const [sysStatus, setSysStatus] = useState<SystemStatus | null>(null);
+  const [sysLoading, setSysLoading] = useState(false);
+  const [tvViews, setTvViews] = useState<any[]>([]);
+  const loadSystemStatus = async () => {
+    setSysLoading(true);
+    try {
+      const s = await authAPI.rawGet("/admin/system-status");
+      setSysStatus(s);
+      const v = await authAPI.rawGet("/admin/tv-views?days=7&per_page=50");
+      setTvViews(unwrapList(v) as any[]);
+    } catch (e) {
+      console.error("System status load error:", e);
+      setSysStatus(null);
+    } finally {
+      setSysLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === "audit") loadAuditLogs(1);
     if (activeTab === "trash") loadTrashed();
     if (activeTab === "botlog") loadBotLog(1);
+    if (activeTab === "status") loadSystemStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
@@ -883,6 +912,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             ...(user.role === "admin" ? [{ id: "trash", label: "Корзина", icon: "fa-trash-restore" }] : []),
             ...(user.role === "admin" ? [{ id: "audit", label: "Аудит", icon: "fa-shield-alt" }] : []),
             ...(user.role === "admin" ? [{ id: "botlog", label: "ВКС-бот", icon: "fa-robot" }] : []),
+            ...(user.role === "admin" ? [{ id: "status", label: "Статус системы", icon: "fa-heartbeat" }] : []),
           ].map((tab) => (
             <button
               key={tab.id}
@@ -2080,6 +2110,128 @@ export default function AdminPanel({ user }: AdminPanelProps) {
           )}
         </div>
       )}
+
+      {/* Вкладка «Статус системы»: health-карточки + журнал ТВ + предпросмотр экрана */}
+      {activeTab === "status" && user.role === "admin" && (() => {
+        const svc = sysStatus?.services ?? {};
+        const fmtUp = (s?: number | null) => {
+          if (s == null) return "—";
+          const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+          return (d ? `${d}д ` : "") + `${h}ч ${m}м`;
+        };
+        const pill = (ok: boolean, text: string) => (
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${ok ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"}`}>
+            <i className={`fas ${ok ? "fa-check-circle" : "fa-exclamation-circle"}`}></i>{text}
+          </span>
+        );
+        return (
+          <div className="space-y-4">
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold text-gray-800 dark:text-gray-100">
+                  <i className="fas fa-heartbeat text-rose-500 mr-2"></i>Статус системы
+                </h3>
+                <button onClick={loadSystemStatus} disabled={sysLoading}
+                  className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-gray-700 dark:text-gray-200">
+                  <i className={`fas fa-sync-alt mr-1 ${sysLoading ? "fa-spin" : ""}`}></i>Обновить
+                </button>
+              </div>
+              {!sysStatus ? (
+                <p className="text-sm text-gray-500">{sysLoading ? "Загрузка…" : "Нет данных (проверьте, что бэкенд обновлён)"}</p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-1">Время сервера</p>
+                      <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                        {sysStatus.server_time ? new Date(sysStatus.server_time).toLocaleString("ru-RU") : "—"}
+                      </p>
+                      <p className="text-xs text-gray-400">{sysStatus.timezone}</p>
+                    </div>
+                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-1">PHP / uptime</p>
+                      <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{sysStatus.php?.version ?? "—"}</p>
+                      <p className="text-xs text-gray-400">{fmtUp(sysStatus.php?.uptime_s)}</p>
+                    </div>
+                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-1">MySQL</p>
+                      {pill(!!svc.mysql?.ok, svc.mysql?.ok ? `OK · ${svc.mysql.size_mb ?? "?"} МБ` : "Ошибка")}
+                    </div>
+                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-1">Кэш</p>
+                      {pill(!!svc.cache?.ok, svc.cache?.ok ? `OK · ${svc.cache.driver}` : String(svc.cache?.error ?? "Ошибка").slice(0, 24))}
+                    </div>
+                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-1">Queue-worker</p>
+                      {pill(!!svc.queue_worker?.ok, svc.queue_worker?.ok ? `OK · heartbeat ${svc.queue_worker.heartbeat_age_s ?? "?"} с` : "Не отвечает")}
+                    </div>
+                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-1">Очередь</p>
+                      {pill(!!svc.queue?.ok, svc.queue?.ok ? `${svc.queue.pending ?? 0} в ожидании · ${svc.queue.failed_24h ?? 0} ошибок/24ч` : "Ошибка")}
+                    </div>
+                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-1">Планировщик</p>
+                      {pill(!!svc.scheduler?.ok, svc.scheduler?.ok ? "Активен" : "Молчит >2 мин")}
+                    </div>
+                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-1">ВКС-бот (24ч)</p>
+                      {pill(true, `${sysStatus.vks_bot?.events_24h ?? 0} событий · успех ${sysStatus.vks_bot?.success_rate_24h ?? "—"}%`)}
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-2">
+                    <i className="fas fa-tv mr-1"></i>Живые экраны ТВ (за 15 мин):{" "}
+                    {sysStatus.tv_screens?.length
+                      ? sysStatus.tv_screens.map((s) => s.room).join(", ")
+                      : "нет подключённых экранов"}
+                  </p>
+                </>
+              )}
+            </div>
+
+            {/* Журнал посещаемости экранов ТВ */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                <h3 className="font-bold text-gray-800 dark:text-gray-100">
+                  <i className="fas fa-history text-blue-600 mr-2"></i>Журнал посещаемости ТВ (7 дней)
+                </h3>
+              </div>
+              {tvViews.length === 0 ? (
+                <p className="p-4 text-sm text-gray-500">Записей нет — экраны ещё не опрашивали API после обновления.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50 dark:bg-gray-700/50 text-left">
+                      <tr>
+                        <th className="px-4 py-2 font-medium text-gray-500">Зал</th>
+                        <th className="px-4 py-2 font-medium text-gray-500">IP</th>
+                        <th className="px-4 py-2 font-medium text-gray-500">Подключился</th>
+                        <th className="px-4 py-2 font-medium text-gray-500">Последний сигнал</th>
+                        <th className="px-4 py-2 font-medium text-gray-500">Длит., мин</th>
+                        <th className="px-4 py-2 font-medium text-gray-500">Статус</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tvViews.slice(0, 30).map((r) => (
+                        <tr key={r.id} className="border-t border-gray-100 dark:border-gray-700">
+                          <td className="px-4 py-2 text-gray-800 dark:text-gray-100">{r.room}</td>
+                          <td className="px-4 py-2 text-gray-500">{r.ip ?? "—"}</td>
+                          <td className="px-4 py-2 text-gray-500">{r.first_seen ? new Date(r.first_seen).toLocaleString("ru-RU") : "—"}</td>
+                          <td className="px-4 py-2 text-gray-500">{r.last_seen ? new Date(r.last_seen).toLocaleString("ru-RU") : "—"}</td>
+                          <td className="px-4 py-2 text-gray-500">{r.duration_min ?? "—"}</td>
+                          <td className="px-4 py-2">{r.online ? pill(true, "онлайн") : pill(false, "офлайн")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Предпросмотр экрана ТВ */}
+            <TvScreenPreview />
+          </div>
+        );
+      })()}
 
       {/* Password Reset Modal */}
       {showPasswordModal && passwordUserId && (

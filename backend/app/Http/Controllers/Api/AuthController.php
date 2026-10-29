@@ -17,13 +17,16 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         $request->validate([
-            'name' => 'required|string|max:255',
+            'name' => ['required', 'string', 'max:255', 'regex:/^[А-Яа-яЁёA-Za-z]+(?:[ -][А-Яа-яЁёA-Za-z]+)+$/u'],
             'login' => 'required|string|max:255|unique:users',
-            // Регистрируемся без поля подтверждения (пароль отправляется один раз),
-            // требования к паролю совпадают с фронтендом: минимум 6 символов.
-            'password' => ['required', 'string', 'min:6'],
+            // Пароль: минимум 6 символов, обязательно буква и цифра (совпадает с фронтендом).
+            'password' => ['required', 'string', 'min:6', 'regex:/[A-Za-zА-Яа-яЁё]/u', 'regex:/[0-9]/'],
             'phone' => 'nullable|string|max:20',
-            'department' => 'nullable|string|max:255',
+            'department' => 'required|string|max:255',
+        ], [
+            'name.regex' => 'Укажите ФИО полностью: фамилия и имя (только буквы, без цифр и символов)',
+            'password.regex' => 'Пароль должен содержать хотя бы одну букву и одну цифру',
+            'department.required' => 'Укажите отдел',
         ]);
 
         // В модели User включён каст 'password' => 'hashed', поэтому передаём
