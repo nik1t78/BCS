@@ -28,16 +28,6 @@ return Application::configure(basePath: dirname(__DIR__))
                 : route('login')
         );
 
-        // Тот же случай на уровне обработчика исключений: shouldReturnJson()
-        // для AuthenticationException срабатывает только при Accept:
-        // application/json или ajax-заголовках. Запрос вида
-        // GET /api/... c "Accept: */*" (curl по умолчанию) уходил в ветку
-        // redirect()->guest(route('login')) и падал с тем же 500. Для всех
-        // api/* принудительно отдаём JSON 401.
-        $exceptions->shouldRenderJsonWhen(
-            fn ($request) => $request->is('api/*') || $request->expectsJson()
-        );
-
         // Доверяем заголовкам X-Forwarded-* от nginx (иначе Laravel не
         // распознаёт запрос как AJAX/api и включает CSRF-валидацию web-группы)
         $middleware->trustProxies(at: '*');
@@ -100,6 +90,16 @@ return Application::configure(basePath: dirname(__DIR__))
                  ->runInBackground();
     })
     ->withExceptions(function (Exceptions $exceptions) {
+        // Тот же случай на уровне обработчика исключений: shouldReturnJson()
+        // для AuthenticationException срабатывает только при Accept:
+        // application/json или ajax-заголовках. Запрос вида
+        // GET /api/... c "Accept: */*" (curl по умолчанию) уходил в ветку
+        // redirect()->guest(route('login')) и падал с тем же 500. Для всех
+        // api/* принудительно отдаём JSON 401.
+        $exceptions->shouldRenderJsonWhen(
+            fn ($request) => $request->is('api/*') || $request->expectsJson()
+        );
+
         // Глобальный обработчик ошибок API. Без него любая фатальная ошибка
         // внутри /api/* (например, на этапе подготовки ответа после того, как
         // валидация и запись в БД уже прошли успешно) отдаётся Laravel как
