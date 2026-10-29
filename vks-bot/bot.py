@@ -18,6 +18,7 @@ import re
 import string
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -328,6 +329,10 @@ class VkxBot:
                 psw_m = re.search(r"[?&]psw=([^&\s]+)", link)
                 password = psw_m.group(1) if psw_m else ""
 
+                # created_at — с явным смещением +03:00 (MSK). Контейнер бота
+                # может жить в UTC, и «голое» время без таймзоны Laravel/фронт
+                # парсили как локальное → дата встречи «уезжала» на 3 часа.
+                tz_msk = timezone(timedelta(hours=3))
                 result = {
                     "ok": True,
                     "link": link,
@@ -335,7 +340,7 @@ class VkxBot:
                     "password": password,
                     "title": title,
                     "name": name,
-                    "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "created_at": datetime.now(tz_msk).strftime("%Y-%m-%d %H:%M:%S%z"),
                 }
                 log.info("Готово: %s", link)
                 return result
