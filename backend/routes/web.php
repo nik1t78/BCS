@@ -60,24 +60,19 @@ function tvScreenResponse(array $data, int $status = 200): \Symfony\Component\Ht
 {
     $html = view('tv-screen', $data)->render();
 
-    // ВАЖНО: 'unsafe-inline' здесь обязателен. Браузер объединяет ВСЕ
-    // CSP-заголовки ответа (nginx + Laravel) пересечением директив: если
-    // хотя бы одна политика запрещает инлайн-скрипт, он блокируется, и
-    // хэши sha256 из другой политики не спасают. Синтаксис 'unsafe-inline'
-    // игнорируется только там, где есть nonce или hash — поэтому держим и
-    // 'unsafe-inline', и хэш ниже: экран работает при любом раскладе.
+    // ВАЖНО про CSP: браузер объединяет ВСЕ CSP-заголовки ответа (nginx +
+    // Laravel) пересечением директив: если хотя бы одна политика запрещает
+    // инлайн-скрипт, он блокируется, и хэши sha256 из другой политики не
+    // спасают. Поэтому nginx для /tv/ отдаёт ровно один CSP со 'unsafe-inline'
+    // (см. docker/nginx/default.conf), а здесь мы НЕ добавляем второй CSP.
+    // Хэши sha256 в script-src больше не вставляются намеренно: по спецификации
+    // CSP3 наличие любого 'sha256-' источника полностью ОТКЛЮЧАЕТ 'unsafe-inline'
+    // в этой же политике («Note that 'unsafe-inline' is ignored if either a hash
+    // or nonce value is present» — так браузер и предупреждал). Инлайн-скрипт
+    // экрана разрешён единственной политикой через 'unsafe-inline'.
     $csp = "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline';"
         . " img-src 'self' data: blob:; connect-src 'self'; font-src 'self' data:; object-src 'none';"
         . " frame-ancestors 'self'; base-uri 'self'; form-action 'self'; worker-src 'self' blob:";
-
-    if (preg_match_all('#<script[^>]*>(.*?)</script>#s', $html, $m)) {
-        $hashes = [];
-        foreach ($m[1] as $js) {
-            $hashes[] = "'sha256-" . base64_encode(hash('sha256', $js, true)) . "'";
-        }
-        // Вставляем хэши сразу после 'self' в script-src.
-        $csp = str_replace("script-src 'self'", "script-src 'self' " . implode(' ', $hashes), $csp);
-    }
 
     return response($html, $status)
         ->header('Content-Type', 'text/html; charset=utf-8')

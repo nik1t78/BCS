@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Room, RoomAvailability } from "../types";
-import { roomsAPI, meetingsAPI } from "../api/client";
+import { roomsAPI, meetingsAPI, syncServerTime, serverNowDate, serverTodayKeyTz } from "../api/client";
 import {
   computeFreeSlots,
   splitSlotIntoBlocks,
@@ -11,9 +11,14 @@ import {
   type FreeSlot,
 } from "../utils/freeSlots";
 
-const todayKey = (): string => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+/** «Сейчас» в минутах дня ПО ЧАСАМ СЕРВЕРА (Europe/Moscow, см. /api/time).
+ *  Фикс «Свободные залы пустеют после обновления страницы»: расчёт свободных
+ *  окон шёл по локальным часам браузера. Если часы устройства расходились с
+ *  сервером или пояс браузера не московский, все окна дня ошибочно помечались
+ *  прошедшими (isPast) и исчезали из зелёной зоны — виджет выглядел пустым. */
+const serverNowMin = (): number => {
+  const n = serverNowDate();
+  return n.getHours() * 60 + n.getMinutes();
 };
 
 interface RoomInfo {
@@ -35,24 +40,23 @@ interface FreeRoomsWidgetProps {
  * форму создания ВКС с предзаполненными датой, временем и залом.
  */
 export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
-  const [date, setDate] = useState<string>(todayKey());
+  const [date, setDate] = useState<string>(() => serverTodayKeyTz());
   const [infos, setInfos] = useState<RoomInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [nowMin, setNowMin] = useState(() => {
-    const n = new Date();
-    return n.getHours() * 60 + n.getMinutes();
-  });
+  const [nowMin, setNowMin] = useState<number>(() => serverNowMin());
 
   // «Линия текущего времени» как в Outlook — обновляем раз в минуту.
   // Каждую минуту пересчитываем и свободные окна (см. эффект ниже), чтобы
   // прошедшее время не предлагалось для брони без перезагрузки страницы.
   useEffect(() => {
-    const t = setInterval(() => {
-      const n = new Date();
-      setNowMin(n.getHours() * 60 + n.getMinutes());
-    }, 60000);
-    return () => clearInterval(t);
+    let stopped = false;
+    const refresh = () => { if (!stopped) setNowMin(serverNowMin()); };
+    // При загрузке сверяемся с серверными часами (/api/time) — иначе при
+    // расхождении часов устройства все окна дня ошибочно станут «прошедшими».
+    syncServerTime().finally(refresh);
+    const t = setInterval(() => { syncServerTime().finally(refresh); }, 60000);
+    return () => { stopped = true; clearInterval(t); };
   }, []);
 
   // Тик «сейчас»: меняется раз в минуту — на нём пересчитываем слоты,
@@ -144,9 +148,11 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
           })
         );
         if (cancelled) return;
-        const now = new Date();
-        const curMin = now.getHours() * 60 + now.getMinutes();
-        const isToday = date === todayKey();
+        // «Сейчас» и «сегодня» — по СЕРВЕРНЫМ часам/поясу (см. serverNowMin):
+        // иначе при расхождении часов устройства свободные окна ошибочно
+        // помечались прошедшими и виджет пустел после перезагрузки страницы.
+        const curMin = serverNowMin();
+        const isToday = date === serverTodayKeyTz();
         const toMin = (s: string): number => {
           if (/^\d{1,2}:\d{2}$/.test(s)) {
             const [h, m] = s.split(":").map(Number);
@@ -199,7 +205,7 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
   const pct = (min: number) => ((min - WORK_DAY_START_MIN) / daySpan) * 100;
   const hours: number[] = [];
   for (let m = WORK_DAY_START_MIN; m <= WORK_DAY_END_MIN; m += 60) hours.push(m);
-  const isToday = date === todayKey();
+  const isToday = date === serverTodayKeyTz();
   const showNowLine = isToday && nowMin >= WORK_DAY_START_MIN && nowMin <= WORK_DAY_END_MIN;
 
   return (

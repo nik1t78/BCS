@@ -824,12 +824,27 @@ export default function UserPanel({
   const [sortMode, setSortMode] = useState<SortMode>("smart");
 
   // ===== Фильтры: статус / комната / тег / поиск по названию, описанию, участникам =====
-  // «Сейчас» в локальном времени (YYYY-MM-DDTHH:mm) — toISOString() даёт UTC
-  // и мог считать встречи прошедшими/будущими с ошибкой до нескольких часов.
+  // «Сейчас» в ЕДИНОМ виде YYYY-MM-DDTHH:mm — как даты встреч с бэкенда
+  // (локальные московские сутки). Сравниваем строками.
+  // ВАЖНО (фикс «новые встречи исчезают из Предстоящих»): раньше здесь
+  // использовались ЛОКАЛЬНЫЕ часы браузера + localTodayKey(). Если часы или
+  // дата на устройстве расходились с сервером (Europe/Moscow), только что
+  // созданная будущая встреча мгновенно считалась «прошедшей» и пропадала
+  // из фильтра «Предстоящие». Теперь берём серверные часы и серверную дату
+  // (синхронизация /api/time, см. serverNowDate/serverTodayKeyTz) — та же
+  // база, что использует форма создания и серверная валидация прошлого.
   const nowIso = () => {
-    const n = new Date();
-    return `${localTodayKey()}T${String(n.getHours()).padStart(2, "0")}:${String(n.getMinutes()).padStart(2, "0")}`;
+    const n = serverNowDate();
+    return `${serverTodayKeyTz()}T${String(n.getHours()).padStart(2, "0")}:${String(n.getMinutes()).padStart(2, "0")}`;
   };
+  useEffect(() => {
+    // Актуализируем смещение часов при загрузке панели и каждые 5 минут,
+    // чтобы фильтры «Предстоящие/Прошедшие» не уплывали при расхождении
+    // часов устройства с сервером.
+    syncServerTime();
+    const t = setInterval(() => syncServerTime(), 5 * 60 * 1000);
+    return () => clearInterval(t);
+  }, []);
   useEffect(() => {
     const mapRoom = (r: any) => ({
       name: r.name,
