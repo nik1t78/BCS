@@ -185,7 +185,9 @@ export default function MeetingMinutes({ meetingId, user, users, canWrite }: Mee
     "w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none";
 
   return (
-    <div className="mt-4 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+    // overflow-visible: выпадающий список «Ответственные» должен выходить за карточку
+    // (раньше overflow-hidden + max-h срезали список — было видно только половину ФИО)
+    <div className="mt-4 border border-gray-200 dark:border-gray-700 rounded-xl">
       {/* Табы */}
       <div className="flex bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
         <button
@@ -397,19 +399,21 @@ export default function MeetingMinutes({ meetingId, user, users, canWrite }: Mee
                       <i className={`fas fa-chevron-${assigneesOpen ? "up" : "down"} ml-1 text-xs`}></i>
                     </button>
                     {assigneesOpen && (
-                      <div className="absolute z-20 mt-1 w-56 max-h-48 overflow-y-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg p-2">
+                      <div className="absolute left-0 z-30 mt-1 w-[min(22rem,calc(100vw-2rem))] max-h-[min(28rem,60vh)] overflow-y-auto overscroll-contain bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg p-2">
                         {users.length === 0 && <p className="text-xs text-gray-400 p-1">Нет доступных пользователей</p>}
                         {users.map((u) => (
                           <label
                             key={u.id}
-                            className="flex items-center gap-2 px-1.5 py-1 text-sm rounded hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer text-gray-700 dark:text-gray-200"
+                            title={u.name}
+                            className="flex items-start gap-2 px-1.5 py-1 text-sm rounded hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer text-gray-700 dark:text-gray-200"
                           >
                             <input
                               type="checkbox"
+                              className="mt-0.5 shrink-0"
                               checked={taskAssignees.includes(u.id)}
                               onChange={() => toggleAssignee(u.id)}
                             />
-                            <span className="truncate">{u.name}</span>
+                            <span className="break-words leading-snug">{u.name}</span>
                           </label>
                         ))}
                         {taskAssignees.length > 0 && (
