@@ -78,8 +78,14 @@ class RoomController extends Controller
         ])->values();
 
         // Гибкий график зала (рабочие часы по дням недели + праздники).
-        // До фикса был жёстко зашит 08:00–20:00.
-        $hours = $room->hoursForDate($day->toDateString());
+        // До фикса был жёстко зашит 08:00–20:00. Пустой массив schedule у
+        // старых залов трактуем как «не задан» (дефолт), а не как дни с
+        // start=null — иначе парсинг времени падал с fatal error.
+        $raw = $room->schedule;
+        $hours = $room->hoursForDateNormalized(
+            $day->toDateString(),
+            is_array($raw) && !empty($raw) ? $raw : null
+        );
         $dayStart = $hours['start'] ?? '08:00';
         $dayEnd = $hours['end'] ?? '20:00';
 
@@ -182,6 +188,23 @@ class RoomController extends Controller
                 || \App\Services\RecurrenceService::occursOn($m, $day));
 
         $result = $rooms->map(function (Room $room) use ($bookings, $day) {
+            // Гибкий график зала: рабочие часы по дням недели + праздники.
+            // Пустой массив у зала означает «не задан» — нормализуем к дефолту
+            // (08:00–20:00 пн–пт), иначе ['start'=>null] давало бы fatal в
+            // CarbonImmutable::parse(null) и 500 на всём эндпоинте доступности.
+            $raw = $room->schedule;
+            $hours = $room->hoursForDateNormalized(
+                $day->toDateString(),
+                is_array($raw) && !empty($raw) ? $raw : null
+            );
+            if ($hours === null) {
+                // Зал закрыт в эту дату (выходной/праздник): не показываем его
+                // в «Свободных залах» вообще — пустые окна только путают.
+                return null;
+            }
+            $dayStart = $hours['start'];
+            $dayEnd = $hours['end'];
+
             $busy = $bookings
                 ->where('room', $room->name)
                 ->map(fn ($m) => [
@@ -190,11 +213,6 @@ class RoomController extends Controller
                     'start' => substr((string) $m->start_time, 0, 5),
                     'end' => substr((string) $m->end_time, 0, 5),
                 ])->values();
-
-            // Гибкий график зала: рабочие часы по дням недели + праздники.
-            $hours = $room->hoursForDate($day->toDateString());
-            $dayStart = $hours['start'] ?? '08:00';
-            $dayEnd = $hours['end'] ?? '20:00';
 
             $free = [];
             $cursor = $dayStart;
@@ -216,9 +234,9 @@ class RoomController extends Controller
                 'capacity' => $room->capacity,
                 'busy' => $busy,
                 'free' => $free,
-                'hours' => $hours, // null — зал закрыт на эту дату
+                'hours' => $hours,
             ];
-        })->values();
+        })->filter()->values();
 
         return $result;
     }

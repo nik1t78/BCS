@@ -108,14 +108,33 @@ class Kernel extends ConsoleKernel
                  ->withoutOverlapping()
                  ->runInBackground();
 
-        // Heartbeat планировщика: в конце каждого цикла schedule:run трогаем
-        // файл на общем volume storage — backend читает его mtime в system-status.
+        // Heartbeat планировщика: ОТДЕЛЬНЫЙ цикл, а не хвост schedule:run.
+        // Раньше записывался в конце общего цикла — одна «залипшая» задача
+        // блокировала весь цикл и «Статус системы» показывал «Планировщик:
+        // ещё не запускался», хотя контейнер был жив. Но без withoutOverlapping()
+        // при 60-секундном цикле (schedule:run & sleep 60) два параллельных
+        // процесса писали один файл одновременно — race давал пустой/битый
+        // файл, filemtime() = 0 → «Ещё не запускался». Теперь запись атомарна:
+        // пишем во временный файл + rename (POSIX atomic), с проверкой результата.
         $schedule->call(function () {
             $dir = storage_path('logs');
             if (!is_dir($dir)) {
                 @mkdir($dir, 0775, true);
             }
-            @file_put_contents(storage_path('logs/cron_heartbeat.log'), (string) time());
-        })->everyMinute()->name('scheduler-heartbeat')->withoutOverlapping();
+            $target = storage_path('logs/cron_heartbeat.log');
+            $tmp = @tempnam($dir, 'hb');
+            if ($tmp === false || @file_put_contents($tmp, (string) time()) === false) {
+                if ($tmp !== false && is_file($tmp)) @unlink($tmp);
+                return;
+            }
+            @chmod($tmp, 0775);
+            @rename($tmp, $target);
+        })->everyMinute()->name('scheduler-heartbeat')->withoutOverlapping(2);
+
+        // Подчистка журнала посещаемости ТВ: строки, невидевшиеся 30 дней,
+        // больше не нужны (аналог ротации bot_logs). Раз в сутки.
+        $schedule->call(function () {
+            \App\Models\TvViewLog::where('last_seen_at', '<', now()->subDays(30))->delete();
+        })->dailyAt('03:15')->name('tv-view-logs-prune');
     }
 }

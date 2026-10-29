@@ -73,6 +73,32 @@ class Room extends Model
     }
 
     /**
+     * Рабочие часы зала на дату с явной передачей графика (null → дефолт).
+     * Отдельный метод нужен вызывающему коду, когда атрибут schedule может
+     * быть пустым массивом «не задано» (миграция залила [] у старых залов):
+     * normalizeSchedule([]) вернул бы дни со start=null и дальнейший парсинг
+     * даты падал с fatal error. Здесь пустое значение трактуется как дефолт.
+     */
+    public function hoursForDateNormalized(string $dateKey, ?array $rawSchedule = null): ?array
+    {
+        $sch = self::normalizeSchedule(
+            (!empty($rawSchedule) && is_array($rawSchedule)) ? $rawSchedule : null
+        );
+        if (in_array($dateKey, $sch['closed'], true)) {
+            return null;
+        }
+        $idx = (int) \Carbon\CarbonImmutable::parse($dateKey)->dayOfWeekIso - 1; // 0=mon..6=sun
+        $key = self::DAY_KEYS[max(0, min(6, $idx))];
+        $h = $sch['days'][$key] ?? null;
+        // Дополнительная защита: день без корректных HH:MM считаем закрытым.
+        if (!is_array($h) || !preg_match('/^\d{2}:\d{2}$/', (string) ($h['start'] ?? ''))
+            || !preg_match('/^\d{2}:\d{2}$/', (string) ($h['end'] ?? ''))) {
+            return null;
+        }
+        return $h;
+    }
+
+    /**
      * Рабочие часы зала на дату: ['start'=>'HH:MM','end'=>'HH:MM'] либо null (закрыт).
      */
     public function hoursForDate(string $dateKey): ?array

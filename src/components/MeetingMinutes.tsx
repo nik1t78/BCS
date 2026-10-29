@@ -323,10 +323,11 @@ export default function MeetingMinutes({ meetingId, user, users, canWrite }: Mee
                               </p>
                             )}
                             {m.responsible && (
-                              <div className="text-sm text-gray-700 dark:text-gray-200 min-w-0">
-                                <span className="font-medium text-gray-500 dark:text-gray-400">Ответственные:</span>{" "}
+                              <div className="text-sm text-gray-700 dark:text-gray-200 min-w-0 overflow-hidden">
+                                {/* Метка и список — блоками: в узких карточках чипы переносятся на новую строку, а не вылезают за край */}
+                                <div className="font-medium text-gray-500 dark:text-gray-400">Ответственные:</div>
                                 {/* Каждое ФИО — переносимый чип; длинный список не обрезается, а занимает несколько строк */}
-                                <span className="inline-flex flex-wrap gap-1 align-top">
+                                <span className="flex flex-wrap gap-1 mt-0.5">
                                   {m.responsible
                                     .split(/[,;\n]+/)
                                     .map((s) => s.trim())

@@ -117,18 +117,39 @@ class TvScreenController extends Controller
             'token_hash' => $hash,
             'screen_id'  => $screenId,
         ];
+        $now = now();
         $row = \App\Models\TvViewLog::firstOrNew($match);
-        $isNew = !$row->exists;
-        $row->ip = $request->ip();
-        $row->ua = mb_substr((string) $request->userAgent(), 0, 200);
-        $row->last_seen_at = now();
-        if ($isNew) {
-            $row->first_seen_at = now();
-            $row->polls = 1;
-        } else {
-            // Атомарный инкремент счётчика опросов вместо read-modify-write.
-            $row->increment('polls');
+        if (!$row->exists) {
+            // Вставка новой строки защищена от гонки двух поллов: UNIQUE(room_id,
+            // token_hash, screen_id) может дать Duplicate entry — тогда просто
+            // переходим к UPDATE найденной записи. Без этой защиты экран ТВ
+            // получал 500 на каждом поллинге (см. миграцию 2024_01_26).
+            try {
+                \App\Models\TvViewLog::create($match + [
+                    'ip'            => $request->ip(),
+                    'ua'            => mb_substr((string) $request->userAgent(), 0, 200),
+                    'first_seen_at' => $now,
+                    'last_seen_at'  => $now,
+                    'polls'         => 1,
+                ]);
+                return;
+            } catch (\Illuminate\Database\QueryException $e) {
+                if ((int) ($e->errorInfo[1] ?? 0) !== 1062 /* ER_DUP_ENTRY */) {
+                    throw $e;
+                }
+                $row = \App\Models\TvViewLog::where($match)->first();
+                if (!$row) {
+                    throw $e;
+                }
+            }
         }
-        $row->save();
+        // Скользящее обновление существующей строки (single UPDATE — атомарно).
+        \App\Models\TvViewLog::withoutTimestamps(function () use ($row, $request, $now) {
+            $row->update([
+                'ip'           => $request->ip(),
+                'ua'           => mb_substr((string) $request->userAgent(), 0, 200),
+                'last_seen_at' => $now,
+            ])->increment('polls');
+        });
     }
 }
