@@ -36,8 +36,16 @@ class VksAutopilot extends Command
 
     public function handle(): int
     {
-        if (!filter_var(config('services.vks_bot.expected', env('VKSBOT_EXPECTED', false)), FILTER_VALIDATE_BOOLEAN)) {
-            // Бот не развёрнут (профиль bot выключен) — автопилот не нужен.
+        $botExpected = filter_var(config('services.vks_bot.expected', env('VKSBOT_EXPECTED', false)), FILTER_VALIDATE_BOOLEAN);
+
+        if (!$botExpected) {
+            // Бот не развёрнут (профиль bot выключен). Автопилот всё равно
+            // полезен: ставит в очередь встречи БЕЗ ссылки, чтобы воркер
+            // записал локальную ссылку и строку в дневник «ВКС-бот».
+            // Проверка живости чужих ссылок (HTTP на платформу) при этом
+            // пропускается — она нужна только вместе с настоящим ботом.
+            $this->queueMeetingsWithoutLink();
+
             return self::SUCCESS;
         }
 
@@ -120,5 +128,42 @@ class VksAutopilot extends Command
 
         $this->info("vks:autopilot — проверено {$checked}, поставлено в очередь {$queued}");
         return self::SUCCESS;
+    }
+
+    /**
+     * Режим без бота (VKSBOT_EXPECTED=false): всем будущим встречам без
+     * ссылки ставим CreateVksLinkJob — воркер сгенерирует локальную ссылку
+     * и запишет строку в дневник «ВКС-бот» (BotLog). Дедуп по кэшу 15 мин.
+     */
+    private function queueMeetingsWithoutLink(): void
+    {
+        $queued = 0;
+        $now = now();
+
+        $meetings = Meeting::query()
+            ->where('status', 'scheduled')
+            ->where(function ($q) use ($now) {
+                $q->whereDate('date', '>', $now->toDateString())
+                  ->orWhere(function ($q2) use ($now) {
+                      $q2->whereDate('date', '=', $now->toDateString())
+                         ->whereTime('start_time', '>=', $now->format('H:i:s'));
+                  });
+            })
+            ->where(function ($q) {
+                $q->whereNull('link')->orWhere('link', '');
+            })
+            ->cursor();
+
+        foreach ($meetings as $meeting) {
+            $lockKey = 'vks_queued_' . $meeting->id;
+            if (cache()->has($lockKey)) {
+                continue;
+            }
+            cache()->put($lockKey, 1, now()->addMinutes(15));
+            CreateVksLinkJob::dispatch($meeting->id);
+            $queued++;
+        }
+
+        $this->info("vks:autopilot (режим без бота) — поставлено в очередь {$queued}");
     }
 }

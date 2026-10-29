@@ -50,10 +50,22 @@ class CreateVksLinkJob implements ShouldQueue
         $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
 
         // Бот не развёрнут (VKSBOT_EXPECTED=false): create() вернул локальную
-        // ссылку. Записываем её сразу и выходим — без записей в BotLog, ретраев
-        // и failed()-алертов: ссылки на встречах будут, очередь не падает.
+        // ссылку. Записываем её сразу и выходим — без ретраев и failed()-алертов:
+        // ссылки на встречах будут, очередь не падает. В BotLog пишем ОБЯЗАТЕЛЬНО:
+        // иначе дневник «ВКС-бот» в админке выглядит пустым («записей нет»),
+        // хотя автопилот исправно генерирует ссылки.
         if (empty($result['ok']) && empty($result['error'])) {
             $meeting->update(['link' => $result['link']]);
+
+            BotLog::create([
+                'meeting_id' => $meeting->id,
+                'action' => 'create',
+                'trigger' => 'queue',
+                'success' => true,
+                'link' => $result['link'],
+                'error' => null,
+                'duration_ms' => $durationMs,
+            ]);
 
             return;
         }
