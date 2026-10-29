@@ -935,10 +935,16 @@ export default function UserPanel({
     // запланированные/идущие, ещё не завершившиеся по времени. Встречи из
     // прошлого (зависшие в статусе scheduled, т.к. бэкенд не авто-завершает их)
     // здесь НЕ показываем — они доступны в фильтре «Прошедшие».
-    if (statusFilter !== "upcoming") return sortMeetings(filteredMeetings, sortMode);
+    if (statusFilter !== "upcoming") return sortMeetings(filteredMeetings, sortMode, serverTodayKey());
     return sortMeetings(
       filteredMeetings.filter((m) => `${m.date}T${m.endTime || m.startTime || "23:59"}` >= nowIso()),
-      sortMode
+      sortMode,
+      // Группы «Сегодня / Завтра / …» в умной сортировке считаем от ДАТЫ СЕРВЕРА
+      // (Europe/Moscow, см. /api/time). Раньше getMeetingGroup внутри использовал
+      // toISOString() (UTC) — при расхождении часов устройства с сервером
+      // сегодняшние конференции попадали в «Завтра», а вчерашние оставались в
+      // «Сегодня»: на странице «Мои конференции» список отображался не так.
+      serverTodayKey()
     );
   })();
   // В «умном» режиме группы показываем заголовками-разделителями
@@ -2294,7 +2300,7 @@ export default function UserPanel({
             // конференции (старые/завершённые скрыты фильтром «Предстоящие»);
             // главная ограничена первыми TEASER_COUNT карточками.
             return sortedMeetings.slice(0, showAllPage ? sortedMeetings.length : Math.min(visibleCount, TEASER_COUNT)).map((meeting) => {
-              const group = showGroups ? getMeetingGroup(meeting) : null;
+              const group = showGroups ? getMeetingGroup(meeting, serverTodayKey()) : null;
               const header =
                 group && group.key !== lastGroup ? (
                   <div key={`grp-${group.key}`} className="pt-2 pb-1 first:pt-0">
