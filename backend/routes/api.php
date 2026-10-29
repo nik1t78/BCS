@@ -67,7 +67,10 @@ Route::middleware('throttle:20,1')->get('/notifications/stream', [\App\Http\Cont
 // передаёт ровно тот сегмент, что стоит в URL экрана. Привязка модели по id
 // на таких адресах давала 404 («Not Found») — экран не мог получить расписание.
 Route::middleware('throttle:30,1')->get('/tv/{room}/next', function (\Illuminate\Http\Request $request, string $room) {
-    $model = \Illuminate\Support\Str::isNumeric($room)
+    // is_numeric() — встроенная функция PHP. \Illuminate\Support\Str::isNumeric()
+    // НЕ существует (Str не имеет такого метода/макроса) и давала
+    // BadMethodCallException → HTTP 500 на /api/tv/{id}/next.
+    $model = is_numeric($room)
         ? \App\Models\Room::find((int) $room)
         : \App\Models\Room::where('name', urldecode($room))->first();
     if (!$model || !$model->is_active) {

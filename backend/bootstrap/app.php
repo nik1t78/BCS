@@ -17,6 +17,27 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\TrackActivity::class,
         ]);
 
+        // Незалогиненный запрос к /api/* должен получать честный 401 в JSON,
+        // а не редирект на несуществующий маршрут «login» (в SPA-приложении
+        // routes/web.php такой точки входа нет). Без этой правки curl без
+        // токена падал с 500 "Route [login] not defined" вместо ожидаемого
+        // 401 Unauthorized.
+        $middleware->redirectGuestsTo(fn ($request) =>
+            $request->is('api/*') || $request->expectsJson()
+                ? null
+                : route('login')
+        );
+
+        // Тот же случай на уровне обработчика исключений: shouldReturnJson()
+        // для AuthenticationException срабатывает только при Accept:
+        // application/json или ajax-заголовках. Запрос вида
+        // GET /api/... c "Accept: */*" (curl по умолчанию) уходил в ветку
+        // redirect()->guest(route('login')) и падал с тем же 500. Для всех
+        // api/* принудительно отдаём JSON 401.
+        $exceptions->shouldRenderJsonWhen(
+            fn ($request) => $request->is('api/*') || $request->expectsJson()
+        );
+
         // Доверяем заголовкам X-Forwarded-* от nginx (иначе Laravel не
         // распознаёт запрос как AJAX/api и включает CSRF-валидацию web-группы)
         $middleware->trustProxies(at: '*');
