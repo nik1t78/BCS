@@ -78,7 +78,7 @@ function tvScreenResponse(array $data, int $status = 200): \Symfony\Component\Ht
     // экрана разрешён единственной политикой через 'unsafe-inline'.
     $csp = "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline';"
         . " img-src 'self' data: blob:; connect-src 'self' ws: wss:; font-src 'self' data:; object-src 'none';"
-        . " frame-ancestors 'self'; base-uri 'self'; form-action 'self'; worker-src 'self' blob:";
+        . " frame-src 'self' https://salutejazz.ru; frame-ancestors 'self' https://salutejazz.ru; base-uri 'self'; form-action 'self'; worker-src 'self' blob:";
 
     return response($html, $status)
         ->header('Content-Type', 'text/html; charset=utf-8')
