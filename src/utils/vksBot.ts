@@ -64,17 +64,24 @@ async function botAttempt(title: string, name: string, timeoutMs: number, date?:
   const botToken = (import.meta.env.VITE_VKS_BOT_TOKEN as string) || "";
   let resp: Response;
   try {
-    // ВАЖНО: сервер бота (vks-bot/server.py) принимает POST /create — без
-    // префикса, а nginx проксирует "/vks-bot/" -> корень бота, поэтому путь
-    // должен быть ровно BOT_URL + "/create". Раньше при относительном
-    // BOT_URL="/vks-bot" запрос шёл в "/create" (мимо nginx-префикса => 404),
-    // и фронт всегда тихо фолбэчил на локальную ссылку («бот не работает»).
-    const createUrl = `${BOT_URL.replace(/\/$/, "")}/create`;
+    // Путь к эндпоинту создания. Сервер бота принимает POST /create (без
+    // префикса); nginx проксирует "/vks-bot/create" -> бот:/create И имеет
+    // отдельный exact-локейшен для него (с передачей X-Bot-Token). При
+    // абсолютном VITE_VKS_BOT_URL (прямой http://host:8090) стучимся по нему
+    // как есть; при относительном ("/vks-bot") — через nginx-префикс.
+    const isAbs = /^https?:\/\//i.test(BOT_URL);
+    let createUrl = `${BOT_URL.replace(/\/$/, "")}/create`;
+    if (!isAbs && !createUrl.startsWith("/")) createUrl = "/" + createUrl;
+    // Точный логический эквивалент прежнего поведения с дефолтным "/vks-bot":
+    // "/vks-bot" + "/create" = "/vks-bot/create" (роут nginx есть).
     resp = await fetch(createUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(botToken ? { "X-Bot-Token": botToken } : {}),
+        // Заголовок секрета бота пробрасываем ВСЕГДА (пустая строка, если
+        // VITE_VKS_BOT_TOKEN не задан): раньше заголовок добавлялся только
+        // при непустом токене, и nginx/бот видели его отсутствие.
+        "X-Bot-Token": botToken,
       },
       // Дату встречи передаём ЯВНО (ДД.ММ.ГГГГ или ISO): иначе сервер бота
       // вычисляет «сегодня» по своим часам и вечерняя встреча могла
