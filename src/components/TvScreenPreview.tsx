@@ -81,7 +81,7 @@ export default function TvScreenPreview() {
           title="Предпросмотр экрана ТВ"
           src={src}
           className="w-full h-[480px] border-0 bg-slate-900"
-          sandbox="allow-scripts allow-same-origin"
+
         />
       )}
     </div>

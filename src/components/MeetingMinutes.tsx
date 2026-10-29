@@ -323,11 +323,26 @@ export default function MeetingMinutes({ meetingId, user, users, canWrite }: Mee
                               </p>
                             )}
                             {m.responsible && (
-                              <p className="text-sm text-gray-700 dark:text-gray-200">
+                              <div className="text-sm text-gray-700 dark:text-gray-200 min-w-0">
                                 <span className="font-medium text-gray-500 dark:text-gray-400">Ответственные:</span>{" "}
-                                {m.responsible}
-                              </p>
+                                {/* Каждое ФИО — переносимый чип; длинный список не обрезается, а занимает несколько строк */}
+                                <span className="inline-flex flex-wrap gap-1 align-top">
+                                  {m.responsible
+                                    .split(/[,;\n]+/)
+                                    .map((s) => s.trim())
+                                    .filter(Boolean)
+                                    .map((name, i) => (
+                                      <span
+                                        key={i}
+                                        className="inline-block max-w-full break-words rounded-full bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 text-xs leading-snug"
+                                      >
+                                        {name}
+                                      </span>
+                                    ))}
+                                </span>
+                              </div>
                             )}
+
                           </div>
                           {canWrite && (
                             <div className="flex gap-1 shrink-0">

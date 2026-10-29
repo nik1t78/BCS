@@ -24,9 +24,15 @@ Route::get('/tv/{room}', function (string $room) {
     // /tv/Переговорная%20А%20(3%20этаж)?token=..., а не id.
     // Если зал не найден или выключен — отдаём экран с понятным сообщением
     // (не 404-заглушку Laravel: на ТВ она выглядит как «белая страница»).
-    $model = \App\Models\Room::where('name', urldecode($room))
-        ->where('is_active', true)
-        ->first();
+    // Резолвим и по id, и по названию: предпросмотр в админке строит URL
+    // /tv/{id}, а телевизоры — /tv/{название}. Оба варианта должны работать.
+    $q = \App\Models\Room::where('is_active', true);
+    if (ctype_digit($room)) {
+        $q->where(fn ($w) => $w->where('id', (int) $room)->orWhere('name', urldecode($room)));
+    } else {
+        $q->where('name', urldecode($room));
+    }
+    $model = $q->first();
     if (!$model) {
         // ВАЖНО: ->status() возвращает int, а не Response — поэтому статус
         // задаём первым аргументом response()->view(...), иначе маршрут
