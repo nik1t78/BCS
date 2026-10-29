@@ -42,10 +42,12 @@ class TvScreenController extends Controller
                     $end = $end->addDay(); // встреча через полночь
                 }
                 // Повторяющиеся серии: приводим к ближайшему будущему occurrence.
-                if ($m->recurring !== 'none' && \App\Services\RecurrenceService::occursOn($m, $now->toDateString()) && $end->lessThan($now)) {
+                // Если серия уже «происходит» сегодня, но её время вышло —
+                // ищем следующий день серии в горизонте 30 дней.
+                if ($m->recurring !== 'none' && $end->lessThan($now)) {
                     for ($d = 1; $d <= 30; $d++) {
                         $day2 = $now->copy()->addDays($d)->toDateString();
-                        if (\App\Services\RecurrenceService::occursOn($m, $day2)) {
+                        if (\App\Services\RecurrenceService::occursOn($m, \Carbon\CarbonImmutable::parse($day2))) {
                             $start = \Carbon\CarbonImmutable::parse($day2 . ' ' . substr((string) $m->start_time, 0, 5));
                             $end = \Carbon\CarbonImmutable::parse($day2 . ' ' . $endRaw);
                             break;
