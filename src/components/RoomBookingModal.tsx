@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Room, RoomAvailability } from "../types";
-import { roomsAPI, meetingsAPI, syncServerTime, serverNowHmTz, serverTodayKeyTz } from "../api/client";
+import { roomsAPI, meetingsAPI, syncServerTime, serverNowHmTz, serverTodayKeyTz, serverNowDate } from "../api/client";
 import { computeFreeSlots, minToHm, hmToMin, WORK_DAY_START_MIN, WORK_DAY_END_MIN } from "../utils/freeSlots";
 
 interface RoomBookingModalProps {

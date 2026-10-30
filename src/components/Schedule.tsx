@@ -7,7 +7,7 @@ import {
   checkRescheduleConflicts,
   updateMeeting,
 } from "../store-api";
-import { roomsAPI } from "../api/client";
+import { roomsAPI, serverNowDate } from "../api/client";
 import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { occursOn } from "../utils/recurrence";
 import { formatRuDate } from "../utils/dateKey";
@@ -22,7 +22,17 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [view, setView] = useState<OutlookView>("week");
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  // Стартовая дата календаря — по СЕРВЕРНЫМ часам (offset из /api/time /
+  // localStorage), а не по часам браузера: при сбитой дате/времени в Windows
+  // «Расписание» открывалось на «29», когда сервер жил 30-м, и встречи на 30-е
+  // оказывались не в том дне («ставлю 30 — а он мне 29»).
+  const [selectedDate, setSelectedDate] = useState(() => {
+    try {
+      return serverNowDate();
+    } catch {
+      return new Date();
+    }
+  });
   const [filter, setFilter] = useState<"all" | "my" | "today" | "upcoming">("all");
   // Справочник всех переговорных комнат (включая созданные пользователями)
   // и фильтр календаря по комнате.
@@ -108,7 +118,7 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
   const calendarMeetings = meetings.filter((m) => {
     if (roomFilter && m.room !== roomFilter) return false;
     if (filter === "my") return hasAccessTo(m);
-    if (filter === "today") return occursOn(m, new Date());
+    if (filter === "today") return occursOn(m, serverNowDate());
     if (filter === "upcoming") return m.status !== "completed" && m.status !== "cancelled";
     return true;
   });

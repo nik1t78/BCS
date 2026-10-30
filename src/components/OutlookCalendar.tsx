@@ -4,6 +4,7 @@
 // Используется и в пользовательском «Расписании», и в админ-панели.
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Meeting } from "../types";
+import { serverNowDate } from "../api/client";
 import { occursOn, withDate } from "../utils/recurrence";
 import { toDateKey } from "../utils/dateKey";
 
@@ -166,12 +167,29 @@ export default function OutlookCalendar({
   blockSubtitle,
 }: OutlookCalendarProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [now, setNow] = useState(new Date());
+  // «Сейчас» для линии текущего времени/подсветки дня — по СЕРВЕРНЫМ часам.
+  // Локальные часы браузера при сбитой дате давали «сегодня = 29», и календарь
+  // подсвечивал не тот день, а кнопка «Сегодня» уводила на сутки назад.
+  const [now, setNow] = useState(() => {
+    try {
+      return serverNowDate();
+    } catch {
+      return new Date();
+    }
+  });
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
 
   // Живая линия «сейчас»
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 60_000);
+    const tick = () => {
+      try {
+        setNow(serverNowDate());
+      } catch {
+        setNow(new Date());
+      }
+    };
+    tick();
+    const t = setInterval(tick, 60_000);
     return () => clearInterval(t);
   }, []);
 
@@ -291,7 +309,7 @@ export default function OutlookCalendar({
               <i className="fas fa-chevron-right text-gray-600 dark:text-gray-300"></i>
             </button>
             <button
-              onClick={() => onSelectedDateChange(new Date())}
+              onClick={() => onSelectedDateChange(now)}
               className="px-3 py-1 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
             >
               Сегодня
@@ -416,7 +434,7 @@ export default function OutlookCalendar({
             <i className="fas fa-chevron-right text-gray-600 dark:text-gray-300"></i>
           </button>
           <button
-            onClick={() => onSelectedDateChange(new Date())}
+            onClick={() => onSelectedDateChange(now)}
             className="px-3 py-1 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
           >
             Сегодня
