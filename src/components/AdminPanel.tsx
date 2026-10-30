@@ -1468,7 +1468,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               : vm.recurring === "weekly"
                                 ? "Еженедельно"
                                 : "Ежемесячно"}
-                            {vm.repeatUntil ? ` до ${new Date(vm.repeatUntil).toLocaleDateString("ru-RU")}` : ""}
+                            {vm.repeatUntil ? ` до ${formatRuDate(vm.repeatUntil)}` : ""}
                           </p>
                         )}
                         {vm.description && (

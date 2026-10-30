@@ -63,6 +63,11 @@ export const serverNowHm = (): string => serverNowHmTz();
  *  ставим: «serverNowHm» тогда = локальные часы браузера, и при сбитых часах
  *  input min молча отсекал корректный выбор пользователя. */
 export const minStartHm = (dateKey: string): string => {
+  // ВАЖНО: сравнение только СТРОГО с серверным «сегодня». Раньше здесь было
+  // `!isTimeSynced()` как условие «сегодня» — при недоступном /api/time любая
+  // дата, равная дате браузера (т.е. выбранное сегодня), считалась «сегодня по
+  // серверу», и input min молча отсекал корректный выбор пользователя, а форма
+  // перебивала дату/время локальными часами («сегодня 30-е — а записало 29-е»).
   return dateKey === serverTodayKey() && isTimeSynced() ? serverNowHm() : "00:00";
 };
 
@@ -705,7 +710,13 @@ export default function UserPanel({
     id: "",
     title: "",
     description: "",
-    date: serverTodayKey(),
+    // ВАЖНО: дата по умолчанию берётся из СЕРВЕРНЫХ часов (serverTodayKeyTz),
+    // а не из new Date() браузера. Раньше при первом открытии формы до
+    // завершения /api/time дефолт считался по локальным часам устройства —
+    // при сбитых часах/дате или другом поясе форма стартовала с «29» вместо
+    // реального серверного «30», и пользователь сохранял неверную дату, ничего
+    // не заметив («сегодня у меня 30-е, а записывает 29-е»).
+    date: serverTodayKeyTz(),
     // Время начала по умолчанию — на 10 минут позже «сейчас» по серверным
     // часам, чтобы при открытии формы сразу был валидный слот (иначе
     // дефолт 10:00 оказывается в прошлом и сервер отклоняет заявку).
@@ -801,10 +812,22 @@ export default function UserPanel({
       // 29-е). Без подтверждённой синхронизации значения НЕ трогаем.
       if (!isTimeSynced()) return;
       setFormData((f) => {
-        const minS = minStartHm(f.date);
-        if (f.startTime >= minS && f.endTime > f.startTime) return f;
-        const clamped = clampFormTimes(f.date, minS, "");
-        return { ...f, startTime: clamped.startTime, endTime: clamped.endTime };
+        // Дефолтная дата формы тоже пересинхронизируется с серверным «сегодня».
+        // Если страница была открыта через полночь (или дефолт считался до
+        // первой успешной сверки часов по локальным часам устройства), поле
+        // «Дата» оставалось вчерашним — пользователь жаловался: «сегодня 30-е,
+        // а форма предлагает/записывает 29-е». Правим ТОЛЬКО если это был наш
+        // собственный дефолт (название пустое, встреча ещё не создавалась);
+        // явно выбранную пользователем дату не трогаем никогда.
+        let date = f.date;
+        const todayKey = serverTodayKeyTz();
+        if (!f.title.trim() && date && date !== todayKey && date < todayKey) {
+          date = todayKey;
+        }
+        const minS = minStartHm(date);
+        if (date === f.date && f.startTime >= minS && f.endTime > f.startTime) return f;
+        const clamped = clampFormTimes(date, f.startTime, f.endTime);
+        return { ...f, date, startTime: clamped.startTime, endTime: clamped.endTime };
       });
     });
     return () => {
@@ -1989,7 +2012,7 @@ export default function UserPanel({
                           : vm.recurring === "weekly"
                             ? "Еженедельно"
                             : "Ежемесячно"}
-                        {vm.repeatUntil ? ` до ${new Date(vm.repeatUntil).toLocaleDateString("ru-RU")}` : ""}
+                        {vm.repeatUntil ? ` до ${formatRuDate(vm.repeatUntil)}` : ""}
                       </p>
                     )}
                     {vm.description && (
@@ -2443,7 +2466,7 @@ export default function UserPanel({
                                   ? ` (${describeRRule(meeting.rrule)})`
                                   : ""}
                                 {meeting.repeatUntil
-                                  ? ` до ${new Date(meeting.repeatUntil).toLocaleDateString("ru-RU")}`
+                                  ? ` до ${formatRuDate(meeting.repeatUntil)}`
                                   : ""}
                               </span>
                             </>
