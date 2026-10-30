@@ -78,8 +78,12 @@ class SystemStatusController extends Controller
         // Планировщик (контейнер scheduler) и воркер очереди проверяются
         // РАЗНО: scheduler пишет в файл storage/cron_heartbeat.log после
         // каждого цикла schedule:run; queue — через queue:heartbeat.
-        $cronFile = storage_path('logs/cron_heartbeat.log');
-        $cronAge = is_file($cronFile) ? max(0, now()->getTimestamp() - (int) @filemtime($cronFile)) : null;
+        // Читаем СОДЕРЖИМОЕ файла (unix ts), а не filemtime(): на Windows
+        // (Docker Desktop + WSL2/bind-mount) mtime тома может «застывать»
+        // с момента создания volume — тогда UI показывал «Молчит N мин»,
+        // хотя планировщик писал heartbeat каждую минуту.
+        $cronTs = \App\Support\CronHeartbeat::lastTs();
+        $cronAge = $cronTs > 0 ? max(0, now()->getTimestamp() - $cronTs) : null;
         $queueMax = max(60, (int) env('QUEUE_HEARTBEAT_MAX_AGE', 180));
         $out['services']['scheduler'] = [
             'ok' => $cronAge !== null && $cronAge <= 150,
