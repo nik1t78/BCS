@@ -118,6 +118,15 @@ class Kernel extends ConsoleKernel
         // пишем во временный файл + rename (POSIX atomic), с проверкой результата.
         $schedule->call(function () {
             \App\Support\CronHeartbeat::write();
+            // Дублируем heartbeat в кэш (Redis): на Windows/WSL2 bind-mount
+            // файла storage/logs/cron_heartbeat.log может «застывать», и
+            // «Статус системы» показывает «Молчит N мин». Кэш-копия с TTL
+            // 3 минуты позволяет API выбрать самый свежий сигнал.
+            try {
+                cache()->put('scheduler:heartbeat', time(), now()->addMinutes(3));
+            } catch (\Throwable $e) {
+                // кэш недоступен — файл всё равно записан
+            }
         })->everyMinute()->name('scheduler-heartbeat')->withoutOverlapping(2);
 
         // Подчистка журнала посещаемости ТВ: строки, невидевшиеся 30 дней,

@@ -84,6 +84,21 @@ class SystemStatusController extends Controller
         // хотя планировщик писал heartbeat каждую минуту.
         $cronTs = \App\Support\CronHeartbeat::lastTs();
         $cronAge = $cronTs > 0 ? max(0, now()->getTimestamp() - $cronTs) : null;
+
+        // Fallback на Redis: если bind-mount storage «застыл» (Windows/WSL2),
+        // файл heartbeat может содержать старый ts, хотя планировщик жив.
+        // Scheduler пишет дубликат в кэш (TTL 3 мин) — если он свежее файла,
+        // доверяем кэшу: Redis не зависит от метаданных томов.
+        try {
+            $cacheTs = (int) cache()->get('scheduler:heartbeat');
+            if ($cacheTs > $cronTs) {
+                $cronTs = $cacheTs;
+                $cronAge = max(0, now()->getTimestamp() - $cronTs);
+            }
+        } catch (\Throwable $e) {
+            // кэш недоступен — остаёмся на файле
+        }
+
         $queueMax = max(60, (int) env('QUEUE_HEARTBEAT_MAX_AGE', 180));
         $out['services']['scheduler'] = [
             'ok' => $cronAge !== null && $cronAge <= 150,
