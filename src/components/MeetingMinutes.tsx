@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { MeetingMinute, MeetingTask, TaskComment, User } from "../types";
-import { toDateKey } from "../utils/dateKey";
+import { toDateKey, formatRuDate } from "../utils/dateKey";
 import {
   getMinutes,
   addMinute,
@@ -502,7 +502,7 @@ export default function MeetingMinutes({ meetingId, user, users, canWrite }: Mee
                       {t.deadline && (
                         <span className={isOverdue(t) ? "text-red-500 font-medium" : ""}>
                           <i className="fas fa-calendar mr-1"></i>
-                          {new Date(t.deadline).toLocaleDateString("ru-RU")}
+                          {formatRuDate(t.deadline)}
                           {isOverdue(t) && " · просрочено"}
                         </span>
                       )}

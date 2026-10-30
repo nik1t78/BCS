@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { User, Meeting, Tag, ScheduleConflict } from "../types";
-import { roomsAPI, meetingsAPI, syncServerTime, serverTodayKeyTz, serverNowHmTz, serverNowHmPlusMinTz } from "../api/client";
+import { roomsAPI, meetingsAPI, syncServerTime, isTimeSynced, serverTodayKeyTz, serverNowHmTz, serverNowHmPlusMinTz } from "../api/client";
 import {
   getMeetings,
   createMeeting,
@@ -58,9 +58,12 @@ export const serverNowHm = (): string => serverNowHmTz();
 
 /** Нижняя граница для поля «Начало» (type=time): если встреча сегодня —
  *  не раньше текущего серверного времени (с поправкой offset из /api/time),
- *  иначе можно выбрать уже прошедший слот и сервер отклонит заявку. */
+ *  иначе можно выбрать уже прошедший слот и сервер отклонит заявку.
+ *  БЕЗ подтверждённой синхронизации (/api/time недоступен) ограничение не
+ *  ставим: «serverNowHm» тогда = локальные часы браузера, и при сбитых часах
+ *  input min молча отсекал корректный выбор пользователя. */
 export const minStartHm = (dateKey: string): string => {
-  return dateKey === serverTodayKey() ? serverNowHm() : "00:00";
+  return dateKey === serverTodayKey() && isTimeSynced() ? serverNowHm() : "00:00";
 };
 
 /** Автоподгонка времени под выбранную дату/границы (см. эффекты в форме):
@@ -76,7 +79,10 @@ export const clampFormTimes = (
   // будущую дату слот в 21:00 абсолютно легитимен. Раньше обрезка шла для
   // любой даты — встреча на завтра/29-е молча «уезжала» с выбранного времени.
   const isToday = date === serverTodayKey();
-  if (isToday) {
+  if (isToday && isTimeSynced()) {
+    // Автоподгонка только при подтверждённой сверке часов с сервером: без
+    // /api/time «serverNowHm» = локальные часы браузера и молча перебивала
+    // корректный выбор пользователя («выбрал 30-е — записало 29-е»).
     const minS = minStartHm(date);
     if (s < minS) s = minS;
     if (isLateTime(s)) s = LATE_CREATE_LIMIT_HM;
@@ -787,6 +793,13 @@ export default function UserPanel({
     let cancelled = false;
     syncServerTime().finally(() => {
       if (cancelled) return;
+      // ВАЖНО: править слоты можно ТОЛЬКО когда часы реально сверены с
+      // сервером. Если /api/time недоступен (offset остался 0), «серверное
+      // сейчас» = локальные часы браузера — и автоподгонка молча перебивала
+      // корректный выбор пользователя на его же «прошедшее» локальное время
+      // (выбрал 30-е 12:00, а при сбитых часах/дате браузера форма подставляла
+      // 29-е). Без подтверждённой синхронизации значения НЕ трогаем.
+      if (!isTimeSynced()) return;
       setFormData((f) => {
         const minS = minStartHm(f.date);
         if (f.startTime >= minS && f.endTime > f.startTime) return f;
@@ -1091,6 +1104,13 @@ export default function UserPanel({
       // молча отклоняться («нажимаю создать — и тишина»). После sync offset
       // актуален и сравнение ниже честное.
       await syncServerTime();
+      // ЕСЛИ /api/time недоступен (offset так и остался 0), сравнивать выбор
+      // пользователя с его же локальными часами бессмысленно и опасно: при
+      // сбитых часах/дате на устройстве форма перебивала корректную дату
+      // (выбрал 30-е — автоподгонка «сдвигала» на 29-е). В этом случае
+      // ничего НЕ правим и НЕ блокируем — решение за сервером (он честно
+      // вернёт 422, если время реально прошло).
+      if (isTimeSynced()) {
       const todayKey = serverTodayKey();
       if (formData.date < todayKey) {
         alert("Нельзя создать встречу в прошедшую дату. Выберите сегодня или будущий день.");
@@ -1111,6 +1131,7 @@ export default function UserPanel({
           `Время ${formData.startTime} уже прошло — начало сдвинуто на ${newStart}, окончание ${newEnd} (длительность сохранена). Нажмите «Создать ВКС» ещё раз.`
         );
         return;
+      }
       }
     }
     // Валидация пересечений у тех же участников (кроме принудительного сохранения)

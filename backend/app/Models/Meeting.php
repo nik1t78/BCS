@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Carbon\Carbon;
+use Carbon\CarbonImmutable;
 
 class Meeting extends Model
 {
@@ -148,12 +149,28 @@ class Meeting extends Model
      */
     public function needsReminderAt($time): bool
     {
-        if (!$this->date->isToday()) return false;
-        
+        // Повторяющиеся серии: напоминание актуально и в день occurrence'а,
+        // а не только в день создания серии (иначе для weekly/monthly оно
+        // никогда не срабатывало — баг «уведомления не приходят всем»).
+        if (!$this->date->isToday() && !$this->hasOccurrenceToday()) return false;
+
         $reminderTime = Carbon::parse($this->date->toDateString() . ' ' . $this->start_time)
             ->subMinutes($this->reminder_minutes ?? 15);
-        
+
         return $reminderTime->format('H:i') === $time;
+    }
+
+    /** Приходится ли повтор этой встречи на сегодня? */
+    private function hasOccurrenceToday(): bool
+    {
+        if ($this->recurring && $this->recurring !== 'none') {
+            $today = CarbonImmutable::today();
+            if ($this->repeat_until && $today->gt(Carbon::parse((string) $this->repeat_until))) {
+                return false;
+            }
+            return \App\Services\RecurrenceService::occursOn($this, $today);
+        }
+        return false;
     }
 
     /**

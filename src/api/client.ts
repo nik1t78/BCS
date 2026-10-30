@@ -546,6 +546,16 @@ export function getTimeOffsetMs(): number {
   return timeOffsetMs;
 }
 
+/** Была ли синхронизация часов УСПЕШНОЙ (а не дефолтный offset=0).
+ *  Ключевой флаг для формы создания: пока он false, любое «серверное сейчас»
+ *  фактически равно локальному времени браузера. Если часы пользователя или
+ *  его дата сбиты, форма молча подставляла в заявку ЛОКАЛЬНУЮ дату/время —
+ *  пользователь выбирал 30-е, а создавалось 29-е («неправильная дата»). */
+let timeSyncOk = false;
+export function isTimeSynced(): boolean {
+  return timeSyncOk;
+}
+
 /** Актуализировать смещение часов (вызывается при открытии формы создания). */
 export async function syncServerTime(): Promise<void> {
   if (Date.now() - timeSyncedAt < TIME_SYNC_TTL_MS) return;
@@ -560,6 +570,7 @@ export async function syncServerTime(): Promise<void> {
     // Оценка серверного «сейчас» на момент t1: прибавляем половину времени запроса
     timeOffsetMs = serverMs + Math.round((t1 - t0) / 2) - t1;
     timeSyncedAt = Date.now();
+    timeSyncOk = true;
     // Сохраняем таймзону сервера (например "Europe/Moscow") — она нужна,
     // чтобы пересчитать «серверное сейчас» в корректные HH:mm/дату независимо
     // от того, в каком поясе живёт браузер пользователя.
