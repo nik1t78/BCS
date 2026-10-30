@@ -303,6 +303,28 @@ class MeetingController extends Controller
             $autoFixNotes[] = 'окончание автоматически сдвинуто на ' . $validated['end_time'];
         }
 
+        // Длительность по умолчанию: если фронт прислал пустой end_time (или
+        // равный началу до нормализации) — встреча 1 час, а НЕ «съеханные»
+        // произвольные значения. Это гарантирует, что сохранённая пара
+        // начало/конец совпадает с тем, что пользователь видел в форме.
+        if (!array_key_exists('end_time', $validated) || $validated['end_time'] === null || $validated['end_time'] === '') {
+            $candidateEnd = $startAt->copy()->addHour();
+            if ($candidateEnd->lessThanOrEqualTo($startAt->copy()->endOfDay())) {
+                $validated['end_time'] = $candidateEnd->format('H:i');
+            }
+        }
+
+        // Валидация даты: Laravel 'date' пропускает любой парсинг Carbon
+        // (в т.ч. относительные строки). Строго принимаем YYYY-MM-DD или
+        // DD.MM.YYYY — иначе битая дата из формы могла лечь в БД «как есть».
+        $rawDate = (string) $request->input('date');
+        if ($rawDate !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}/', substr($validated['date'], 0, 10))) {
+            // приводим к каноничному Y-m-d из разобранных компонентов
+            $validated['date'] = \Carbon\CarbonImmutable::parse($validated['date'])->toDateString();
+        } elseif (isset($validated['date'])) {
+            $validated['date'] = \Carbon\CarbonImmutable::parse($validated['date'])->toDateString();
+        }
+
         $validated['organizer_id'] = $request->user()->id;
         
         $tags = $validated['tags'] ?? null;

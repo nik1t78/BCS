@@ -34,7 +34,7 @@ import {
 } from "../utils/vksLink";
 import { createVksViaBot } from "../utils/vksBot";
 import { isLateTime, LATE_CREATE_LIMIT_HM } from "../utils/freeSlots";
-import { formatRuDate } from "../utils/dateKey";
+import { formatRuDate, addMinToHm } from "../utils/dateKey";
 
 /** «Сегодня» по локальному времени устройства — НЕ через toISOString()
  *  (UTC может сдвигать дату на день назад/вперёд → виджет показывал
@@ -72,18 +72,16 @@ export const clampFormTimes = (
 ): { startTime: string; endTime: string } => {
   let s = startTime || "10:00";
   let e = endTime || "";
-  const minS = minStartHm(date);
-  if (s < minS) s = minS;
   // Вечерний предел создания (20:00) актуален ТОЛЬКО для «сегодня»: на
   // будущую дату слот в 21:00 абсолютно легитимен. Раньше обрезка шла для
   // любой даты — встреча на завтра/29-е молча «уезжала» с выбранного времени.
   const isToday = date === serverTodayKey();
-  if (isToday && isLateTime(s)) s = LATE_CREATE_LIMIT_HM;
-  if (!e || e <= s) {
-    const [h, m] = s.split(":").map((x) => parseInt(x, 10) || 0);
-    const total = Math.min(h * 60 + m + 30, 23 * 60 + 59);
-    e = `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+  if (isToday) {
+    const minS = minStartHm(date);
+    if (s < minS) s = minS;
+    if (isLateTime(s)) s = LATE_CREATE_LIMIT_HM;
   }
+  if (!e || e <= s) e = addMinToHm(s, 30);
   return { startTime: s, endTime: e };
 };
 
@@ -378,11 +376,15 @@ function CreateMeetingForm({
               const startTime = e.target.value;
               setFormData((f) => {
                 const next = { ...f, startTime };
-                // конец всегда позже начала — иначе 422/500 от сервера
+                // Конец всегда позже начала — иначе 422/500 от сервера.
+                // Сохраняем ДЛИТЕЛЬНОСТЬ встречи (сдвигаем конец на то же число
+                // минут), а не ставим жёсткие +60: раньше при выборе начала
+                // «12:58» конец молча пересчитывался и дата/время «уезжали».
                 if (!next.endTime || next.endTime <= startTime) {
-                  const [h, m] = startTime.split(":").map((x) => parseInt(x, 10) || 0);
-                  const total = Math.min(h * 60 + m + 60, 23 * 60 + 59);
-                  next.endTime = `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+                  const [sh, sm] = (f.startTime || startTime).split(":").map((x) => parseInt(x, 10) || 0);
+                  const [eh, em] = (f.endTime || "").split(":").map((x) => parseInt(x, 10) || 0);
+                  const dur = f.endTime && eh * 60 + em > sh * 60 + sm ? eh * 60 + em - (sh * 60 + sm) : 60;
+                  next.endTime = addMinToHm(startTime, dur);
                 }
                 return next;
               });
@@ -701,17 +703,12 @@ export default function UserPanel({
     // Время начала по умолчанию — на 10 минут позже «сейчас» по серверным
     // часам, чтобы при открытии формы сразу был валидный слот (иначе
     // дефолт 10:00 оказывается в прошлом и сервер отклоняет заявку).
-    startTime: (() => {
-      // serverNowHm() уже в поясе сервера (см. /api/time): прибавляем 10 минут
-      const [h, m] = serverNowHm().split(":").map(Number);
-      const total = Math.min(h * 60 + m + 10, 20 * 60);
-      return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-    })(),
-    endTime: (() => {
-      const [h, m] = serverNowHm().split(":").map(Number);
-      const total = Math.min(h * 60 + m + 70, 20 * 60);
-      return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-    })(),
+    // ВАЖНО: раньше здесь стоял жёсткий потолок Math.min(..., 20*60) — после
+    // 19:50 форма молча подставляла «20:00–20:00», пользователь правил время
+    // вручную, а автоподгонка при открытии возвращала обрезанные значения
+    // обратно («выбрал 12:58 — записало другое»). Теперь просто now+10/+70.
+    startTime: addMinToHm(serverNowHm(), 10),
+    endTime: addMinToHm(serverNowHm(), 70),
     organizerId: user.id,
     participants: [user.id],
     participantEmails: [],
@@ -1090,10 +1087,9 @@ export default function UserPanel({
     if (!editingMeeting) {
       // Часы формы сверяем с серверным временем ЗА проверкой: синхронизация
       // выполняется при открытии формы и раз в 5 минут. Если страница была
-      // открыта дольше и «серверное сейчас» устарело, корректная вечерняя
-      // встреча могла молча отклоняться («нажимаю создать — и тишина»:
-      // alert проходил, пока пользователь переключал окно). После sync
-      // offset актуален и сравнение ниже честное.
+      // открыта дольше и «серверное сейчас» устарело, корректный слот мог
+      // молча отклоняться («нажимаю создать — и тишина»). После sync offset
+      // актуален и сравнение ниже честное.
       await syncServerTime();
       const todayKey = serverTodayKey();
       if (formData.date < todayKey) {
@@ -1101,15 +1097,18 @@ export default function UserPanel({
         return;
       }
       if (formData.date === todayKey && formData.startTime < serverNowHm()) {
-        // Не просто блокируем — сами сдвигаем слот на «сейчас+10 мин»
-        // (serverNowHmPlusMinTz — по поясу СЕРВЕРА, без ручного сложения
-        // часов: раньше здесь прибавляли 10 минут к строке HH:mm и при
-        // пересечении полуночи получался невалидный «24:xx», который input
-        //[type=time] отклонял — форма залипала, «нажимаю создать — тишина»).
-        const clamped = clampFormTimes(formData.date, serverNowHmPlusMinTz(10), "");
-        setFormData((f) => ({ ...f, startTime: clamped.startTime, endTime: clamped.endTime }));
+        // Раньше здесь была ТИХАЯ правка: начало ставилось «сейчас+10», а
+        // конец — «начало+30». Длительная встреча пользователя (например,
+        // 12:58–13:58) молча укорачивалась до 30 минут — «записало не то».
+        // Теперь сдвигаем НАЧАЛО на «сейчас+10», а ДЛИТЕЛЬНОСТЬ сохраняем.
+        const [sh, sm] = formData.startTime.split(":").map((x) => parseInt(x, 10) || 0);
+        const [eh, em] = formData.endTime.split(":").map((x) => parseInt(x, 10) || 0);
+        const durationMin = Math.max(eh * 60 + em - (sh * 60 + sm), 30);
+        const newStart = serverNowHmPlusMinTz(10);
+        const newEnd = addMinToHm(newStart, durationMin);
+        setFormData((f) => ({ ...f, startTime: newStart, endTime: newEnd }));
         alert(
-          `Время ${formData.startTime} уже прошло — начало сдвинуто на ${clamped.startTime}, конец ${clamped.endTime}. Нажмите «Создать ВКС» ещё раз.`
+          `Время ${formData.startTime} уже прошло — начало сдвинуто на ${newStart}, окончание ${newEnd} (длительность сохранена). Нажмите «Создать ВКС» ещё раз.`
         );
         return;
       }
@@ -1143,11 +1142,13 @@ export default function UserPanel({
     payload.endTime = normHm(payload.endTime);
     payload.reminderMinutes = normalizeReminderMinutes(payload.reminderMinutes);
     if (payload.endTime <= payload.startTime) {
-      // конец не позже начала — авто-сдвигаем (+60 мин), иначе валидация
-      // 'after:start_time' на сервере вернёт ошибку и встреча не сохранится
-      const [h, m] = payload.startTime.split(":").map((x) => parseInt(x, 10) || 0);
-      const total = Math.min(h * 60 + m + 60, 23 * 60 + 59);
-      payload.endTime = `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+      // конец не позже начала — сдвигаем конец на длительность (или +60 мин),
+      // иначе валидация 'after:start_time' на сервере вернёт 422 и встреча
+      // не сохранится («нажимаю создать — тишина»)
+      const [sh, sm] = payload.startTime.split(":").map((x) => parseInt(x, 10) || 0);
+      const [eh, em] = formData.endTime.split(":").map((x) => parseInt(x, 10) || 0);
+      const dur = eh * 60 + em > sh * 60 + sm ? eh * 60 + em - (sh * 60 + sm) : 60;
+      payload.endTime = addMinToHm(payload.startTime, dur);
     }
     if (payload.recurring === "none") delete payload.repeatUntil;
     else if (payload.repeatUntil && payload.repeatUntil < payload.date) {
@@ -1648,11 +1649,14 @@ export default function UserPanel({
                         const startTime = e.target.value;
                         setFormData((f) => {
                           const next = { ...f, startTime };
-                          // конец всегда позже начала — иначе сервер отклоняет заявку
+                          // Конец всегда позже начала (иначе сервер → 422), но
+                          // с сохранением ДЛИТЕЛЬНОСТИ: раньше жёсткий +60 и
+                          // обрезка молча меняли выбранное время встречи.
                           if (!next.endTime || next.endTime <= startTime) {
-                            const [h, m] = startTime.split(":").map((x) => parseInt(x, 10) || 0);
-                            const total = Math.min(h * 60 + m + 60, 23 * 60 + 59);
-                            next.endTime = `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+                            const [sh, sm] = (f.startTime || startTime).split(":").map((x) => parseInt(x, 10) || 0);
+                            const [eh, em] = (f.endTime || "").split(":").map((x) => parseInt(x, 10) || 0);
+                            const dur = f.endTime && eh * 60 + em > sh * 60 + sm ? eh * 60 + em - (sh * 60 + sm) : 60;
+                            next.endTime = addMinToHm(startTime, dur);
                           }
                           return next;
                         });

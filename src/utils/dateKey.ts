@@ -22,6 +22,19 @@ export const formatRuDate = (v: string | Date): string => {
   return toDateKey(d).split("-").reverse().join(".");
 };
 
+/** Прибавить минуты к строке HH:mm с переносом через полночь («23:50»+30 → «00:20»).
+ *  Раньше везде складывали минуты напрямую: Math.floor(total/60) без % 24 давал
+ *  невалидные «24:00», которые input[type=time] отклоняет, а сервер — правилом
+ *  regex H:i (422). Это и было причиной «выбрал 12:58, записало/не создало». */
+export const addMinToHm = (hm: string, addMinutes: number): string => {
+  const m = hm.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return hm;
+  let total = Number(m[1]) * 60 + Number(m[2]) + addMinutes;
+  if (total < 0) total = 0;
+  if (total >= 24 * 60) total = 24 * 60 - 1; // 23:59 — за полночь встречи не планируем
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+};
+
 /** Полночь ЛОКАЛЬНОГО дня для ключа даты YYYY-MM-DD или Date (для сравнений
  *  «в пределах недели» и т.п.) — без сдвига на UTC-полночь. */
 export const startOfDayLocal = (v: string | Date): Date => {
