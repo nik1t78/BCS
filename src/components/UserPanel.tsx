@@ -25,7 +25,7 @@ import {
 import * as storeApi from "../store-api";
 import TagsSelector from "./TagsSelector";
 import MeetingRsvp from "./MeetingRsvp";
-import { describeRRule } from "../utils/recurrence";
+import { describeRRule, occursOn, withDate, MEETING_OCCURRENCES_LIMIT_DAYS } from "../utils/recurrence";
 import MeetingHistoryView from "./MeetingHistoryView";
 import MeetingMinutes from "./MeetingMinutes";
 import { SortMode, SORT_OPTIONS, sortMeetings, getMeetingGroup } from "../utils/meetingSort";
@@ -1037,14 +1037,47 @@ export default function UserPanel({
     }
     return true;
   });
+  // Разворачивание повторов для списков («Мои конференции», «Все конференции»).
+  // Раньше карточка повторяющейся встречи показывала ДАТУ ОСНОВАНИЯ серии:
+  // создали «ежедневно» 29.10, а на 30.10 в списке всё ещё висело «29.10.2026»
+  // («выбрал 30-е — показывает 29-е»). Здесь серия заменяется её ближайшим
+  // предстоящим вхождением, и дата на карточке = реальный день проведения.
+  const expandRecurringUpcoming = (list: Meeting[]): Meeting[] => {
+    const today = serverTodayKeyTz();
+    const out: Meeting[] = [];
+    for (const m of list) {
+      if (!m.recurring || m.recurring === "none" || m.status !== "scheduled") {
+        out.push(m);
+        continue;
+      }
+      if (`${m.date}T${m.endTime || m.startTime || "23:59"}` >= nowIso()) {
+        out.push(m); // базовая дата ещё актуальна
+        continue;
+      }
+      let nextDate: Date | null = null;
+      for (let i = 1; i <= MEETING_OCCURRENCES_LIMIT_DAYS; i++) {
+        const d = new Date(today + "T00:00:00");
+        d.setDate(d.getDate() + i - 1);
+        if (occursOn(m, d)) {
+          nextDate = d;
+          break;
+        }
+      }
+      out.push(nextDate ? withDate(m, nextDate) : m);
+    }
+    return out;
+  };
+
   const sortedMeetings = (() => {
     // «Предстоящие» (фильтр по умолчанию): показываем только активные встречи —
     // запланированные/идущие, ещё не завершившиеся по времени. Встречи из
     // прошлого (зависшие в статусе scheduled, т.к. бэкенд не авто-завершает их)
     // здесь НЕ показываем — они доступны в фильтре «Прошедшие».
-    if (statusFilter !== "upcoming") return sortMeetings(filteredMeetings, sortMode);
+    if (statusFilter !== "upcoming") return sortMeetings(expandRecurringUpcoming(filteredMeetings), sortMode);
     return sortMeetings(
-      filteredMeetings.filter((m) => `${m.date}T${m.endTime || m.startTime || "23:59"}` >= nowIso()),
+      expandRecurringUpcoming(
+        filteredMeetings.filter((m) => `${m.date}T${m.endTime || m.startTime || "23:59"}` >= nowIso())
+      ),
       sortMode
     );
   })();
