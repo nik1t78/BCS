@@ -779,7 +779,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     const [nh, nm] = startTime.split(":").map(Number);
     const endTotal = Math.min(nh * 60 + nm + durationMin, 23 * 60 + 45);
     const endTime = `${String(Math.floor(endTotal / 60)).padStart(2, "0")}:${String(endTotal % 60).padStart(2, "0")}`;
-    const when = new Date(`${dateKey}T00:00:00`).toLocaleDateString("ru-RU");
+    const when = formatRuDate(dateKey);
     if (!confirm(`Перенести «${m.title}» на ${when}, ${startTime}?`)) return;
 
     try {
