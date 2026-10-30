@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { MeetingMinute, MeetingTask, TaskComment, User } from "../types";
+import { toDateKey } from "../utils/dateKey";
 import {
   getMinutes,
   addMinute,
@@ -177,7 +178,7 @@ export default function MeetingMinutes({ meetingId, user, users, canWrite }: Mee
   };
 
   const isOverdue = (t: MeetingTask) =>
-    !!t.deadline && t.status !== "done" && t.deadline < new Date().toISOString().slice(0, 10);
+    !!t.deadline && t.status !== "done" && t.deadline < toDateKey(new Date());
 
   const doneCount = tasks.filter((t) => t.status === "done").length;
 

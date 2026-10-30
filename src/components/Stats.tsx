@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { User, Meeting } from "../types";
 import { getMeetings, getUsersForDisplay } from "../store-api";
+import { startOfDayLocal } from "../utils/dateKey";
 
 interface StatsProps {
   user: User;
@@ -113,7 +114,7 @@ export default function Stats({ user }: StatsProps) {
       weekStart.setDate(now.getDate() - now.getDay() + 1);
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekStart.getDate() + 6);
-      const mDate = new Date(m.date);
+      const mDate = startOfDayLocal(m.date);
       return mDate >= weekStart && mDate <= weekEnd;
     }).length,
     highPriority: meetings.filter((m) => m.priority === "high").length,

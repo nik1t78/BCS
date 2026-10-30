@@ -8,7 +8,7 @@ import RoomBookingModal from "./RoomBookingModal";
 import UserPanel from "./UserPanel";
 import type { MeetingPrefill } from "./UserPanel";
 import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
-import { toDateKey } from "../utils/dateKey";
+import { toDateKey, formatRuDate } from "../utils/dateKey";
 import { icsAPI } from "../api/client";
 
 interface DashboardProps {
@@ -356,7 +356,7 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
                         <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4">
                           <p className="text-sm text-purple-600 dark:text-purple-400 font-medium">Дата и время</p>
                           <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">
-                            {new Date(nextMeeting.date).toLocaleDateString("ru-RU")}
+                            {formatRuDate(nextMeeting.date)}
                           </p>
                           <p className="text-sm text-gray-600 dark:text-gray-400">
                             {nextMeeting.startTime} - {nextMeeting.endTime}
@@ -579,7 +579,7 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
                 </div>
                 <p className="text-gray-600 dark:text-gray-300 mb-1">
                   <i className="far fa-clock mr-2 text-blue-500"></i>
-                  {new Date(detailMeeting.date).toLocaleDateString("ru-RU")} • {detailMeeting.startTime}–
+                  {formatRuDate(detailMeeting.date)} • {detailMeeting.startTime}–
                   {detailMeeting.endTime}
                 </p>
                 <p className="text-gray-600 dark:text-gray-300 mb-1">

@@ -1,4 +1,5 @@
 import { Meeting } from "../types";
+import { toDateKey } from "./dateKey";
 
 export type SortMode = "smart" | "soonest" | "latest" | "title" | "newest";
 
@@ -17,14 +18,17 @@ export function getMeetingGroup(m: Meeting): { key: string; label: string } {
   if (m.status === "completed" || m.status === "cancelled") {
     return { key: "past", label: "Прошедшие и отменённые" };
   }
+  // ВАЖНО: локальные ключи дат, НЕ toISOString(): при TZ=UTC+... evening
+  // toISOString().slice(0,10) возвращает «вчера» — встречи попадали не в ту
+  // группу («Сегодня»/«Завтра»), дата отображалась на день раньше.
   const today = new Date();
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const iso = (d: Date) => toDateKey(d);
   const tomorrow = new Date(today);
   tomorrow.setDate(today.getDate() + 1);
   const weekEnd = new Date(today);
   weekEnd.setDate(today.getDate() + 7);
   const dt = toDateTime(m);
-  const nowStr = new Date().toISOString().slice(0, 16);
+  const nowStr = `${toDateKey(today)}T${String(today.getHours()).padStart(2, "0")}:${String(today.getMinutes()).padStart(2, "0")}`;
   if (dt.slice(0, 10) === iso(today)) return { key: "today", label: "Сегодня" };
   if (dt.slice(0, 10) === iso(tomorrow)) return { key: "tomorrow", label: "Завтра" };
   if (dt.slice(0, 10) <= iso(weekEnd)) return { key: "week", label: "Ближайшая неделя" };

@@ -3,6 +3,7 @@ import { roomsAPI } from "../api/client";
 import type { Room, RoomAvailability } from "../types";
 import type { RoomSchedule } from "../utils/roomSchedule";
 import ScheduleEditor from "./ScheduleEditor";
+import { toDateKey } from "../utils/dateKey";
 
 interface RoomsManagerProps {
   isAdmin: boolean;
@@ -128,7 +129,7 @@ export default function RoomsManager({ isAdmin, userDepartment }: RoomsManagerPr
   const [formSchedule, setFormSchedule] = useState<RoomSchedule | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [avail, setAvail] = useState<Record<string, RoomAvailability>>({});
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(toDateKey(new Date()));
   // RBAC-фильтр: только комнаты, доступные текущему пользователю
   // (публичные + своего подразделения). Показывать все — переключатель.
   const [onlyMine, setOnlyMine] = useState(false);

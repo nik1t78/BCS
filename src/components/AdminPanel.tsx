@@ -10,6 +10,7 @@ import TvScreenPreview from "./TvScreenPreview";
 import OutlookCalendar, { OutlookView } from "./OutlookCalendar";
 import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { openVksCreatePage } from "../utils/vksBot";
+import { formatRuDate, startOfDayLocal, toDateKey } from "../utils/dateKey";
 import {
   getUsers,
   getMeetings,
@@ -847,7 +848,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
         weekStart.setDate(now.getDate() - now.getDay() + 1);
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekStart.getDate() + 6);
-        const mDate = new Date(m.date);
+        const mDate = startOfDayLocal(m.date);
         return mDate >= weekStart && mDate <= weekEnd;
       }).length,
   };
@@ -1250,7 +1251,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 onClick={() => {
                   setShowMeetingForm(true);
                   setEditingMeeting(null);
-                  setMeetingForm({ ...emptyMeeting, date: new Date().toISOString().slice(0, 10) });
+                  setMeetingForm({ ...emptyMeeting, date: toDateKey(new Date()) });
                 }}
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
               >
@@ -1439,7 +1440,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
                         <p>
                           <i className="fas fa-calendar mr-2 text-blue-500"></i>
-                          {new Date(vm.date).toLocaleDateString("ru-RU")}
+                          {formatRuDate(vm.date)}
                           <span className="mx-2">•</span>
                           <i className="fas fa-clock mr-2 text-blue-500"></i>
                           {vm.startTime} - {vm.endTime}

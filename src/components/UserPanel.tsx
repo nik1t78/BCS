@@ -34,6 +34,7 @@ import {
 } from "../utils/vksLink";
 import { createVksViaBot } from "../utils/vksBot";
 import { isLateTime, LATE_CREATE_LIMIT_HM } from "../utils/freeSlots";
+import { formatRuDate } from "../utils/dateKey";
 
 /** «Сегодня» по локальному времени устройства — НЕ через toISOString()
  *  (UTC может сдвигать дату на день назад/вперёд → виджет показывал
@@ -1926,7 +1927,7 @@ export default function UserPanel({
                   <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
                     <p>
                       <i className="fas fa-calendar mr-2 text-blue-500"></i>
-                      {new Date(vm.date).toLocaleDateString("ru-RU")}
+                      {formatRuDate(vm.date)}
                       <span className="mx-2">•</span>
                       <i className="fas fa-clock mr-2 text-blue-500"></i>
                       {vm.startTime} - {vm.endTime}
@@ -2376,7 +2377,7 @@ export default function UserPanel({
                         </div>
                         <p className={`${compact ? "text-xs" : "text-sm"} text-gray-600 dark:text-gray-400`}>
                           <i className="fas fa-calendar mr-1"></i>
-                          {new Date(meeting.date).toLocaleDateString("ru-RU")}
+                          {formatRuDate(meeting.date)}
                           <span className="mx-2">•</span>
                           <i className="fas fa-clock mr-1"></i>
                           {meeting.startTime} - {meeting.endTime}
