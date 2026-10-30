@@ -9,7 +9,7 @@ import UserPanel from "./UserPanel";
 import type { MeetingPrefill } from "./UserPanel";
 import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { toDateKey, formatRuDate } from "../utils/dateKey";
-import { icsAPI, guessServerTodayKey, syncServerTime, serverNowDate } from "../api/client";
+import { icsAPI, guessServerTodayKey, syncServerTime, serverNowDate, serverTodayKeyTz, serverNowHmTz } from "../api/client";
 
 /** Часы главной страницы: «сейчас» по СЕРВЕРНОМУ времени (с offset из
  *  /api/time / localStorage), а не по часам браузера. При сбитой дате/времени
@@ -245,13 +245,30 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
     openCreatePanel({ date: dateKey, startTime, endTime, room: roomName, autoLink: true });
   };
 
-  // Быстрая кнопка «Выбрать зал» — ближайшее 15-минутное время сегодня
+  // Быстрая кнопка «Выбрать зал» — ближайшее 15-минутное время сегодня.
+  // ВАЖНО: дата/время берутся из ХЕЛПЕРОВ серверного времени (а не из
+  // currentTime напрямую): toDateKey/currentTime.getHours() читают момент
+  // времени В ПОЯСЕ БРАУЗЕРА, поэтому при поясе устройства ≠ поясу сервера
+  // (командировка, VPS в UTC) предзаполнение уезжало на сутки назад —
+  // «ставлю 30, а модалка открывает 29». nowForUi уже учитывает offset из
+  // /api/time, но не таймзону; serverTodayKeyTz/serverNowHmTz — через Intl с
+  // таймзоной сервера, как и серверная валидация Laravel.
   const openBookingNow = () => {
-    const rounded = Math.ceil((currentTime.getHours() * 60 + currentTime.getMinutes()) / 15) * 15;
+    let todayK: string;
+    let nowHm: string;
+    try {
+      todayK = serverTodayKeyTz();
+      nowHm = serverNowHmTz();
+    } catch {
+      todayK = toDateKey(currentTime);
+      nowHm = currentTime.toTimeString().slice(0, 5);
+    }
+    const [h, m] = nowHm.split(":").map(Number);
+    const rounded = Math.ceil(((h || 0) * 60 + (m || 0)) / 15) * 15;
     const clamped = Math.min(rounded, 23 * 60 + 45);
     const fmt = (mins: number) =>
       `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
-    setBookingAt({ date: toDateKey(currentTime), startTime: fmt(clamped) });
+    setBookingAt({ date: todayK, startTime: fmt(clamped) });
     setBookingOpen(true);
   };
 
