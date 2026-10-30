@@ -21,16 +21,28 @@ export function getMeetingGroup(m: Meeting): { key: string; label: string } {
   // ВАЖНО: локальные ключи дат, НЕ toISOString(): при TZ=UTC+... evening
   // toISOString().slice(0,10) возвращает «вчера» — встречи попадали не в ту
   // группу («Сегодня»/«Завтра»), дата отображалась на день раньше.
+  // «Сегодня/Завтра» считаем по СЕРВЕРНЫМ часам (offset из /api/time сохраняется
+  // в localStorage): при сбитых часах/дате на компьютере пользователя встреча
+  // на 30-е попадала в группу «29-го» и наоборот («неправильная дата в
+  // Расписании»). Ключевые слова ISO вставляются вручную —Intl форматирует
+  // ru-RU через точку, а нам нужен YYYY-MM-DD для сравнения с m.date.
   const today = new Date();
   const iso = (d: Date) => toDateKey(d);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
+  const serverToday = guessServerToday();
+  const tomorrowParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: getServerTimezone(),
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(guessNowMs() + 86_400_000));
+  const tp = (t: string) => tomorrowParts.find((p) => p.type === t)?.value ?? "00";
+  const tomorrowServer = `${tp("year")}-${tp("month")}-${tp("day")}`;
   const weekEnd = new Date(today);
   weekEnd.setDate(today.getDate() + 7);
   const dt = toDateTime(m);
   const nowStr = `${toDateKey(today)}T${String(today.getHours()).padStart(2, "0")}:${String(today.getMinutes()).padStart(2, "0")}`;
-  if (dt.slice(0, 10) === iso(today)) return { key: "today", label: "Сегодня" };
-  if (dt.slice(0, 10) === iso(tomorrow)) return { key: "tomorrow", label: "Завтра" };
+  if (dt.slice(0, 10) === serverToday) return { key: "today", label: "Сегодня" };
+  if (dt.slice(0, 10) === tomorrowServer) return { key: "tomorrow", label: "Завтра" };
   if (dt.slice(0, 10) <= iso(weekEnd)) return { key: "week", label: "Ближайшая неделя" };
   if (dt < nowStr) return { key: "overdue", label: "Без точной даты" };
   return { key: "later", label: "Позже" };

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { User, Meeting } from "../types";
-import { authAPI, downloadBlob, adminLoadAPI, roomsAPI } from "../api/client";
+import { authAPI, downloadBlob, adminLoadAPI, roomsAPI, guessServerTodayKey } from "../api/client";
 import { unwrapList, mapMeeting } from "../store-api";
 import { exportToExcel } from "../utils/export";
 import { SortMode, SORT_OPTIONS, sortMeetings } from "../utils/meetingSort";
@@ -547,7 +547,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     id: "",
     title: "",
     description: "",
-    date: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`,
+    date: guessServerTodayKey(),
     startTime: "10:00",
     endTime: "11:00",
     organizerId: user.id,
@@ -1251,7 +1251,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 onClick={() => {
                   setShowMeetingForm(true);
                   setEditingMeeting(null);
-                  setMeetingForm({ ...emptyMeeting, date: toDateKey(new Date()) });
+                  setMeetingForm({ ...emptyMeeting, date: guessServerTodayKey() });
                 }}
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
               >

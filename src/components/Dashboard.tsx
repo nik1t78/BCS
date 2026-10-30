@@ -9,7 +9,7 @@ import UserPanel from "./UserPanel";
 import type { MeetingPrefill } from "./UserPanel";
 import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { toDateKey, formatRuDate } from "../utils/dateKey";
-import { icsAPI } from "../api/client";
+import { icsAPI, guessServerTodayKey } from "../api/client";
 
 interface DashboardProps {
   user: User;
@@ -45,7 +45,7 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
   // Модалка выбора зала (клик по пустому слоту календаря / кнопка «Выбрать зал»)
   const [bookingOpen, setBookingOpen] = useState(false);
   const [bookingAt, setBookingAt] = useState<{ date: string; startTime: string; endTime?: string; room?: string }>({
-    date: toDateKey(new Date()),
+    date: guessServerTodayKey(),
     startTime: "09:00",
   });
   // Панель создания ВКС прямо на главной (после выбора зала)

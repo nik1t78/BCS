@@ -571,6 +571,13 @@ export async function syncServerTime(): Promise<void> {
     timeOffsetMs = serverMs + Math.round((t1 - t0) / 2) - t1;
     timeSyncedAt = Date.now();
     timeSyncOk = true;
+    // Offset переживает перезагрузку страницы: начальный дефолт даты в формах
+    // (guessServerTodayKey) считает «серверное сегодня» ещё до первого /api/time.
+    try {
+      localStorage.setItem("vks_time_offset_ms", String(timeOffsetMs));
+    } catch {
+      /* приватный режим — не страшно */
+    }
     // Сохраняем таймзону сервера (например "Europe/Moscow") — она нужна,
     // чтобы пересчитать «серверное сейчас» в корректные HH:mm/дату независимо
     // от того, в каком поясе живёт браузер пользователя.
@@ -595,6 +602,46 @@ let serverTimezone = (() => {
     return "Europe/Moscow";
   }
 })();
+
+/** Явная «сегодня» по поясу сервера для произвольного момента времени. */
+export function todayKeyInServerTz(at: Date): string {
+  const parts = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: serverTimezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(at);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+/**
+ * Синхронная оценка «серверного сегодня» (YYYY-MM-DD) БЕЗ ожидания /api/time.
+ * Используется для начального дефолта даты в формах создания: раньше он
+ * считался через toDateKey(new Date()) — т.е. по ЛОКАЛЬНЫМ часам устройства.
+ * Если на компьютере пользователя сбиты дата/часы или пояс отличается от
+ * серверного, форма стартовала с «29», когда на сервере уже «30» («выбрал
+ * 30-е — записало 29-е»). Здесь берём локальную дату и корректируем её по
+ * смещению часов из последней успешной синхронизации (offset сохраняется в
+ * localStorage, поэтому доступен и после перезагрузки страницы до первого
+ * /api/time). При отсутствии offset возвращается локальная дата — эффект
+ * синхронизации при открытии формы всё равно переставит дефолт на серверный.
+ */
+export function guessServerTodayKey(): string {
+  let savedOffset = 0;
+  if (!timeSyncOk) {
+    try {
+      const raw = localStorage.getItem("vks_time_offset_ms");
+      if (raw) {
+        const v = Number(raw);
+        if (Number.isFinite(v)) savedOffset = v;
+      }
+    } catch {
+      /* приватный режим — работаем без offset */
+    }
+  }
+  return todayKeyInServerTz(new Date(Date.now() + (timeSyncOk ? timeOffsetMs : savedOffset)));
+}
 
 /** «Сейчас» с поправкой на серверные часы (Date учитывает offset). */
 export function serverNowDate(): Date {

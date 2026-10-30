@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { roomsAPI } from "../api/client";
+import { roomsAPI, guessServerTodayKey } from "../api/client";
 import type { Room, RoomAvailability } from "../types";
 import type { RoomSchedule } from "../utils/roomSchedule";
 import ScheduleEditor from "./ScheduleEditor";
@@ -129,7 +129,7 @@ export default function RoomsManager({ isAdmin, userDepartment }: RoomsManagerPr
   const [formSchedule, setFormSchedule] = useState<RoomSchedule | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [avail, setAvail] = useState<Record<string, RoomAvailability>>({});
-  const [date, setDate] = useState(toDateKey(new Date()));
+  const [date, setDate] = useState(guessServerTodayKey()); // серверное «сегодня» — при сбитых часах ПК дата не съезжала
   // RBAC-фильтр: только комнаты, доступные текущему пользователю
   // (публичные + своего подразделения). Показывать все — переключатель.
   const [onlyMine, setOnlyMine] = useState(false);

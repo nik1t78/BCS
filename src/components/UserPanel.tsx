@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { User, Meeting, Tag, ScheduleConflict } from "../types";
-import { roomsAPI, meetingsAPI, syncServerTime, isTimeSynced, serverTodayKeyTz, serverNowHmTz, serverNowHmPlusMinTz } from "../api/client";
+import { roomsAPI, meetingsAPI, syncServerTime, isTimeSynced, serverTodayKeyTz, serverNowHmTz, serverNowHmPlusMinTz, guessServerTodayKey } from "../api/client";
 import {
   getMeetings,
   createMeeting,
@@ -710,13 +710,14 @@ export default function UserPanel({
     id: "",
     title: "",
     description: "",
-    // ВАЖНО: дата по умолчанию берётся из СЕРВЕРНЫХ часов (serverTodayKeyTz),
-    // а не из new Date() браузера. Раньше при первом открытии формы до
-    // завершения /api/time дефолт считался по локальным часам устройства —
-    // при сбитых часах/дате или другом поясе форма стартовала с «29» вместо
-    // реального серверного «30», и пользователь сохранял неверную дату, ничего
-    // не заметив («сегодня у меня 30-е, а записывает 29-е»).
-    date: serverTodayKeyTz(),
+    // ВАЖНО: дата по умолчанию берётся из СЕРВЕРНЫХ часов (guessServerTodayKey —
+    // локальная дата + смещение из последней сверки /api/time; эффект при
+    // открытии формы затем подтверждает её через serverTodayKeyTz). Раньше
+    // использовалось toDateKey(new Date()) браузера — при сбитых часах/дате
+    // на устройстве или другом поясе форма стартовала с «29» вместо реального
+    // серверного «30», и пользователь сохранял неверную дату, ничего не
+    // заметив («сегодня у меня 30-е, а записывает 29-е»).
+    date: guessServerTodayKey(),
     // Время начала по умолчанию — на 10 минут позже «сейчас» по серверным
     // часам, чтобы при открытии формы сразу был валидный слот (иначе
     // дефолт 10:00 оказывается в прошлом и сервер отклоняет заявку).
