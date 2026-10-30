@@ -89,7 +89,14 @@ class NotificationController extends Controller
      */
     public function unreadCount(Request $request)
     {
-        $count = Notification::where('user_id', $request->user()->id)
+        // Гость (истёкший/отсутствующий токен sanctum) — не 500, а штатный 0:
+        // фронт опрашивает unread-count по таймеру даже после протухания сессии.
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['count' => 0]);
+        }
+
+        $count = Notification::where('user_id', $user->id)
             ->where('read', false)
             ->count();
 
