@@ -10,6 +10,7 @@ import {
 import { roomsAPI } from "../api/client";
 import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { occursOn } from "../utils/recurrence";
+import { formatRuDate } from "../utils/dateKey";
 import OutlookCalendar, { OutlookView } from "./OutlookCalendar";
 
 interface ScheduleProps {
@@ -143,7 +144,7 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
     const endTotal = Math.min(nh * 60 + nm + durationMin, 23 * 60 + 45);
     const endTime = `${String(Math.floor(endTotal / 60)).padStart(2, "0")}:${String(endTotal % 60).padStart(2, "0")}`;
 
-    const when = new Date(dateKey + "T00:00:00").toLocaleDateString("ru-RU");
+    const when = formatRuDate(dateKey);
     if (!confirm(`Перенести «${m.title}» на ${when}, ${startTime}? Участники получат уведомление.`)) return;
 
     // Проверка конфликтов расписания у участников на новой дате
@@ -375,7 +376,7 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
                   <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
                     <p>
                       <i className="fas fa-calendar mr-2 text-blue-500"></i>
-                      {new Date(`${selectedMeeting.date}T00:00:00`).toLocaleDateString("ru-RU")},{" "}
+                      {formatRuDate(selectedMeeting.date)},{" "}
                       {selectedMeeting.startTime} – {selectedMeeting.endTime}
                     </p>
                     <p>
