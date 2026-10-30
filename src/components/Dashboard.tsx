@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { User, Meeting } from "../types";
 import { getMeetings, getUsersForDisplay, updateMeeting } from "../store-api";
-import { occursOn, withDate } from "../utils/recurrence";
+import { occursOn, withDate, MEETING_OCCURRENCES_LIMIT_DAYS } from "../utils/recurrence";
 import FreeRoomsWidget from "./FreeRoomsWidget";
 import OutlookCalendar, { OutlookView } from "./OutlookCalendar";
 import RoomBookingModal from "./RoomBookingModal";
@@ -158,23 +158,56 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
     const today = toDateKey(currentTime);
     const now = currentTime.toTimeString().slice(0, 5);
 
-    const upcoming = visibleMeetings
+    // Разворачиваем повторы в реальные occurrences: раньше «Следующая
+    // конференция» брала хранимую дату серии (meeting.date), и перенесённая/
+    // повторяющаяся встреча показывалась датой основания («29.10»), хотя
+    // ближайшее вхождение было сегодня («30.10»).
+    type Occ = Meeting & { _occDate?: string };
+    const occurrences: Occ[] = [];
+    for (const m of visibleMeetings) {
+      if (m.status === "cancelled" || m.status === "completed") continue;
+      if (!m.recurring || m.recurring === "none") {
+        occurrences.push(m);
+        continue;
+      }
+      let pushedToday = false;
+      for (let i = 0; i <= MEETING_OCCURRENCES_LIMIT_DAYS; i++) {
+        const d = new Date(`${today}T00:00:00`);
+        d.setDate(d.getDate() + i);
+        if (!occursOn(m, d)) continue;
+        const occ = withDate(m, d) as Occ;
+        occ._occDate = toDateKey(d);
+        occurrences.push(occ);
+        if (i === 0) pushedToday = true;
+      }
+      // На случай, если серия уже за горизонтом развёртывания — не теряем встречу
+      if (!pushedToday && m.date >= today) occurrences.push(m);
+    }
+
+    const upcoming = occurrences
       .filter((m) => {
-        if (m.status === "cancelled" || m.status === "completed") return false;
-        if (m.date > today) return true;
-        if (m.date === today && m.startTime > now) return true;
+        const dateKey = m._occDate ?? m.date;
+        if (dateKey > today) return true;
+        if (dateKey === today && m.startTime > now) return true;
         return false;
       })
-      .sort((a, b) => (a.date !== b.date ? a.date.localeCompare(b.date) : a.startTime.localeCompare(b.startTime)));
+      .sort((a, b) => {
+        const da = a._occDate ?? a.date;
+        const db = b._occDate ?? b.date;
+        return da !== db ? da.localeCompare(db) : a.startTime.localeCompare(b.startTime);
+      });
 
     // Берём все конференции, совпадающие по дате и времени старта с ближайшей —
     // в одно время может быть несколько конференций.
     const first = upcoming[0] || null;
-    const simultaneous = first ? upcoming.filter((m) => m.date === first.date && m.startTime === first.startTime) : [];
+    const firstDate = first ? first._occDate ?? first.date : "";
+    const simultaneous = first
+      ? upcoming.filter((m) => (m._occDate ?? m.date) === firstDate && m.startTime === first.startTime)
+      : [];
     setNextMeetings(simultaneous);
 
     if (first) {
-      const targetDate = new Date(`${first.date}T${first.startTime}`);
+      const targetDate = new Date(`${firstDate}T${first.startTime}`);
       const diff = targetDate.getTime() - currentTime.getTime();
       if (diff > 0) {
         const hours = Math.floor(diff / (1000 * 60 * 60));
@@ -185,7 +218,19 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
     }
   }, [currentTime, visibleMeetings]);
 
-  const todayMeetings = visibleMeetings.filter((m) => m.date === toDateKey(currentTime));
+  const todayMeetings = (() => {
+    const tk = toDateKey(currentTime);
+    const res: Meeting[] = [];
+    for (const m of visibleMeetings) {
+      if (!m.recurring || m.recurring === "none") {
+        if (m.date === tk) res.push(m);
+        continue;
+      }
+      const d = new Date(`${tk}T00:00:00`);
+      if (occursOn(m, d)) res.push(withDate(m, d));
+    }
+    return res;
+  })();
   const getUserName = (id: string) => users.find((u) => Number(u.id) === Number(id))?.name || "Неизвестный";
 
   // Видимые дни текущей вкладки (день / неделя / месяц)

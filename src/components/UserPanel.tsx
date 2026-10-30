@@ -1050,18 +1050,22 @@ export default function UserPanel({
         out.push(m);
         continue;
       }
+      // Встреча ещё активна на своей хранимой дате — показываем как есть.
+      // Сюда попадают и перенесённые серии (date = новая дата): раньше из-за
+      // проверки «>= nowIso» карточка зависала на старой дате основания.
       if (`${m.date}T${m.endTime || m.startTime || "23:59"}` >= nowIso()) {
-        out.push(m); // базовая дата ещё актуальна
+        out.push(m);
         continue;
       }
       let nextDate: Date | null = null;
-      for (let i = 1; i <= MEETING_OCCURRENCES_LIMIT_DAYS; i++) {
+      for (let i = 0; i <= MEETING_OCCURRENCES_LIMIT_DAYS; i++) {
         const d = new Date(today + "T00:00:00");
-        d.setDate(d.getDate() + i - 1);
-        if (occursOn(m, d)) {
-          nextDate = d;
-          break;
-        }
+        d.setDate(d.getDate() + i);
+        if (!occursOn(m, d)) continue;
+        // occurrence должна быть ещё впереди (не завершившийся сегодня слот)
+        if (i === 0 && `${today}T${m.endTime || m.startTime || "23:59"}` < nowIso()) continue;
+        nextDate = d;
+        break;
       }
       out.push(nextDate ? withDate(m, nextDate) : m);
     }

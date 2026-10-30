@@ -15,20 +15,70 @@ export const MEETING_OCCURRENCES_LIMIT_DAYS = 92; // ~3 месяца вперё�
  * (с учётом повтора daily/weekly/monthly и repeatUntil).
  */
 export function occursOn(meeting: Meeting, date: Date): boolean {
-  const dayKey = toDateKey(date);
-  if (meeting.date === dayKey) return true;
+  return occursOnWithBase(meeting, date).occurs;
+}
 
+/**
+ * То же, что occursOn, но возвращает ещё и effective-base — дату серии с
+ * учётом переноса (reschedule). Нужно для списков «Прошедшие»: там базовая
+ * дата может быть МЕНЬШЕ фактической (встречу перенесли из прошлого в
+ * сегодня/будущее), и обычное правило «не показывать дни до base» ошибочно
+ * скрывало такие встречи.
+ */
+export function occursOnWithBase(
+  meeting: Meeting,
+  date: Date,
+  opts?: { ignorePastGuard?: boolean }
+): { occurs: boolean; baseDate: string } {
+  const dayKey = toDateKey(date);
+  const hm = meeting.endTime || meeting.startTime || "23:59";
+
+  // Перенесённая серия: фактически встреча проходит позже хранимой даты
+  // основания (например создали 28.10, перенесли на 30.10). Берём за базу
+  // максимум из base-даты и последней прошедшей occurrence-даты.
+  let baseDate = meeting.date;
+  if (meeting.recurring && meeting.recurring !== "none" && meeting.status !== "cancelled") {
+    for (let i = 0; i <= MEETING_OCCURRENCES_LIMIT_DAYS; i++) {
+      const d = new Date(`${meeting.date}T00:00:00`);
+      d.setDate(d.getDate() + i);
+      const key = toDateKey(d);
+      if (key >= dayKey) break;
+      if (baseOccurs(meeting, d)) {
+        if (`${key}T${hm}` >= dayKey + "T00:00") {
+          baseDate = key; // эта occurrence ещё активна (сегодня)
+          break;
+        }
+        baseDate = key; // последняя прошедшая — сдвигаем базу на неё
+      }
+    }
+  }
+
+  if (dayKey === baseDate) return { occurs: true, baseDate };
+  if (dayKey > baseDate) {
+    return { occurs: baseOccurs(meeting, date, baseDate), baseDate };
+  }
+  // dayKey < baseDate: показываем только если это сама хранимая дата серии
+  // (перенесённая на будущее встреча) или включён обход защиты от прошлого.
+  if (dayKey === meeting.date || opts?.ignorePastGuard) {
+    return { occurs: true, baseDate: meeting.date };
+  }
+  return { occurs: false, baseDate };
+}
+
+// Собственно расписание повтора относительно указанной базовой даты.
+function baseOccurs(meeting: Meeting, date: Date, baseOverride?: string): boolean {
+  const dayKey = toDateKey(date);
   if (!meeting.recurring || meeting.recurring === "none") return false;
   if (meeting.status === "cancelled") return false;
   if (meeting.repeatUntil && dayKey > meeting.repeatUntil) return false;
-  if (dayKey <= meeting.date) return false;
+  if (dayKey <= (baseOverride ?? meeting.date)) return false;
 
   // Ограничиваем горизонт развёртывания, чтобы не перебирать вечность
   const horizon = new Date(date);
   horizon.setDate(horizon.getDate() - MEETING_OCCURRENCES_LIMIT_DAYS);
   if (new Date(meeting.date) < horizon) return false;
 
-  const base = new Date(`${meeting.date}T00:00:00`);
+  const base = new Date(`${baseOverride ?? meeting.date}T00:00:00`);
   switch (meeting.recurring) {
     case "daily":
       return true;
