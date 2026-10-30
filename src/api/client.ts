@@ -628,19 +628,35 @@ export function todayKeyInServerTz(at: Date): string {
  * синхронизации при открытии формы всё равно переставит дефолт на серверный.
  */
 export function guessServerTodayKey(): string {
-  let savedOffset = 0;
+  // КРИТИЧНО: если синхронизация НЕ подтверждена, локальные часы устройства
+  // могут врать на сутки (сбитая дата/время в Windows). Раньше в этом случае
+  // возвращалась ЛОКАЛЬНАЯ дата — форма стартовала с «29», сервер хранил
+  // «30», и встреча «записывалась прошедшей датой» («выбрал 30-е — а там 29-е»).
+  // Теперь при отсутствии доверенного offset дефолт = «завтра»: это ВСЕГДА
+  // будущий день относительно серверных часов (расхождение часов клиента не
+  // может превышать сутки), а эффект синхронизации при открытии формы
+  // переставит его на настоящее серверное «сегодня» сразу после /api/time.
   if (!timeSyncOk) {
+    let savedValid = false;
+    let savedOffset = 0;
     try {
       const raw = localStorage.getItem("vks_time_offset_ms");
       if (raw) {
         const v = Number(raw);
-        if (Number.isFinite(v)) savedOffset = v;
+        if (Number.isFinite(v) && Math.abs(v) < 6 * 3600_000) {
+          savedValid = true;
+          savedOffset = v;
+        }
       }
     } catch {
-      /* приватный режим — работаем без offset */
+      /* приватный режим */
     }
+    if (savedValid) {
+      return todayKeyInServerTz(new Date(Date.now() + savedOffset));
+    }
+    return todayKeyInServerTz(new Date(Date.now() + 24 * 3600_000));
   }
-  return todayKeyInServerTz(new Date(Date.now() + (timeSyncOk ? timeOffsetMs : savedOffset)));
+  return todayKeyInServerTz(new Date(Date.now() + timeOffsetMs));
 }
 
 /** «Сейчас» с поправкой на серверные часы (Date учитывает offset). */

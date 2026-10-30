@@ -333,7 +333,7 @@ function CreateMeetingForm({
           <input
             type="date"
             required
-            min={serverTodayKey()}
+            min={isTimeSynced() ? serverTodayKey() : undefined}
             value={formData.date}
             onChange={(e) => {
               const date = e.target.value;
@@ -825,8 +825,15 @@ export default function UserPanel({
         if (!f.title.trim() && date && date !== todayKey && date < todayKey) {
           date = todayKey;
         }
-        const minS = minStartHm(date);
-        if (date === f.date && f.startTime >= minS && f.endTime > f.startTime) return f;
+        // ВАЖНО (фикс «выбрал 30-е — снова стало 29-е»): раньше здесь шёл
+        // вызов clampFormTimes(...) даже когда дата НЕ менялась — при этом
+        // endDate (дефолт «сегодня+7 дней») мог быть МЕНЬШЕ новой даты после
+        // полуночи, и автоподгонка молча ОТКАТЫВАЛА выбранную дату назад.
+        // Теперь, если дата и время уже валидны относительно серверных
+        // часов, состояние формы НЕ трогаем вообще.
+        if (date === f.date && f.startTime >= minStartHm(date) && f.endTime > f.startTime) {
+          return f;
+        }
         const clamped = clampFormTimes(date, f.startTime, f.endTime);
         return { ...f, date, startTime: clamped.startTime, endTime: clamped.endTime };
       });
@@ -1637,7 +1644,7 @@ export default function UserPanel({
                     <input
                       type="date"
                       required
-                      min={editingMeeting ? undefined : serverTodayKey()}
+                      min={editingMeeting || !isTimeSynced() ? undefined : serverTodayKey()}
                       value={formData.date}
                       onChange={(e) => {
                         const date = e.target.value;
