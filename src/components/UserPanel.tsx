@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { User, Meeting, Tag, ScheduleConflict } from "../types";
-import { roomsAPI, meetingsAPI, syncServerTime, isTimeSynced, serverTodayKeyTz, serverNowHmTz, serverNowHmPlusMinTz, guessServerTodayKey } from "../api/client";
+import { roomsAPI, meetingsAPI, syncServerTime, isTimeSynced, serverTodayKeyTz, serverNowHmTz, serverNowHmPlusMinTz, guessServerTodayKey, serverNowDate } from "../api/client";
 import {
   getMeetings,
   createMeeting,
@@ -44,6 +44,17 @@ export const localTodayKey = (): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
+/** «Сейчас» по серверным часам (offset из /api/time / localStorage); при
+ *  рассинхроне часов браузера возвращает серверный день месяца — используется
+ *  как якорь недельного вида календаря. */
+export const serverTodayDayNum = (): number => {
+  try {
+    return serverNowDate().getDate();
+  } catch {
+    return new Date().getDate();
+  }
+};
+
 /** «Сегодня» по ЧАСАМ СЕРВЕРА И В ПОЯСЕ СЕРВЕРА (Europe/Moscow, см. /api/time).
  *  Используется в форме создания встречи: сервер проверяет «прошедшее время»
  *  по своим часам и своему поясу. Если часы/пояс браузера расходятся,
@@ -55,6 +66,16 @@ export const serverTodayKey = (): string => serverTodayKeyTz();
 
 /** «Сейчас» (HH:mm) по часам и поясу сервера — нижняя граница времени начала встречи сегодня. */
 export const serverNowHm = (): string => serverNowHmTz();
+
+/** Нижняя граница для поля «Дата*». Раньше min ставился ТОЛЬКО при
+ *  подтверждённой синхронизации (isTimeSynced()) — если /api/time не вызывался
+ *  на этой странице, минимальной даты не было вовсе, и пользователь с сбитыми
+ *  часами в Windows мог выбрать прошедший день (форма стартовала с локального
+ *  «29», а сервер жил 30-м). Теперь offset подтягивается из localStorage
+ *  (serverTodayKeyTz это учитывает), поэтому min выставляем всегда; если хранилище
+ *  пустое, худший случай — min на сутки раньше фактического сегодня, но авто-
+ *  коррекция дефолта при открытии формы всё равно выставит серверную дату. */
+export const minDateKey = (): string => serverTodayKey();
 
 /** Нижняя граница для поля «Начало» (type=time): если встреча сегодня —
  *  не раньше текущего серверного времени (с поправкой offset из /api/time),
@@ -333,7 +354,7 @@ function CreateMeetingForm({
           <input
             type="date"
             required
-            min={isTimeSynced() ? serverTodayKey() : undefined}
+            min={minDateKey()}
             value={formData.date}
             onChange={(e) => {
               const date = e.target.value;
@@ -676,7 +697,16 @@ export default function UserPanel({
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"list" | "calendar">("list");
   const [calMonth, setCalMonth] = useState(() => {
-    const d = new Date();
+    // Календарь «Мои конференции» открывается на СЕРВЕРНОМ «сегодня» (offset из
+    // /api/time / localStorage), а не по часам браузера: при сбитой дате в Windows
+    // сетка стартовала с «29», когда сервер жил 30-м — встречи на 30.10 уезжали за
+    // видимый диапазон и казались «неправильной датой».
+    let d: Date;
+    try {
+      d = serverNowDate();
+    } catch {
+      d = new Date();
+    }
     return { y: d.getFullYear(), m: d.getMonth(), d: d.getDate() };
   });
   const [calView, setCalView] = useState<"month" | "week">("month");
@@ -1644,7 +1674,7 @@ export default function UserPanel({
                     <input
                       type="date"
                       required
-                      min={editingMeeting || !isTimeSynced() ? undefined : serverTodayKey()}
+                      min={editingMeeting ? undefined : minDateKey()}
                       value={formData.date}
                       onChange={(e) => {
                         const date = e.target.value;
@@ -2199,7 +2229,7 @@ export default function UserPanel({
             arr.push(m);
             byDate.set(m.date, arr);
           });
-          const todayIso = isoOf(new Date());
+          let __todayD: Date; try { __todayD = serverNowDate(); } catch { __todayD = new Date(); } const todayIso = isoOf(__todayD);
           const cells: { d: Date; inMonth: boolean }[] = [];
           if (calView === "month") {
             const first = new Date(calMonth.y, calMonth.m, 1);
@@ -2221,7 +2251,7 @@ export default function UserPanel({
                 inMonth: false,
               });
           } else {
-            const anchor = new Date(calMonth.y, calMonth.m, calMonth.d || new Date().getDate());
+            const anchor = new Date(calMonth.y, calMonth.m, calMonth.d || serverTodayDayNum());
             let dow = anchor.getDay();
             if (dow === 0) dow = 7;
             const monday = new Date(anchor);
@@ -2237,7 +2267,7 @@ export default function UserPanel({
             setCalMonth({ y: nd.getFullYear(), m: nd.getMonth(), d: 1 });
           };
           const shiftWeek = (delta: number) => {
-            const base = new Date(calMonth.y, calMonth.m, calMonth.d || new Date().getDate());
+            const base = new Date(calMonth.y, calMonth.m, calMonth.d || serverTodayDayNum());
             base.setDate(base.getDate() + delta * 7);
             setCalMonth({ y: base.getFullYear(), m: base.getMonth(), d: base.getDate() });
           };
@@ -2268,8 +2298,7 @@ export default function UserPanel({
                   </button>
                   <button
                     onClick={() => {
-                      const n = new Date();
-                      setCalMonth({ y: n.getFullYear(), m: n.getMonth(), d: n.getDate() });
+                      setCalMonth(() => { let n: Date; try { n = serverNowDate(); } catch { n = new Date(); } return { y: n.getFullYear(), m: n.getMonth(), d: n.getDate() }; });
                     }}
                     className="px-3 py-1.5 text-sm rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100"
                   >

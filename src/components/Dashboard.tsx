@@ -9,7 +9,20 @@ import UserPanel from "./UserPanel";
 import type { MeetingPrefill } from "./UserPanel";
 import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { toDateKey, formatRuDate } from "../utils/dateKey";
-import { icsAPI, guessServerTodayKey } from "../api/client";
+import { icsAPI, guessServerTodayKey, syncServerTime, serverNowDate } from "../api/client";
+
+/** Часы главной страницы: «сейчас» по СЕРВЕРНОМУ времени (с offset из
+ *  /api/time / localStorage), а не по часам браузера. При сбитой дате/времени
+ *  в Windows локальные часы отстают на сутки — «Сегодня» в расписании и счётчик
+ *  до ближайшей встречи считались от «29», хотя сервер жил 30-м (жалоба:
+ *  «сегодня у меня 30 число, а он записывает 29»). */
+const nowForUi = (): Date => {
+  try {
+    return serverNowDate();
+  } catch {
+    return new Date();
+  }
+};
 
 interface DashboardProps {
   user: User;
@@ -33,10 +46,10 @@ const addDaysLocal = (d: Date, n: number): Date => {
 export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const [currentTime, setCurrentTime] = useState(nowForUi());
   // Outlook-вид расписания аудиторий на главной: день / неделя / месяц
   const [calView, setCalView] = useState<OutlookView>("day");
-  const [calDate, setCalDate] = useState(new Date());
+  const [calDate, setCalDate] = useState(nowForUi());
   // В одно время может быть несколько конференций — храним все «следующие» (с тем же датой/временем старта)
   const [nextMeetings, setNextMeetings] = useState<Meeting[]>([]);
   const [countdown, setCountdown] = useState("");
@@ -98,7 +111,7 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
     };
     loadData();
 
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    const timer = setInterval(() => setCurrentTime(nowForUi()), 1000);
     // Фоновое обновление данных — ТОЛЬКО когда вкладка видна. Раньше поллинг
     // работал и в фоновых вкладках: у пользователей открыто по несколько
     // вкладок/страниц и каждая каждые 30 с тянула ВСЕ встречи со страницы 1

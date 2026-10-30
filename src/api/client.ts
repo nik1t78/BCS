@@ -659,9 +659,33 @@ export function guessServerTodayKey(): string {
   return todayKeyInServerTz(new Date(Date.now() + timeOffsetMs));
 }
 
-/** «Сейчас» с поправкой на серверные часы (Date учитывает offset). */
+/** «Сейчас» с поправкой на серверные часы (Date учитывает offset).
+ *  КРИТИЧНО: offset подтягивается из localStorage даже если на этой странице
+ *  /api/time ещё не был успешно вызван (timeSyncOk=false). Раньше без этого
+ *  «серверное сейчас» = локальные часы браузера, и при сбитой дате/времени в
+ *  Windows все проверки формы («дата в прошлом», min у поля даты, автоподгонка
+ *  слотов) молча ломались — отсюда «выбрал 30-е, а записало 29-е». */
 export function serverNowDate(): Date {
+  if (!timeSyncOk) {
+    try {
+      const raw = localStorage.getItem("vks_time_offset_ms");
+      if (raw) {
+        const v = Number(raw);
+        // Мусор/экстремальные значения игнорируем (защита от порчи хранилища)
+        if (Number.isFinite(v) && Math.abs(v) < 6 * 3600_000) {
+          return new Date(Date.now() + v);
+        }
+      }
+    } catch {
+      /* приватный режим — используем локальные часы */
+    }
+  }
   return new Date(Date.now() + timeOffsetMs);
+}
+
+/** Серверное «сейчас» в Unix-мс с учётом offset (в т.ч. из localStorage). */
+export function serverNowMs(): number {
+  return serverNowDate().getTime();
 }
 
 /** Форматирует «серверное сейчас» в виде YYYY-MM-DD ПО ЧАСОВОЙ ЗОНЕ СЕРВЕРА.
