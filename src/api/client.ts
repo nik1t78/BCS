@@ -618,6 +618,21 @@ export function serverNowHmTz(): string {
   return `${get("hour")}:${get("minute")}`;
 }
 
+/** «Серверное сейчас» в HH:mm по поясу сервера + произвольное число минут
+ *  (для нижнего слота формы: «сейчас+10»). Пересчёт через Date в UTC-компонентах
+ *  и Intl с timeZone — не зависит от пояса браузера. */
+export function serverNowHmPlusMinTz(addMinutes: number): string {
+  const d = new Date(serverNowDate().getTime() + addMinutes * 60_000);
+  const parts = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: serverTimezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "00";
+  return `${get("hour")}:${get("minute")}`;
+}
+
 // ROOMS API — переговорные комнаты и доступность (резервирование)
 export const roomsAPI = {
   list: () => apiRequest("/rooms"),

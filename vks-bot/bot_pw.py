@@ -23,8 +23,55 @@ from datetime import datetime, timedelta, timezone
 
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
-CREATE_URL = "https://salutejazz.ru/calls/create"
+CREATE_URL = os.getenv("VKSBOT_CREATE_URL", "https://salutejazz.ru/calls/create")
 LINK_RE = re.compile(r"https://salutejazz\.ru/calls/[A-Za-z0-9_-]+(?:\?[^\s\"'<]*)?")
+
+# Платформа salutejazz.ru НЕ имеет API планирования встреч: комната живёт
+# «сегодня», и дата начала встречи задаётся только полем datetime-local
+# в форме создания (если оно есть на странице). Ниже — попытка заполнить
+# его передатанной датой; если поля нет, дата остаётся только в ответе API.
+
+
+def _fill_datetime_fields(page, date_dmy: str | None) -> str:
+    """Заполнить datetime/date-поля формы создания датой встречи.
+
+    date_dmy — «ДД.ММ.ГГГГ». Возвращает статус для логов: 'filled', 'absent'
+    или 'failed:…'. Значение пишется в нативном формате input[type=datetime]
+    («ГГГГ-ММ-ДДTHH:MM») через React-совместимый сеттер.
+    """
+    if not date_dmy:
+        return "absent"
+    try:
+        m = re.match(r"^(\d{2})\.(\d{2})\.(\d{4})", date_dmy)
+        if not m:
+            return "absent"
+        dd, mm, yyyy = m.groups()
+        iso_date = f"{yyyy}-{mm}-{dd}"
+        filled = page.evaluate(
+            """([isoDate]) => {
+                const setter = Object.getOwnPropertyDescriptor(
+                    window.HTMLInputElement.prototype, 'value').set;
+                let n = 0;
+                for (const el of document.querySelectorAll('input')) {
+                    const ty = (el.type || '').toLowerCase();
+                    const nm = ((el.name || '') + ' ' + (el.placeholder || '')).toLowerCase();
+                    const isDate = ['datetime-local', 'date'].includes(ty) ||
+                        (ty === 'text' && /(дата|date)/.test(nm));
+                    if (!isDate) continue;
+                    const val = ty === 'datetime-local' ? isoDate + 'T09:00' : isoDate;
+                    setter.call(el, val);
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                    n++;
+                }
+                return n;
+            }""",
+            [iso_date],
+        )
+        return "filled" if filled else "absent"
+    except Exception as e:  # noqa: BLE001 — поле может быть недоступно, не фатально
+        return f"failed:{e}"
+
 
 log = logging.getLogger("vks-bot-playwright")
 
@@ -204,6 +251,13 @@ class VkxBotPlaywright:
                     log.info("Введено имя (%s)", sel2)
                 else:
                     log.warning("Поле имени не найдено — жмём создание сразу")
+
+                # 2.5) Дата встречи: если на форме есть datetime/date-поле —
+                # ставим туда дату из запроса (иначе платформа создаёт комнату
+                # «на сегодня», и встреча «уезжала» не на тот день).
+                dt_status = _fill_datetime_fields(page, date)
+                log.info("Дата встречи (%s): %r -> поля формы: %s",
+                         sel if el is not None else "?", date, dt_status)
 
                 # 3) Кнопка входа/создания. Основной способ — data-testid,
                 # запасной — поиск по тексту через JS (кириллица ломает XPath

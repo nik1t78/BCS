@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { User, Meeting, Tag, ScheduleConflict } from "../types";
-import { roomsAPI, meetingsAPI, syncServerTime, serverTodayKeyTz, serverNowHmTz } from "../api/client";
+import { roomsAPI, meetingsAPI, syncServerTime, serverTodayKeyTz, serverNowHmTz, serverNowHmPlusMinTz } from "../api/client";
 import {
   getMeetings,
   createMeeting,
@@ -74,8 +74,11 @@ export const clampFormTimes = (
   let e = endTime || "";
   const minS = minStartHm(date);
   if (s < minS) s = minS;
-  // не позже предела вечернего создания (20:00)
-  if (isLateTime(s)) s = LATE_CREATE_LIMIT_HM;
+  // Вечерний предел создания (20:00) актуален ТОЛЬКО для «сегодня»: на
+  // будущую дату слот в 21:00 абсолютно легитимен. Раньше обрезка шла для
+  // любой даты — встреча на завтра/29-е молча «уезжала» с выбранного времени.
+  const isToday = date === serverTodayKey();
+  if (isToday && isLateTime(s)) s = LATE_CREATE_LIMIT_HM;
   if (!e || e <= s) {
     const [h, m] = s.split(":").map((x) => parseInt(x, 10) || 0);
     const total = Math.min(h * 60 + m + 30, 23 * 60 + 59);
@@ -369,7 +372,7 @@ function CreateMeetingForm({
             type="time"
             required
             min={editing ? undefined : minStartHm(formData.date)}
-            max={LATE_CREATE_LIMIT_HM}
+            max={formData.date === serverTodayKey() ? LATE_CREATE_LIMIT_HM : "23:59"}
             value={formData.startTime}
             onChange={(e) => {
               const startTime = e.target.value;
@@ -1072,9 +1075,13 @@ export default function UserPanel({
       alert("Время окончания должно быть позже времени начала");
       return;
     }
-    // Поздним вечером ВКС создавать нельзя: не позже 20:00.
-    if (isLateTime(formData.startTime)) {
-      alert(`Нельзя создать встречу позже ${LATE_CREATE_LIMIT_HM}. Выберите время начала до ${LATE_CREATE_LIMIT_HM}.`);
+    // Поздним вечером ВКС создавать нельзя: не позже 20:00. НО: если дата
+    // встречи в БУДУЩЕМ (не сегодня), вечернее ограничение не применяется —
+    // оно имело смысл только для «сегодня на сегодня». Раньше эта проверка
+    // стояла первой и резала любые слоты после 20:00 даже на завтра/через
+    // неделю («выбираю 29-е, а запись уезжает/не создаётся»).
+    if (formData.date === serverTodayKey() && isLateTime(formData.startTime)) {
+      alert(`Нельзя создать встречу сегодня позже ${LATE_CREATE_LIMIT_HM}. Выберите время начала до ${LATE_CREATE_LIMIT_HM} или перенесите встречу на будущий день.`);
       return;
     }
     // В прошедшее время заявки создавать нельзя: дата не раньше сегодня,
@@ -1094,10 +1101,12 @@ export default function UserPanel({
         return;
       }
       if (formData.date === todayKey && formData.startTime < serverNowHm()) {
-        // Не просто блокируем — сами сдвигаем слот на «сейчас+10 мин»,
-        // чтобы кнопка «Создать ВКС» работала с первого клика без цикла
-        // «прошло время → поправьте вручную».
-        const clamped = clampFormTimes(formData.date, serverNowHm(), "");
+        // Не просто блокируем — сами сдвигаем слот на «сейчас+10 мин»
+        // (serverNowHmPlusMinTz — по поясу СЕРВЕРА, без ручного сложения
+        // часов: раньше здесь прибавляли 10 минут к строке HH:mm и при
+        // пересечении полуночи получался невалидный «24:xx», который input
+        //[type=time] отклонял — форма залипала, «нажимаю создать — тишина»).
+        const clamped = clampFormTimes(formData.date, serverNowHmPlusMinTz(10), "");
         setFormData((f) => ({ ...f, startTime: clamped.startTime, endTime: clamped.endTime }));
         alert(
           `Время ${formData.startTime} уже прошло — начало сдвинуто на ${clamped.startTime}, конец ${clamped.endTime}. Нажмите «Создать ВКС» ещё раз.`
@@ -1633,7 +1642,7 @@ export default function UserPanel({
                       type="time"
                       required
                       min={editingMeeting ? undefined : minStartHm(formData.date)}
-                      max={LATE_CREATE_LIMIT_HM}
+                      max={formData.date === serverTodayKey() ? LATE_CREATE_LIMIT_HM : "23:59"}
                       value={formData.startTime}
                       onChange={(e) => {
                         const startTime = e.target.value;
