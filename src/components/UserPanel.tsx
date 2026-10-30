@@ -1,6 +1,15 @@
 import React, { useState, useEffect, useRef } from "react";
 import { User, Meeting, Tag, ScheduleConflict } from "../types";
-import { roomsAPI, meetingsAPI, syncServerTime, isTimeSynced, serverTodayKeyTz, serverNowHmTz, serverNowHmPlusMinTz, guessServerTodayKey, serverNowDate } from "../api/client";
+import {
+  roomsAPI,
+  meetingsAPI,
+  syncServerTime,
+  isTimeSynced,
+  serverTodayKeyTz,
+  serverNowHmTz,
+  guessServerTodayKey,
+  serverNowDate,
+} from "../api/client";
 import {
   getMeetings,
   createMeeting,
@@ -89,7 +98,20 @@ export const minStartHm = (dateKey: string): string => {
   // дата, равная дате браузера (т.е. выбранное сегодня), считалась «сегодня по
   // серверу», и input min молча отсекал корректный выбор пользователя, а форма
   // перебивала дату/время локальными часами («сегодня 30-е — а записало 29-е»).
-  return dateKey === serverTodayKey() && isTimeSynced() ? serverNowHm() : "00:00";
+  if (!(dateKey === serverTodayKey() && isTimeSynced())) return "00:00";
+  // Фикс «сохраняет вчерашнюю дату/время»: нижняя граница округляется ВВЕРХ
+  // до ближайших 5 минут (14:41 → «14:45»). Раньше min = точное «сейчас»
+  // (14:41), поле «Начало*» показывало now+10 (14:51) — значение НЕ кратно
+  // шагу 5 мин, браузер подсвечивал поле как невалидное; пользователь правил
+  // время вручную на «ровное» (14:45), которое оказывалось МЕНЬШЕ устаревшего
+  // дефолта, и автосдвиг при сохранении молча перебивал ввод. С округлённой
+  // границей все «ровные» слоты (14:45, 14:50…) легальны, а дефолт now+10
+  // всегда кратен 5 — форма стартовали валидной.
+  const hm = serverNowHm();
+  const [h, m] = hm.split(":").map((x) => parseInt(x, 10) || 0);
+  const rounded = Math.ceil((m + 1) / 5) * 5; // следующая 5-минутка СТРОГО после «сейчас»
+  if (rounded >= 60) return `${String(Math.min(h + 1, 23)).padStart(2, "0")}:00`;
+  return `${String(h).padStart(2, "0")}:${String(rounded).padStart(2, "0")}`;
 };
 
 /** Автоподгонка времени под выбранную дату/границы (см. эффекты в форме):
@@ -1152,7 +1174,9 @@ export default function UserPanel({
     // стояла первой и резала любые слоты после 20:00 даже на завтра/через
     // неделю («выбираю 29-е, а запись уезжает/не создаётся»).
     if (formData.date === serverTodayKey() && isLateTime(formData.startTime)) {
-      alert(`Нельзя создать встречу сегодня позже ${LATE_CREATE_LIMIT_HM}. Выберите время начала до ${LATE_CREATE_LIMIT_HM} или перенесите встречу на будущий день.`);
+      alert(
+        `Нельзя создать встречу сегодня позже ${LATE_CREATE_LIMIT_HM}. Выберите время начала до ${LATE_CREATE_LIMIT_HM} или перенесите встречу на будущий день.`
+      );
       return;
     }
     // В прошедшее время заявки создавать нельзя: дата не раньше сегодня,
@@ -1172,27 +1196,44 @@ export default function UserPanel({
       // ничего НЕ правим и НЕ блокируем — решение за сервером (он честно
       // вернёт 422, если время реально прошло).
       if (isTimeSynced()) {
-      const todayKey = serverTodayKey();
-      if (formData.date < todayKey) {
-        alert("Нельзя создать встречу в прошедшую дату. Выберите сегодня или будущий день.");
-        return;
-      }
-      if (formData.date === todayKey && formData.startTime < serverNowHm()) {
-        // Раньше здесь была ТИХАЯ правка: начало ставилось «сейчас+10», а
-        // конец — «начало+30». Длительная встреча пользователя (например,
-        // 12:58–13:58) молча укорачивалась до 30 минут — «записало не то».
-        // Теперь сдвигаем НАЧАЛО на «сейчас+10», а ДЛИТЕЛЬНОСТЬ сохраняем.
-        const [sh, sm] = formData.startTime.split(":").map((x) => parseInt(x, 10) || 0);
-        const [eh, em] = formData.endTime.split(":").map((x) => parseInt(x, 10) || 0);
-        const durationMin = Math.max(eh * 60 + em - (sh * 60 + sm), 30);
-        const newStart = serverNowHmPlusMinTz(10);
-        const newEnd = addMinToHm(newStart, durationMin);
-        setFormData((f) => ({ ...f, startTime: newStart, endTime: newEnd }));
-        alert(
-          `Время ${formData.startTime} уже прошло — начало сдвинуто на ${newStart}, окончание ${newEnd} (длительность сохранена). Нажмите «Создать ВКС» ещё раз.`
-        );
-        return;
-      }
+        const todayKey = serverTodayKey();
+        if (formData.date < todayKey) {
+          alert("Нельзя создать встречу в прошедшую дату. Выберите сегодня или будущий день.");
+          return;
+        }
+        if (formData.date === todayKey && formData.startTime < serverNowHm()) {
+          // Раньше здесь была ТИХАЯ правка: начало ставилось «сейчас+10», а
+          // конец — «начало+30». Длительная встреча пользователя (например,
+          // 12:58–13:58) молча укорачивалась до 30 минут — «записало не то».
+          // Теперь сдвигаем НАЧАЛО на «сейчас+10», а ДЛИТЕЛЬНОСТЬ сохраняем.
+          const [sh, sm] = formData.startTime.split(":").map((x) => parseInt(x, 10) || 0);
+          const [eh, em] = formData.endTime.split(":").map((x) => parseInt(x, 10) || 0);
+          const durationMin = Math.max(eh * 60 + em - (sh * 60 + sm), 30);
+          // Дефолт now+10 может НЕ совпасть по шагу с введённым пользователем
+          // временем (он вводил «14:45», автоподгонка ставила «14:51») —
+          // казалось, что форма «перебивает мой выбор». Сдвигаем ровно на те
+          // минуты, на которые выбранное время отстало от серверного «сейчас»
+          // (+1 мин запас на секундный дрейф), и округляем вверх до 5 минут,
+          // чтобы результат остался «ровным»: 14:45 при «сейчас 14:47» → 14:50.
+          const nowM = serverNowHm()
+            .split(":")
+            .map((x) => parseInt(x, 10) || 0);
+          const nowTotal = nowM[0] * 60 + nowM[1];
+          // Сдвиг минимум на 5 минут (округление вверх до «ровной» 5-минутки):
+          // при «сейчас 14:45» выбранное 14:45 уйдёт на 14:50, а не на 14:45 —
+          // иначе автосдвиг попадал ровно в текущий минуту и серверная проверка
+          // «start >= now» отбивала заявку на секунде подачи.
+          const targetTotal = Math.min(Math.ceil((nowTotal + 5) / 5) * 5, 23 * 60 + 55);
+          const toHm = (t: number) =>
+            `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+          const newStart = toHm(targetTotal);
+          const newEnd = addMinToHm(newStart, durationMin);
+          setFormData((f) => ({ ...f, date: todayKey, startTime: newStart, endTime: newEnd }));
+          alert(
+            `Время ${formData.startTime} уже прошло по серверным часам — начало сдвинуто на ${newStart}, окончание ${newEnd} (длительность сохранена). Дата: ${todayKey}. Нажмите «Создать ВКС» ещё раз.`
+          );
+          return;
+        }
       }
     }
     // Валидация пересечений у тех же участников (кроме принудительного сохранения)
@@ -1714,7 +1755,8 @@ export default function UserPanel({
                     </select>
                     {roomsCatalog.length === 0 && (
                       <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                        Справочник комнат загрузится автоматически; если список пуст — поле «Комната» можно оставить невыбранным.
+                        Справочник комнат загрузится автоматически; если список пуст — поле «Комната» можно оставить
+                        невыбранным.
                       </p>
                     )}
                   </div>
@@ -2229,7 +2271,13 @@ export default function UserPanel({
             arr.push(m);
             byDate.set(m.date, arr);
           });
-          let __todayD: Date; try { __todayD = serverNowDate(); } catch { __todayD = new Date(); } const todayIso = isoOf(__todayD);
+          let __todayD: Date;
+          try {
+            __todayD = serverNowDate();
+          } catch {
+            __todayD = new Date();
+          }
+          const todayIso = isoOf(__todayD);
           const cells: { d: Date; inMonth: boolean }[] = [];
           if (calView === "month") {
             const first = new Date(calMonth.y, calMonth.m, 1);
@@ -2298,7 +2346,15 @@ export default function UserPanel({
                   </button>
                   <button
                     onClick={() => {
-                      setCalMonth(() => { let n: Date; try { n = serverNowDate(); } catch { n = new Date(); } return { y: n.getFullYear(), m: n.getMonth(), d: n.getDate() }; });
+                      setCalMonth(() => {
+                        let n: Date;
+                        try {
+                          n = serverNowDate();
+                        } catch {
+                          n = new Date();
+                        }
+                        return { y: n.getFullYear(), m: n.getMonth(), d: n.getDate() };
+                      });
                     }}
                     className="px-3 py-1.5 text-sm rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100"
                   >
@@ -2391,9 +2447,7 @@ export default function UserPanel({
                 <i className="fas fa-layer-group"></i>
                 Все конференции — все ВКС видны сразу
               </h3>
-              <span className="text-sm text-blue-100">
-                {sortedMeetings.length}
-              </span>
+              <span className="text-sm text-blue-100">{sortedMeetings.length}</span>
             </div>
           )}
           {(() => {
@@ -2402,169 +2456,171 @@ export default function UserPanel({
             // И на главной, и на странице «Все» показываем только актуальные
             // конференции (старые/завершённые скрыты фильтром «Предстоящие»);
             // главная ограничена первыми TEASER_COUNT карточками.
-            return sortedMeetings.slice(0, showAllPage ? sortedMeetings.length : Math.min(visibleCount, TEASER_COUNT)).map((meeting) => {
-              const group = showGroups ? getMeetingGroup(meeting) : null;
-              const header =
-                group && group.key !== lastGroup ? (
-                  <div key={`grp-${group.key}`} className="pt-2 pb-1 first:pt-0">
-                    <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-2">
-                      <i
-                        className={`fas ${group.key === "today" ? "fa-calendar-day text-blue-500" : group.key === "tomorrow" ? "fa-calendar text-indigo-500" : group.key === "past" ? "fa-history text-gray-400" : "fa-calendar-week text-purple-500"}`}
-                      ></i>
-                      {group.label}
-                    </h3>
-                  </div>
-                ) : null;
-              if (group) lastGroup = group.key;
-              return (
-                <React.Fragment key={meeting.id}>
-                  {header}
-                  <div
-                    className={`bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-shadow ${compact ? "p-2.5" : "p-4"}`}
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="flex items-center gap-2 self-start mt-1">
-                        {/* Чекбокс для массовых действий */}
-                        <input
-                          type="checkbox"
-                          checked={selected.has(String(meeting.id))}
-                          onChange={() => toggleSelect(String(meeting.id))}
-                          onClick={(e) => e.stopPropagation()}
-                          className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                          title="Выделить для массовых действий"
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <div className={`flex items-center gap-2 ${compact ? "" : "mb-2"}`}>
+            return sortedMeetings
+              .slice(0, showAllPage ? sortedMeetings.length : Math.min(visibleCount, TEASER_COUNT))
+              .map((meeting) => {
+                const group = showGroups ? getMeetingGroup(meeting) : null;
+                const header =
+                  group && group.key !== lastGroup ? (
+                    <div key={`grp-${group.key}`} className="pt-2 pb-1 first:pt-0">
+                      <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-2">
+                        <i
+                          className={`fas ${group.key === "today" ? "fa-calendar-day text-blue-500" : group.key === "tomorrow" ? "fa-calendar text-indigo-500" : group.key === "past" ? "fa-history text-gray-400" : "fa-calendar-week text-purple-500"}`}
+                        ></i>
+                        {group.label}
+                      </h3>
+                    </div>
+                  ) : null;
+                if (group) lastGroup = group.key;
+                return (
+                  <React.Fragment key={meeting.id}>
+                    {header}
+                    <div
+                      className={`bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-shadow ${compact ? "p-2.5" : "p-4"}`}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="flex items-center gap-2 self-start mt-1">
+                          {/* Чекбокс для массовых действий */}
+                          <input
+                            type="checkbox"
+                            checked={selected.has(String(meeting.id))}
+                            onChange={() => toggleSelect(String(meeting.id))}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            title="Выделить для массовых действий"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <div className={`flex items-center gap-2 ${compact ? "" : "mb-2"}`}>
+                            <button
+                              onClick={() => setViewMeeting(meeting)}
+                              className="font-bold text-gray-800 dark:text-gray-100 hover:text-blue-600 text-left"
+                              title="Открыть конференцию"
+                            >
+                              {meeting.title}
+                            </button>
+                            {/* Избранное — звёздочка на карточке */}
+                            <button
+                              onClick={() => toggleFavoriteMeeting(String(meeting.id))}
+                              className="text-lg leading-none"
+                              title={
+                                favorites.has(String(meeting.id)) ? "Убрать из избранного" : "Добавить в избранное"
+                              }
+                            >
+                              <i
+                                className={`fas fa-star ${favorites.has(String(meeting.id)) ? "text-yellow-400" : "text-gray-300 dark:text-gray-600 hover:text-yellow-300"}`}
+                              ></i>
+                            </button>
+                            <span
+                              className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                meeting.priority === "high"
+                                  ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
+                                  : meeting.priority === "medium"
+                                    ? "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400"
+                                    : "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                              }`}
+                            >
+                              {meeting.priority === "high"
+                                ? "Высокий"
+                                : meeting.priority === "medium"
+                                  ? "Средний"
+                                  : "Низкий"}
+                            </span>
+                          </div>
+                          <p className={`${compact ? "text-xs" : "text-sm"} text-gray-600 dark:text-gray-400`}>
+                            <i className="fas fa-calendar mr-1"></i>
+                            {formatRuDate(meeting.date)}
+                            <span className="mx-2">•</span>
+                            <i className="fas fa-clock mr-1"></i>
+                            {meeting.startTime} - {meeting.endTime}
+                            {meeting.room && (
+                              <>
+                                <span className="mx-2">•</span>
+                                <i className="fas fa-map-marker-alt mr-1"></i>
+                                {meeting.room}
+                              </>
+                            )}
+                          </p>
+                          <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">
+                            <i className="fas fa-user mr-1"></i>
+                            Организатор: {getUserName(meeting.organizerId)}
+                            <span className="mx-2">•</span>
+                            <i className="fas fa-users mr-1"></i>
+                            {meeting.participants.length} участников
+                            {meeting.recurring !== "none" && (
+                              <>
+                                <span className="mx-2">•</span>
+                                <i className="fas fa-sync-alt text-blue-500 mr-1"></i>
+                                <span className="text-blue-600 dark:text-blue-400">
+                                  {meeting.recurring === "daily"
+                                    ? "Ежедневно"
+                                    : meeting.recurring === "weekly"
+                                      ? "Еженедельно"
+                                      : "Ежемесячно"}
+                                  {meeting.recurring === "custom" && meeting.rrule
+                                    ? ` (${describeRRule(meeting.rrule)})`
+                                    : ""}
+                                  {meeting.repeatUntil ? ` до ${formatRuDate(meeting.repeatUntil)}` : ""}
+                                </span>
+                              </>
+                            )}
+                          </p>
+                          {meeting.description && (
+                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 line-clamp-2 whitespace-pre-line">
+                              {meeting.description}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {/* Экспорт встречи в календарь (.ics — Outlook / Google Calendar) */}
+                          <button
+                            onClick={() => exportMeetingToIcs(meeting)}
+                            className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-gray-700 rounded"
+                            title="Скачать .ics для Outlook / Google Calendar"
+                          >
+                            <i className="fas fa-calendar-plus"></i>
+                          </button>
                           <button
                             onClick={() => setViewMeeting(meeting)}
-                            className="font-bold text-gray-800 dark:text-gray-100 hover:text-blue-600 text-left"
-                            title="Открыть конференцию"
+                            className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
                           >
-                            {meeting.title}
+                            <i className="fas fa-eye mr-1"></i>Просмотр
                           </button>
-                          {/* Избранное — звёздочка на карточке */}
-                          <button
-                            onClick={() => toggleFavoriteMeeting(String(meeting.id))}
-                            className="text-lg leading-none"
-                            title={favorites.has(String(meeting.id)) ? "Убрать из избранного" : "Добавить в избранное"}
-                          >
-                            <i
-                              className={`fas fa-star ${favorites.has(String(meeting.id)) ? "text-yellow-400" : "text-gray-300 dark:text-gray-600 hover:text-yellow-300"}`}
-                            ></i>
-                          </button>
-                          <span
-                            className={`px-2 py-0.5 rounded text-xs font-medium ${
-                              meeting.priority === "high"
-                                ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
-                                : meeting.priority === "medium"
-                                  ? "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400"
-                                  : "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-                            }`}
-                          >
-                            {meeting.priority === "high"
-                              ? "Высокий"
-                              : meeting.priority === "medium"
-                                ? "Средний"
-                                : "Низкий"}
-                          </span>
+                          {meeting.link && (
+                            <a
+                              href={buildJoinUrl(
+                                meeting.link,
+                                meeting.meetingPassword ?? extractPswFromAny(meeting.link)
+                              )}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-blue-700 transition-colors"
+                            >
+                              <i className="fas fa-video mr-1"></i>Войти
+                            </a>
+                          )}
+                          {isOrganizer(meeting) && (
+                            <>
+                              <button
+                                onClick={() => handleEdit(meeting)}
+                                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-gray-700 rounded"
+                              >
+                                <i className="fas fa-edit"></i>
+                              </button>
+                              <button
+                                onClick={() => handleDelete(meeting.id)}
+                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-gray-700 rounded"
+                              >
+                                <i className="fas fa-trash"></i>
+                              </button>
+                            </>
+                          )}
                         </div>
-                        <p className={`${compact ? "text-xs" : "text-sm"} text-gray-600 dark:text-gray-400`}>
-                          <i className="fas fa-calendar mr-1"></i>
-                          {formatRuDate(meeting.date)}
-                          <span className="mx-2">•</span>
-                          <i className="fas fa-clock mr-1"></i>
-                          {meeting.startTime} - {meeting.endTime}
-                          {meeting.room && (
-                            <>
-                              <span className="mx-2">•</span>
-                              <i className="fas fa-map-marker-alt mr-1"></i>
-                              {meeting.room}
-                            </>
-                          )}
-                        </p>
-                        <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">
-                          <i className="fas fa-user mr-1"></i>
-                          Организатор: {getUserName(meeting.organizerId)}
-                          <span className="mx-2">•</span>
-                          <i className="fas fa-users mr-1"></i>
-                          {meeting.participants.length} участников
-                          {meeting.recurring !== "none" && (
-                            <>
-                              <span className="mx-2">•</span>
-                              <i className="fas fa-sync-alt text-blue-500 mr-1"></i>
-                              <span className="text-blue-600 dark:text-blue-400">
-                                {meeting.recurring === "daily"
-                                  ? "Ежедневно"
-                                  : meeting.recurring === "weekly"
-                                    ? "Еженедельно"
-                                    : "Ежемесячно"}
-                                {meeting.recurring === "custom" && meeting.rrule
-                                  ? ` (${describeRRule(meeting.rrule)})`
-                                  : ""}
-                                {meeting.repeatUntil
-                                  ? ` до ${formatRuDate(meeting.repeatUntil)}`
-                                  : ""}
-                              </span>
-                            </>
-                          )}
-                        </p>
-                        {meeting.description && (
-                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 line-clamp-2 whitespace-pre-line">
-                            {meeting.description}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {/* Экспорт встречи в календарь (.ics — Outlook / Google Calendar) */}
-                        <button
-                          onClick={() => exportMeetingToIcs(meeting)}
-                          className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-gray-700 rounded"
-                          title="Скачать .ics для Outlook / Google Calendar"
-                        >
-                          <i className="fas fa-calendar-plus"></i>
-                        </button>
-                        <button
-                          onClick={() => setViewMeeting(meeting)}
-                          className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                        >
-                          <i className="fas fa-eye mr-1"></i>Просмотр
-                        </button>
-                        {meeting.link && (
-                          <a
-                            href={buildJoinUrl(
-                              meeting.link,
-                              meeting.meetingPassword ?? extractPswFromAny(meeting.link)
-                            )}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-blue-700 transition-colors"
-                          >
-                            <i className="fas fa-video mr-1"></i>Войти
-                          </a>
-                        )}
-                        {isOrganizer(meeting) && (
-                          <>
-                            <button
-                              onClick={() => handleEdit(meeting)}
-                              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-gray-700 rounded"
-                            >
-                              <i className="fas fa-edit"></i>
-                            </button>
-                            <button
-                              onClick={() => handleDelete(meeting.id)}
-                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-gray-700 rounded"
-                            >
-                              <i className="fas fa-trash"></i>
-                            </button>
-                          </>
-                        )}
                       </div>
                     </div>
-                  </div>
-                </React.Fragment>
-              );
-            });
+                  </React.Fragment>
+                );
+              });
           })()}
 
           {/* Панель/страница «Все конференции»: на главной видно только первые
