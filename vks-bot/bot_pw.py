@@ -220,18 +220,63 @@ class VkxBotPlaywright:
                 time.sleep(1.5)  # догреваем React-форму
                 _dismiss_overlays(page)
 
+                def _form_ready() -> bool:
+                    """Есть ли на странице видимое текстовое поле формы."""
+                    try:
+                        return bool(page.evaluate(
+                            """() => Array.from(
+                                 document.querySelectorAll(
+                                   "input, textarea")).some(el => {
+                               if (el.disabled || el.readOnly) return false;
+                               const ty = (el.type || '').toLowerCase();
+                               if (ty && ['text','search','tel','url',
+                                           'password',''].indexOf(ty) < 0)
+                                   return false;
+                               const r = el.getBoundingClientRect();
+                               return r.width > 0 && r.height > 0;
+                           })"""))
+                    except Exception:
+                        return False
+
+                # SaluteJazz — SPA: при заходе на /calls/create форма рендерится
+                # с задержкой и иногда перерисовывается после закрытия оверлеев.
+                # Раньше бот искал поля один раз ~4 с и падал с «Не найдено поле
+                # названия встречи», хотя через секунду форма появлялась
+                # (в логах: успешный заход в 15:20, ошибка в 15:32).
+                form_deadline = time.time() + min(max(timeout // 2, 15), 40)
+                while time.time() < form_deadline and not _form_ready():
+                    time.sleep(0.5)
+                    _dismiss_overlays(page)
+
                 # Реальные селекторы страницы https://salutejazz.ru/calls/create
                 #   input[name='conferenceName'] — название встречи
                 #   input[name='userName']       — имя участника
                 #   button[data-testid='createConf'] — создать и войти
                 # 1) Название встречи
-                el, sel = self._find_input(page, [
+                name_selectors = [
                     "input[name='conferenceName']",
                     "input[name='title']", "input[placeholder*='азван' i]",
                     "input[placeholder*='тема' i]", "input[placeholder*='meet' i]",
                     "textarea", "input[type='text']",
-                ])
+                ]
+                el, sel = self._find_input(page, name_selectors)
+                # Последний шанс: страница могла перерисоваться в момент поиска —
+                # подождать ещё цикл и попробовать снова (раньше здесь бот падал).
+                if el is None and not _form_ready():
+                    retry_deadline = time.time() + 10
+                    while time.time() < retry_deadline and not _form_ready():
+                        time.sleep(0.5)
+                        _dismiss_overlays(page)
+                    el, sel = self._find_input(page, name_selectors,
+                                               timeout_ms=8000)
                 if el is None:
+                    try:
+                        page.screenshot(path="/tmp/vksbot_fail.png")
+                        log.error("Скриншот неудачной страницы: "
+                                  "/tmp/vksbot_fail.png (docker compose cp "
+                                  "vks-bot:/tmp/vksbot_fail.png .)")
+                    except Exception:
+                        pass
                     raise RuntimeError("Не найдено поле названия встречи")
                 self._set_value(page, el, title)
                 log.info("Введено название (%s), значение: %r",
