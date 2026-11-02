@@ -44,13 +44,27 @@ class MeetingIcsController extends Controller
         ];
 
         foreach ($meetings as $m) {
-            $end = $m->end_time ?: $m->start_time->copy()->addHour();
+            // start_time/end_time — Carbon, собранный из DATE + TIME в таймзоне
+            // приложения (Europe/Moscow). gmdate() печатал эти «московские» часы
+            // как UTC-«Z», из-за чего утренняя встреча 09:00 в Outlook/Google
+            // ложилась на 06:00Z и при возврате в локальную зону могла показаться
+            // другим днём. Правильно — переводить абсолютный момент в UTC.
+            $startUtc = $m->start_time instanceof \DateTimeInterface
+                ? (clone $m->start_time)->setTimezone(new \DateTimeZone('UTC'))
+                : null;
+            if (!$startUtc) continue; // нет валидного начала — пропускаем событие
+            $endRaw = $m->end_time ?: $m->start_time->copy()->addHour();
+            $endUtc = ($endRaw instanceof \DateTimeInterface)
+                ? (clone $endRaw)->setTimezone(new \DateTimeZone('UTC'))
+                : null;
+            if (!$endUtc) $endUtc = (clone $startUtc)->modify('+1 hour');
+
             $lines = array_merge($lines, [
                 'BEGIN:VEVENT',
                 'UID:vks-meeting-' . $m->id . '@vks.local',
-                'DTSTAMP:' . now()->gmdate('Ymd\THis\Z'),
-                'DTSTART:' . $m->start_time->gmdate('Ymd\THis\Z'),
-                'DTEND:' . $end->gmdate('Ymd\THis\Z'),
+                'DTSTAMP:' . now()->setTimezone(new \DateTimeZone('UTC'))->format('Ymd\THis\Z'),
+                'DTSTART:' . $startUtc->format('Ymd\THis\Z'),
+                'DTEND:' . $endUtc->format('Ymd\THis\Z'),
                 'SUMMARY:' . $this->esc($m->title),
                 'DESCRIPTION:' . $this->esc(trim(($m->description ?? '') . ' | Комната: ' . ($m->room ?: 'Онлайн'))),
                 'LOCATION:' . $this->esc($m->room ?: 'Онлайн'),

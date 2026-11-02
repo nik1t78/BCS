@@ -228,6 +228,24 @@ class MeetingController extends Controller
             }
             $request->merge(['reminder_minutes' => $n]);
         }
+
+        // Дата: нормализуем к каноничному YYYY-MM-DD ДО валидации и записи.
+        // Колонка `date` приведена к формату Y-m-d, но Carbon::parse может
+        // стартовать с другой таймзоны: например ISO-строка «2026-10-31T21:00:00Z»
+        // при сервере Europe/Moscow (+03) даёт локальные сутки «01.11», а строка
+        // вида «2026-10-30T23:00:00+03:00» в UTC — «29.10». Пользователь выбирал
+        // 31-е, а записывалось 30-е. Берём ТОЛЬКО календарную часть принятой
+        // строки (то, что реально видно в поле формы), без пересчёта поясов.
+        $date = $request->input('date');
+        if (is_string($date)) {
+            $trimmed = trim($date);
+            if (preg_match('/^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$/', $trimmed, $m)) {
+                $request->merge(['date' => sprintf('%04d-%02d-%02d', $m[1], $m[2], $m[3])]);
+            } elseif (preg_match('/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})(?:[T ].*)?$/', $trimmed, $m)) {
+                // DD.MM.YYYY / DD/MM/YYYY — тот же формат показывает UI
+                $request->merge(['date' => sprintf('%04d-%02d-%02d', $m[3], $m[2], $m[1])]);
+            }
+        }
     }
 
     /**
@@ -679,7 +697,11 @@ class MeetingController extends Controller
         $oldStart = substr((string) $meeting->start_time, 0, 5);
 
         $meeting->update([
-            'date' => $validated['date'],
+            // ВАЖНО: сохраняем НОРМАЛИЗОВАННУЮ дату ($newDate = toDateString()),
+            // а не сырую $validated['date']: если фронт прислал ISO-строку с
+            // таймзоной («2026-10-31T21:00:00Z»), Carbon::parse без явной зоны
+            // даёт другие сутки и встреча «уезжала» на 30-е.
+            'date' => $newDate,
             'start_time' => $validated['start_time'],
             'end_time' => $validated['end_time'] ?? $meeting->end_time,
         ]);

@@ -603,6 +603,12 @@ let serverTimezone = (() => {
   }
 })();
 
+/** Таймзона сервера (для пересчёта «локальных» серверных суток/часов в UTC —
+ *  например при экспорте .ics). */
+export function getServerTimezone(): string {
+  return serverTimezone;
+}
+
 /** Явная «сегодня» по поясу сервера для произвольного момента времени. */
 export function todayKeyInServerTz(at: Date): string {
   const parts = new Intl.DateTimeFormat("ru-RU", {
