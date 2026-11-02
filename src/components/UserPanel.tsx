@@ -9,6 +9,8 @@ import {
   serverNowHmTz,
   guessServerTodayKey,
   serverNowDate,
+  clientTodayKey,
+  clientNowHm,
 } from "../api/client";
 import {
   getMeetings,
@@ -88,7 +90,15 @@ const serverTotalMinutesNow = (): number => {
  *  выбор пользователя и в итоге пропускал в value устаревшую дату — отсюда
  *  «выбрал 02.11, а создаёт 01.11». Серверная проверка прошлого осталась
  *  на сервере (он честно вернёт 422 с подсказкой), форма дату не цензит. */
-export const minDateKey = (): string => toDateKey(new Date());
+// Фикс «сегодня 02.11, а форма не даёт выбрать 02.11 / уезжает на 01.11»:
+// раньше нижняя граница поля «Дата» считалась по ЛОКАЛЬНЫМ часам браузера
+// (toDateKey(new Date())). При рассинхроне часов/пояса она могла быть ВЧЕРАШНЕЙ
+// относительно серверных суток — и наоборот, при корректных локальных часах,
+// но отставшем сервере, отсекала выбранный сегодня день как «прошедший».
+// Теперь граница совпадает с эталоном, который использует вся остальная логика
+// формы (guessServerTodayKey: локальная дата + offset из последней сверки
+// /api/time, переживающий перезагрузку через localStorage).
+export const minDateKey = (): string => guessServerTodayKey();
 
 /** Нижняя граница для поля «Начало» (type=time): если встреча сегодня —
  *  не раньше текущего серверного времени (с поправкой offset из /api/time),
@@ -1369,6 +1379,16 @@ export default function UserPanel({
     }
 
     clearLastMeetingSaveError();
+    // Эхо локальных часов в заявке (echo_client_today / echo_client_now):
+    // сервер использует их ТОЛЬКО для формулировки подсказки в 422 («дата X
+    // прошла, но на вашем компьютере сегодня Y — проверьте часы») и НИКОГДА
+    // не подменяет ими выбранную пользователем дату. Функции экспортируются
+    // из client.ts, но раньше нигде не вызывались — бэкенд-подсказка была
+    // мертва. Выбранная дата при этом уходит ровно та, что в поле «Дата».
+    if (!editingMeeting) {
+      (payload as any).echo_client_today = clientTodayKey();
+      (payload as any).echo_client_now = clientNowHm();
+    }
     const saved = editingMeeting ? await updateMeeting(editingMeeting.id, payload) : await createMeeting(payload);
 
     if (!saved) {
