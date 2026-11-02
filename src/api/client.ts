@@ -561,7 +561,13 @@ export async function syncServerTime(): Promise<void> {
   if (Date.now() - timeSyncedAt < TIME_SYNC_TTL_MS) return;
   try {
     const t0 = Date.now();
-    const res = await fetch(`${API_BASE_URL}/time`, { headers: { Accept: "application/json" } });
+    // Фикс «сервер говорит, что я создаю встречу в прошедшем»: если VITE_API_URL
+    // задан с завершающим слэшем ("/api/"), старый код собирал "//time" -> 404,
+    // syncServerTime() молча падал, isTimeSynced() оставался false, offset=0 и
+    // форма считала «сейчас» по локальным (возможно сбитым) часам Windows —
+    // корректный выбор на сегодня отклонялся как «прошедший».
+    const timeUrl = `${API_BASE_URL.replace(/\/+$/, "")}/time`;
+    const res = await fetch(timeUrl, { headers: { Accept: "application/json" } });
     if (!res.ok) return;
     const t1 = Date.now();
     const data = await res.json();
