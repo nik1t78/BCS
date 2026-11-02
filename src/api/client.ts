@@ -640,35 +640,39 @@ export function todayKeyInServerTz(at: Date): string {
  * синхронизации при открытии формы всё равно переставит дефолт на серверный.
  */
 export function guessServerTodayKey(): string {
-  // КРИТИЧНО: если синхронизация НЕ подтверждена, локальные часы устройства
-  // могут врать на сутки (сбитая дата/время в Windows). Раньше в этом случае
-  // возвращалась ЛОКАЛЬНАЯ дата — форма стартовала с «29», сервер хранил
-  // «30», и встреча «записывалась прошедшей датой» («выбрал 30-е — а там 29-е»).
-  // Теперь при отсутствии доверенного offset дефолт = «завтра»: это ВСЕГДА
-  // будущий день относительно серверных часов (расхождение часов клиента не
-  // может превышать сутки), а эффект синхронизации при открытии формы
-  // переставит его на настоящее серверное «сегодня» сразу после /api/time.
-  if (!timeSyncOk) {
-    let savedValid = false;
-    let savedOffset = 0;
-    try {
-      const raw = localStorage.getItem("vks_time_offset_ms");
-      if (raw) {
-        const v = Number(raw);
-        if (Number.isFinite(v) && Math.abs(v) < 6 * 3600_000) {
-          savedValid = true;
-          savedOffset = v;
-        }
-      }
-    } catch {
-      /* приватный режим */
-    }
-    if (savedValid) {
-      return todayKeyInServerTz(new Date(Date.now() + savedOffset));
-    }
-    return todayKeyInServerTz(new Date(Date.now() + 24 * 3600_000));
+  // Фикс «сегодня 02.11, а форма предлагает 03.11»: раньше при отсутствии
+  // доверенного offset дефолт ставился на «завтра» (+24ч). Это было безопасно
+  // для сбитых часов, но ломало нормальный случай: пользователь с корректным
+  // системным временем видел дату В БУДУЩЕМ, пока не завершится /api/time.
+  // Теперь приоритет такой:
+  //  1) подтверждённая синхронизация — серверное «сегодня»;
+  //  2) сохранённый в localStorage offset (переживает перезагрузку) — та же
+  //     оценка, что в serverNowDate();
+  //  3) локальная дата браузера по поясу сервера — у подавляющего большинства
+  //     пользователей часы корректны, а эффект синхронизации при открытии
+  //     формы всё равно переставит дефолт на серверные сутки сразу после
+  //     /api/time (см. автоподгонку в UserPanel/RoomBookingModal).
+  if (timeSyncOk) {
+    return todayKeyInServerTz(new Date(Date.now() + timeOffsetMs));
   }
-  return todayKeyInServerTz(new Date(Date.now() + timeOffsetMs));
+  let savedOffset = 0;
+  let savedValid = false;
+  try {
+    const raw = localStorage.getItem("vks_time_offset_ms");
+    if (raw) {
+      const v = Number(raw);
+      if (Number.isFinite(v) && Math.abs(v) < 6 * 3600_000) {
+        savedValid = true;
+        savedOffset = v;
+      }
+    }
+  } catch {
+    /* приватный режим */
+  }
+  if (savedValid) {
+    return todayKeyInServerTz(new Date(Date.now() + savedOffset));
+  }
+  return todayKeyInServerTz(new Date());
 }
 
 /** «Сейчас» с поправкой на серверные часы (Date учитывает offset).

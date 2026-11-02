@@ -43,7 +43,7 @@ import {
 } from "../utils/vksLink";
 import { createVksViaBot } from "../utils/vksBot";
 import { isLateTime, LATE_CREATE_LIMIT_HM } from "../utils/freeSlots";
-import { formatRuDate, addMinToHm } from "../utils/dateKey";
+import { formatRuDate, addMinToHm, toDateKey } from "../utils/dateKey";
 
 /** «Сегодня» по локальному времени устройства — НЕ через toISOString()
  *  (UTC может сдвигать дату на день назад/вперёд → виджет показывал
@@ -876,15 +876,20 @@ export default function UserPanel({
       if (!isTimeSynced()) return;
       setFormData((f) => {
         // Дефолтная дата формы тоже пересинхронизируется с серверным «сегодня».
-        // Если страница была открыта через полночь (или дефолт считался до
-        // первой успешной сверки часов по локальным часам устройства), поле
-        // «Дата» оставалось вчерашним — пользователь жаловался: «сегодня 30-е,
-        // а форма предлагает/записывает 29-е». Правим ТОЛЬКО если это был наш
-        // собственный дефолт (название пустое, встреча ещё не создавалась);
-        // явно выбранную пользователем дату не трогаем никогда.
+        // Фикс «сегодня 02.11, а форма предлагает 03.11 / перебивает мой выбор»:
+        // раньше условие включало ЛЮБУЮ дату < todayKey — включая дату, которую
+        // пользователь только что поставил вручную (например, завтра), и она
+        // молча возвращалась на «сегодня» при каждой сверке часов. Теперь
+        // правим ТОЛЬКО наш собственный дефолт: название пустое, встреча не
+        // создавалась, время ещё не трогали (дефолтное startTime кратно 5 мин)
+        // и дата совпадает с днём браузера (т.е. это стартовое значение без
+        // учёта offset). Явно выбранную пользователем или предзаполненную из
+        // виджета дату не трогаем никогда.
         let date = f.date;
         const todayKey = serverTodayKeyTz();
-        if (!f.title.trim() && date && date !== todayKey && date < todayKey) {
+        const localToday = toDateKey(new Date());
+        const untouchedDefault = !f.title.trim() && f.startTime === emptyMeeting.startTime;
+        if (untouchedDefault && date && date === localToday && date !== todayKey) {
           date = todayKey;
         }
         // ВАЖНО (фикс «выбрал 30-е — снова стало 29-е»): раньше здесь шёл

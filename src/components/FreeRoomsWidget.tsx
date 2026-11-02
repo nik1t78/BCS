@@ -227,10 +227,21 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
 
   // Шкала и подпись «рабочего дня» — по гибкому графику залов. Если у всех
   // залов на дату график закрыт — виджет честно это покажет.
+  // Фикс подписи «рабочий день 00:00–20:00»: раньше нижняя граница шкалы
+  // бралась из FALLBACK_DAY_HOURS (00:00), даже когда у ВСЕХ залов график
+  // начинался, например, в 08:00 — подпись врала и рисовала пустые зелёные
+  // окна до начала рабочего дня. Теперь масштаб = объединение реальных
+  // графиков залов на выбранную дату; fallback 00:00 остаётся только если
+  // ни один зал не прислал часы (старый бэкенд без поля hours).
   const openInfos = infos.filter((i) => i.hours !== null);
   const closedInfos = infos.filter((i) => i.hours === null);
-  const scaleStart = Math.min(...openInfos.map((i) => hmToMin(i.hours!.start)), hmToMin(FALLBACK_DAY_HOURS.start));
-  const scaleEnd = Math.max(...openInfos.map((i) => hmToMin(i.hours!.end)), 0);
+  const hasRealHours = openInfos.length > 0;
+  const scaleStart = hasRealHours
+    ? Math.min(...openInfos.map((i) => hmToMin(i.hours!.start)))
+    : hmToMin(FALLBACK_DAY_HOURS.start);
+  const scaleEnd = hasRealHours
+    ? Math.max(...openInfos.map((i) => hmToMin(i.hours!.end)))
+    : hmToMin(FALLBACK_DAY_HOURS.end);
   const span = Math.max(scaleEnd - scaleStart, 60);
   const spct = (min: number) => ((min - scaleStart) / span) * 100;
   const showNowLine = isToday && nowMin >= scaleStart && nowMin <= scaleEnd;

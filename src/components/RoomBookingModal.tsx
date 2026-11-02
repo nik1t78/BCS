@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Room, RoomAvailability } from "../types";
 import { roomsAPI, meetingsAPI, syncServerTime, serverNowHmTz, serverTodayKeyTz } from "../api/client";
 import { computeFreeSlots, minToHm, hmToMin, WORK_DAY_START_MIN, WORK_DAY_END_MIN } from "../utils/freeSlots";
-import { toDateKey } from "../utils/dateKey";
+// toDateKey больше не используется: автоподгонка даты модалки убрана (см. фикс
+// «Свободные залы пустеют / слоты уезжают на другой день» в эффекте [open]).
 
 interface RoomBookingModalProps {
   open: boolean;
@@ -75,31 +76,17 @@ export default function RoomBookingModal({
   });
   const [nowMin, setNowMin] = useState(() => serverNowMin());
 
+  // Фикс «Свободные залы не работают / пустые после 02.11»: раньше здесь был
+  // setAvailDate((d) => { if (d === localToday ...) return srvToday; }) — при
+  // расхождении часов Windows и сервера модалка ОТКРЫВАЛАСЬ на дате браузера,
+  // а через секунду автоподгонка молча перебивала её на серверную («сегодня»).
+  // Пользователь видел занятость/слоты не того дня, что показан в поле даты,
+  // и выбранные слоты уезжали в другой день. Теперь дата НЕ перебивается:
+  // пересинхронизированный дефолт вычисляется синхронно (offset из
+  // localStorage учитывается внутри serverNowDate()/serverTodayKeyTz()).
   useEffect(() => {
     if (!open) return;
-    // Сверяемся с серверными часами (/api/time) и пересчитываем «сейчас» —
-    // иначе при расхождении часов устройства будущие слоты помечаются прошедшими.
-    // ВАЖНО (фикс «выбрал 30-е, а создаётся 29-е»): после сверки пересчитываем
-    // и дефолтную ДАТУ модалки. Стартовое значение availDate вычисляется в
-    // useState при первом рендере — если offset из /api/time ещё не загружен
-    // (или localStorage пуст), это локальная дата браузера: при сбитых часах/
-    // поясе устройства модалка открывалась на «29», когда сервер жил 30-м, и
-    // бронь создавалась на прошедший день. Правим ТОЛЬКО дату, которую подставили
-    // сами (= локальное «сегодня» браузера, т.е. предзаполнения от календаря нет);
-    // явно выбранную пользователем или переданную родителем дату не трогаем.
-    const applyServerNow = () => {
-      const nm = serverNowMin();
-      setNowMin(nm);
-      setAvailDate((d) => {
-        const localToday = toDateKey(new Date());
-        const srvToday = serverTodayKeyTz();
-        // Дата «наша» (совпала с локальным сегодня браузера) и серверный день
-        // другой → переставляем на серверное «сегодня». Если пользователь уже
-        // выбрал другой день (d !== localToday) — оставляем его выбор.
-        if (d === localToday && srvToday !== localToday) return srvToday;
-        return d;
-      });
-    };
+    const applyServerNow = () => setNowMin(serverNowMin());
     syncServerTime().finally(applyServerNow);
     const t = setInterval(applyServerNow, 60000);
     return () => clearInterval(t);
