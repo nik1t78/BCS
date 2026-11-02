@@ -62,6 +62,11 @@ Route::get('/tv/{room}', function (string $room) {
 // Решение: после рендера вычисляем sha256 текста скрипта и добавляем его
 // хэш в заголовок CSP этого ответа. Директивы берём из конфига nginx, чтобы
 // политики не разъезжались при правках.
+// Защита от «Cannot redeclare function tvScreenResponse()»: Laravel кэширует
+// маршруты (artisan route:cache / package:discover), и при повторном включении
+// этого файла в том же процессе (или при сборке кэша поверх уже загруженного
+// web.php) без guards объявление функции выполнится дважды.
+if (!function_exists('tvScreenResponse')) {
 function tvScreenResponse(array $data, int $status = 200): \Symfony\Component\HttpFoundation\Response
 {
     $html = view('tv-screen', $data)->render();
@@ -85,6 +90,7 @@ function tvScreenResponse(array $data, int $status = 200): \Symfony\Component\Ht
         ->header('Cache-Control', 'no-store')
         ->header('Content-Security-Policy', $csp);
 }
+} // if (!function_exists('tvScreenResponse'))
 
 // Редирект со «старого» короткого формата /m/{id} на вечную ссылку API
 // (используется в QR/уведомлениях, если кто-то ввёл адрес вручную).
