@@ -66,14 +66,14 @@ Route::middleware('auth:sanctum')->get('/meta/stamps', function (\Illuminate\Htt
 // Внутри sanctum-группы такой запрос не аутентифицируется гардой и падал
 // с 401/500 (fatal уже после отправки SSE-заголовков). Маршрут объявляется
 // здесь, контроль сам резолвит пользователя по ?token= через Sanctum::findByToken.
-// throttle:2,60 — НЕ «N в минуту», а «2 запроса в течение 60 секунд» (Laravel
-// RateLimiter: второй параметр — DECAY SECONDS). Раньше стояло throttle:20,1:
-// EventSource при обрыве переподключается через ~3 с; каждый живой SSE-стрим
-// занимал слот лимитера на 60 с, и после пары reconnect'ов браузер упирался
-// в лимит и получал 429 Too Many Requests в бесконечном цикле. 2/60 даёт
-// штатный reconnect (стрим держит слот, новый стартует только после смерти
-// старого), а 429 из-за сетевых ретраев больше не возникает.
-Route::middleware('throttle:2,60')->get('/notifications/stream', [\App\Http\Controllers\Api\NotificationStreamController::class, 'stream']);
+// throttle:120,60 — «120 запросов в течение 60 секунд» (второй параметр —
+// DECAY SECONDS). Раньше стояло throttle:2,60 («2 запроса за минуту») — это
+// ОШИБКА: SSE-стрим держит соединение открытым, но при каждом сетевом ретрае
+// (nginx proxy_read_timeout, обрыв Wi-Fi, sleep/wake ноутбука) браузер открывает
+// НОВЫЙ /notifications/stream, и после 3 reconnect'ов на минуту все остальные
+// запросы того же пользователя/IP получали 429 Too Many Requests в цикле.
+// 120/мин = штатные reconnect + запас; защита от флуда остаётся.
+Route::middleware('throttle:120,60')->get('/notifications/stream', [\App\Http\Controllers\Api\NotificationStreamController::class, 'stream']);
 
 // Пункт 5 плана: «экран ожидания» в зале. Телевизор открывает /tv/{room}?token=...
 // без логина; токен зала (rooms.tv_token) даёт доступ только на чтение нейтральных
@@ -82,13 +82,10 @@ Route::middleware('throttle:2,60')->get('/notifications/stream', [\App\Http\Cont
 // по name (человекочитаемый адрес для телевизора), поэтому JS при поллинге
 // передаёт ровно тот сегмент, что стоит в URL экрана. Привязка модели по id
 // на таких адресах давала 404 («Not Found») — экран не мог получить расписание.
-// throttle:600,60 — «600 запросов в течение 60 секунд» (второй параметр
-// Laravel RateLimiter — DECAY SECONDS, не минуты). Раньше стояло
-// throttle:30,1 = 30/мин на IP. Все телевизоры офиса выходят в backend с
-// одного IP (NAT), поэтому уже 3 экрана (поллинг каждые 10 с = 180/мин)
-// гарантированно ловили 429 Too Many Requests и ТВ-экраны «умирали».
-// Поднимаем до 600/мин — запас на десятки экранов + превью /tv/{id} в UI,
-// при этом защита от скрапинга чужими токенами сохраняется.
+// throttle:600,60 — «600 запросов в течение 60 секунд» (второй параметр Laravel
+// RateLimiter — DECAY SECONDS, не минуты). Раньше стояло throttle:30,1 =
+// 30/мин на IP: все телевизоры офиса выходят с одного NAT-IP, и уже 3 экрана
+// (поллинг каждые 10 с = 180/мин) гарантированно ловили 429.
 Route::middleware('throttle:600,60')->get('/tv/{room}/next', function (\Illuminate\Http\Request $request, string $room) {
     // is_numeric() — встроенная функция PHP. \Illuminate\Support\Str::isNumeric()
     // НЕ существует (Str не имеет такого метода/макроса) и давала
@@ -107,11 +104,18 @@ Route::middleware('throttle:600,60')->get('/tv/{room}/next', function (\Illumina
 // Пункт 2 плана: «вечная» ссылка /api/m/{id} — всегда редиректит на актуальную
 // комнату ВКС встречи. Используется в QR-кодах и уведомлениях: даже если
 // автопилот пересоздал комнату, старая ссылка/QR остаются рабочими.
-Route::middleware('throttle:60,1')->get('/m/{meeting}', function (\App\Models\Meeting $meeting) {
+// ВАЖНО про throttle: второй параметр Laravel RateLimiter — DECAY SECONDS,
+// а НЕ минуты. Раньше стояло throttle:60,1 (= всего 60 запросов в МИНУТУ):
+// страница ожидания /m/{id} опрашивает статус каждую секунду с нескольких
+// экранов одного NAT-IP и мгновенно упиралась в лимит («Too Many Attempts»).
+// 600,60 = 600 запросов в минуту — запас на все открытые страницы ожидания.
+Route::middleware('throttle:600,60')->get('/m/{meeting}', function (\App\Models\Meeting $meeting) {
     if (!$meeting->link) {
         return response()->view('vks-waiting', ['meeting' => $meeting]);
     }
-    return redirect()->away($meeting->link);
+    // no-store: страница-редирект не должна кэшироваться браузером ТВ —
+    // иначе после пересоздания комнаты QR/SSE-ссылка ещё долго ведёт на старую.
+    return redirect()->away($meeting->link)->header('Cache-Control', 'no-store');
 })->whereNumber('meeting');
 
 // Защищённые маршруты

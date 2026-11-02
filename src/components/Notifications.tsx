@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { User, Notification } from "../types";
 import { getNotifications, markNotificationRead, markAllNotificationsRead, clearAllNotifications } from "../store-api";
-import { notificationsAPI } from "../api/client";
+import { notificationsAPI, API_BASE_URL, getToken } from "../api/client";
 
 // --- Toast-уведомления: всплывают на любом экране (правый нижний угол) ---
 interface ToastItem {
@@ -42,6 +42,38 @@ export function subscribeToNotifications(onNotification: (n: RealtimeEvent) => v
     }
   };
   es.addEventListener("unavailable", unavailable);
+  // 429 Too Many Requests / fatal-ошибка сервера: при CONNECTING/OPEN ошибке
+  // (битый кадр, сетевой обрыв) браузер сам переподключится через ~3 с. Но
+  // если сервер ответил HTTP-ошибкой, готовим backoff: проверяем доступность
+  // эндпоинта обычным fetch — на 401/403/429 закрываем стрим, чтобы
+  // EventSource не уходил в бесконечный цикл reconnect'ов, каждый из которых
+  // снова тратит слот троттлинг-лимитера.
+  let retryDelay = 5000;
+  es.onerror = () => {
+    if (es.readyState === EventSource.CONNECTING) {
+      // штатный авто-reconnect EventSource; при серии ошибок удваиваем паузу
+      retryDelay = Math.min(retryDelay * 2, 60000);
+    }
+  };
+  const probe = async () => {
+    try {
+      const token = getToken();
+      if (!token) return;
+      const r = await fetch(`${API_BASE_URL}/notifications/stream?token=${encodeURIComponent(token)}`, {
+        method: "GET",
+        headers: { Accept: "text/event-stream" },
+        signal: AbortSignal.timeout(8000),
+      });
+      // 429/401/403 — закрываем SSE полностью (поллинг останется запасным)
+      if (r.status === 429 || r.status === 401 || r.status === 403) unavailable();
+    } catch {
+      /* сеть недоступна — ничего не делаем, EventSource сам ретраит */
+    }
+  };
+  // одна отсроченная проверка после первой же ошибки reconnect
+  es.addEventListener("error", () => {
+    window.setTimeout(probe, retryDelay);
+  }, { once: true });
   return () => {
     es.removeEventListener("notification", handler);
     es.removeEventListener("unavailable", unavailable);

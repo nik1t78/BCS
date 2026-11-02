@@ -3,10 +3,10 @@
 // По умолчанию API доступен на том же origin через nginx (location /api/ -> Laravel),
 // поэтому относительный путь '/api' работает и в docker, и без настройки CORS.
 // Переопределить можно переменной окружения VITE_API_URL при сборке.
-const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
+export const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
 
 // Получение токена из localStorage
-const getToken = (): string | null => {
+export const getToken = (): string | null => {
   const auth = localStorage.getItem("vks_auth");
   if (!auth) return null;
   return JSON.parse(auth).token;
