@@ -314,9 +314,18 @@ class MeetingController extends Controller
             $startHm = substr((string) $validated['start_time'], 0, 5);
             $endHm = substr((string) $validated['end_time'], 0, 5);
             $nowHm = $now->format('H:i');
-            if ($sentDateKey === $yesterdayKey && $startHm <= $nowHm) {
+            // «Сегодня по часам компьютера пользователя» (echo_client_today —
+            // добавляет фронт). Если присланная дата совпадает с ЕГО локальным
+            // «сегодня», значит на его машине ещё не наступило то время, что
+            // считает сервер: это рассинхрон/устаревший дефолт формы, а НЕ
+            // осознанный выбор прошедшего дня. Переносим на серверное сегодня
+            // и честно предупреждаем. Покрывает и случай «вчерашняя дата», и
+            // любые другие сутки в прошлом (например сервер отстал на сутки).
+            $clientToday = trim((string) $request->input('echo_client_today', ''));
+            $isClientToday = $clientToday !== '' && $clientToday === $sentDateKey;
+            if (($sentDateKey === $yesterdayKey && $startHm <= $nowHm) || $isClientToday) {
                 $autoFixNotes[] = sprintf(
-                    'дата %s уже прошла — встреча перенесена на сегодня (%s), время %s–%s сохранено',
+                    'дата %s уже прошла по серверным часам — встреча перенесена на сегодня (%s), время %s–%s сохранено',
                     $sentDateKey,
                     $todayKey,
                     $startHm,

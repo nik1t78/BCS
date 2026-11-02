@@ -15,6 +15,7 @@ import {
   meetingTasksAPI,
   rsvpAPI,
   trashAPI,
+  clientTodayKey,
 } from "./api/client";
 import { normalizeVksLink, sanitizeVksLink, isVksLink } from "./utils/vksLink";
 import { forceRelogin } from "./api/client";
@@ -150,6 +151,16 @@ export function meetingToApi(data: any): any {
   }
   if (data.startTime) out.start_time = data.startTime;
   if (data.endTime) out.end_time = data.endTime;
+  // Фикс «на компе 02.11, а встреча создаётся на 01.11»: вместе с датой
+  // отправляем «сегодня по часам компьютера пользователя» (echo_client_today).
+  // Если присланная дата ушла в прошлое относительно серверных часов, но
+  // СОВПАДАЕТ с локальным «сегодня» клиента, сервер понимает: это рассинхрон
+  // (устаревший дефолт формы / кривой offset / протухший кэш), а не осознанный
+  // выбор прошедшего дня — и переносит встречу на реальное «сегодня» с
+  // предупреждением вместо тихой записи вчерашней даты или 422.
+  if (out.date && typeof out.date === "string" && /^\d{4}-\d{2}-\d{2}/.test(out.date)) {
+    out.echo_client_today = clientTodayKey();
+  }
   // Ссылка ВКС: бэкенд валидирует её как `url` (обязательна схема https://).
   // Пользователь мог вставить «salutejazz.ru/calls/...» без протокола или со
   // мусором после копирования — чиним до отправки, иначе 422 и «не сохраняется».
@@ -527,7 +538,14 @@ export async function createMeeting(data: any): Promise<Meeting | null> {
     // здесь (битый ответ) ловился тем же catch: пользователь видел «не
     // удалось сохранить», а встреча в базе уже создавалась.
     invalidateMeetingsCache();
-    return mapMeeting(unwrapOne(response));
+    const mapped = mapMeeting(unwrapOne(response));
+    // Сервер мог АВТОПЕРЕНЕСТИ дату (например устаревший дефолт формы
+    // «вчерашнего» дня перенесён на серверное сегодня) и вернуть об этом
+    // warnings — пробрасываем их наружу, UserPanel показывает alert.
+    if (response && typeof response === "object" && Array.isArray((response as any).warnings)) {
+      (mapped as any).warnings = (response as any).warnings;
+    }
+    return mapped;
   } catch (error) {
     console.error("Create meeting: server saved but response mapping failed:", error);
     return {} as Meeting;
