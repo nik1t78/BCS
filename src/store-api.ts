@@ -374,6 +374,24 @@ async function getServerChangedStamp(): Promise<number | null> {
   }
 }
 
+// Момент последней АВТОзавершённой встречи из ответа /meetings (max updated_at
+// среди completed). Нужен для инвалидации клиентского кеша: планировщик
+// meetings:auto-complete меняет статусы прошедших встреч БЕЗ bump('meetings:changed'),
+// поэтому раньше «Прошедшие» до 5 минут не появлялись в списке, а при сбое
+// синхронизации часов создавалось впечатление «сегодня все встречи пропали».
+let lastSeenCompletedUpdated = 0;
+function noteCompletedStamps(list: Meeting[]): void {
+  let maxDone = 0;
+  for (const m of list) {
+    const upd = (m as any).updatedAt;
+    if (m.status === "completed" && typeof upd === "string") {
+      const t = Date.parse(upd.replace(" ", "T"));
+      if (Number.isFinite(t) && t > maxDone) maxDone = t;
+    }
+  }
+  if (maxDone > lastSeenCompletedUpdated) lastSeenCompletedUpdated = maxDone;
+}
+
 export async function getMeetings(params?: {
   status?: string;
   date?: string;
@@ -389,7 +407,14 @@ export async function getMeetings(params?: {
         const entry = JSON.parse(raw) as MeetingsCacheEntry;
         if (Date.now() - entry.savedAt < MEETINGS_CACHE_TTL_MS && Date.now() > lastLocalWriteAt) {
           const stamp = await getServerChangedStamp();
-          if (stamp === null || stamp === entry.serverStamp) {
+          // Планировщик автозавершения мог сменить статусы встреч, НЕ трогая
+          // метку meetings:changed — если в кеше уже есть «завершённые» позже
+          // момента сохранения кеша, считаем кеш устаревшим.
+          const cacheHasLateCompleted =
+            entry.serverStamp !== null &&
+            lastSeenCompletedUpdated > 0 &&
+            lastSeenCompletedUpdated >= entry.savedAt;
+          if ((stamp === null || stamp === entry.serverStamp) && !cacheHasLateCompleted) {
             return entry.data;
           }
         }
@@ -400,6 +425,7 @@ export async function getMeetings(params?: {
   }
   try {
     const data = await loadAllMeetingPages(params);
+    noteCompletedStamps(data);
     if (!params || Object.keys(params).length === 0) {
       try {
         const stamp = await getServerChangedStamp();

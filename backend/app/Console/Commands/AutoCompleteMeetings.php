@@ -18,14 +18,17 @@ class AutoCompleteMeetings extends Command
         $today = $now->toDateString();
         $todayImmutable = CarbonImmutable::parse($today);
 
-        // 1) Разовые встречи в прошлом: date < сегодня, либо сегодня и end_time уже наступил.
+        // 1) Разовые встречи в прошлом: date < сегодня, либо сегодня и время
+        // окончания (или начала, если окончания нет) уже наступило.
+        $endOrStart = "TIMESTAMP(date, COALESCE(end_time, start_time, '23:59:00'))";
+        $nowTs = $now->format('Y-m-d H:i:s');
         $pastQuery = Meeting::query()
             ->whereIn('status', ['scheduled', 'in-progress'])
-            ->where(function ($q) use ($today, $now) {
+            ->where(function ($q) use ($today, $nowTs, $endOrStart) {
                 $q->whereDate('date', '<', $today)
-                  ->orWhere(function ($r) use ($today, $now) {
+                  ->orWhere(function ($r) use ($today, $nowTs, $endOrStart) {
                       $r->whereDate('date', '=', $today)
-                        ->whereTime('end_time', '<=', $now->format('H:i:s'));
+                        ->whereRaw("{$endOrStart} <= ?", [$nowTs]);
                   });
             })
             // Повторяющиеся серии обрабатываются отдельно (см. п.2): их нельзя
