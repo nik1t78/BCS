@@ -66,7 +66,14 @@ Route::middleware('auth:sanctum')->get('/meta/stamps', function (\Illuminate\Htt
 // Внутри sanctum-группы такой запрос не аутентифицируется гардой и падал
 // с 401/500 (fatal уже после отправки SSE-заголовков). Маршрут объявляется
 // здесь, контроль сам резолвит пользователя по ?token= через Sanctum::findByToken.
-Route::middleware('throttle:20,1')->get('/notifications/stream', [\App\Http\Controllers\Api\NotificationStreamController::class, 'stream']);
+// throttle:2,60 — НЕ «N в минуту», а «2 запроса в течение 60 секунд» (Laravel
+// RateLimiter: второй параметр — DECAY SECONDS). Раньше стояло throttle:20,1:
+// EventSource при обрыве переподключается через ~3 с; каждый живой SSE-стрим
+// занимал слот лимитера на 60 с, и после пары reconnect'ов браузер упирался
+// в лимит и получал 429 Too Many Requests в бесконечном цикле. 2/60 даёт
+// штатный reconnect (стрим держит слот, новый стартует только после смерти
+// старого), а 429 из-за сетевых ретраев больше не возникает.
+Route::middleware('throttle:2,60')->get('/notifications/stream', [\App\Http\Controllers\Api\NotificationStreamController::class, 'stream']);
 
 // Пункт 5 плана: «экран ожидания» в зале. Телевизор открывает /tv/{room}?token=...
 // без логина; токен зала (rooms.tv_token) даёт доступ только на чтение нейтральных
@@ -75,7 +82,14 @@ Route::middleware('throttle:20,1')->get('/notifications/stream', [\App\Http\Cont
 // по name (человекочитаемый адрес для телевизора), поэтому JS при поллинге
 // передаёт ровно тот сегмент, что стоит в URL экрана. Привязка модели по id
 // на таких адресах давала 404 («Not Found») — экран не мог получить расписание.
-Route::middleware('throttle:30,1')->get('/tv/{room}/next', function (\Illuminate\Http\Request $request, string $room) {
+// throttle:600,60 — «600 запросов в течение 60 секунд» (второй параметр
+// Laravel RateLimiter — DECAY SECONDS, не минуты). Раньше стояло
+// throttle:30,1 = 30/мин на IP. Все телевизоры офиса выходят в backend с
+// одного IP (NAT), поэтому уже 3 экрана (поллинг каждые 10 с = 180/мин)
+// гарантированно ловили 429 Too Many Requests и ТВ-экраны «умирали».
+// Поднимаем до 600/мин — запас на десятки экранов + превью /tv/{id} в UI,
+// при этом защита от скрапинга чужими токенами сохраняется.
+Route::middleware('throttle:600,60')->get('/tv/{room}/next', function (\Illuminate\Http\Request $request, string $room) {
     // is_numeric() — встроенная функция PHP. \Illuminate\Support\Str::isNumeric()
     // НЕ существует (Str не имеет такого метода/макроса) и давала
     // BadMethodCallException → HTTP 500 на /api/tv/{id}/next.

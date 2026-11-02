@@ -2172,7 +2172,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     </div>
                     <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-1">Планировщик</p>
-                      {pill(!!svc.scheduler?.ok, svc.scheduler?.ok ? `Активен · цикл ${svc.scheduler.cron_age_s ?? "?"} с назад` : (svc.scheduler?.cron_age_s == null ? "Ещё не запускался" : `Молчит ${Math.round(svc.scheduler.cron_age_s / 60)} мин`))}
+                      {pill(!!svc.scheduler?.ok, svc.scheduler?.ok ? `Активен · цикл ${svc.scheduler.cron_age_s ?? "?"} с назад` : (svc.scheduler?.emergency_heartbeat ? "Жив (аварийный heartbeat web-процесса)" : (svc.scheduler?.cron_age_s == null ? "Ещё не запускался" : `Молчит ${Math.round(svc.scheduler.cron_age_s / 60)} мин`)))}
                     </div>
                     <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-1">ВКС-бот (24ч)</p>

@@ -100,9 +100,24 @@ class SystemStatusController extends Controller
         }
 
         $queueMax = max(60, (int) env('QUEUE_HEARTBEAT_MAX_AGE', 180));
+
+        // Аварийный heartbeat: web-процесс (schedule:run registerCallback)
+        // пишет маркер, когда основной цикл планировщика молчит дольше 3 мин.
+        // Отличаем честный «Активен» от страховочного, чтобы админ не принял
+        // зависший scheduler за живой.
+        $emergency = false;
+        if ($cronAge !== null && $cronAge > 150) {
+            try {
+                $emergency = (bool) cache()->get('scheduler:heartbeat-emergency');
+            } catch (\Throwable $e) {
+                $emergency = false;
+            }
+        }
+
         $out['services']['scheduler'] = [
             'ok' => $cronAge !== null && $cronAge <= 150,
             'cron_age_s' => $cronAge,
+            'emergency_heartbeat' => $emergency,
         ];
         $out['services']['queue_worker']['ok'] = $hbAge !== null && $hbAge <= $queueMax;
 
