@@ -270,6 +270,10 @@ services:
       BOT_PORT: "8090"
       BOT_TOKENS: "${BOT_TOKENS:-}"
       VKSBOT_ENGINE: "${VKSBOT_ENGINE:-playwright}"
+      # Таймауты Playwright (см. bot_pw.py): через NAT/SSL 45с не всегда хватает
+      VKSBOT_TIMEOUT: "${VKSBOT_TIMEOUT:-120}"
+      VKSBOT_GOTO_TIMEOUT_MS: "${VKSBOT_GOTO_TIMEOUT_MS:-90000}"
+      VKSBOT_GOTO_ATTEMPTS: "${VKSBOT_GOTO_ATTEMPTS:-3}"
       TZ: "${TZ:-Europe/Moscow}"
     # Healthcheck: мониторинг доступности бота (используется и bot:monitor,
     # и `docker compose ps` — статус unhealthy виден сразу).

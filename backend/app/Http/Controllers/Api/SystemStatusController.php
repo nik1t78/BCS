@@ -127,7 +127,10 @@ class SystemStatusController extends Controller
         $okCnt = BotLog::where('created_at', '>=', $since)->where('success', true)->count();
         $out['vks_bot'] = [
             'expected' => filter_var(env('VKSBOT_EXPECTED', false), FILTER_VALIDATE_BOOLEAN),
-            'auto' => filter_var(env('VKSBOT_AUTO', true), FILTER_VALIDATE_BOOLEAN),
+            // config() — а не env(): при кэшировании конфигурации
+            // (php artisan config:cache) env() возвращает null, и админка
+            // показывала «бот выключен», хотя автопилот работал.
+            'auto' => filter_var(config('services.vks_bot.auto', env('VKSBOT_AUTO', false)), FILTER_VALIDATE_BOOLEAN),
             'events_24h' => $total,
             'success_rate_24h' => $total > 0 ? round($okCnt / $total * 100, 1) : null,
             'recent' => BotLog::latest()->latest('id')->take(10)

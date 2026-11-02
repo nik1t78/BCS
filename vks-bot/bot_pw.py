@@ -26,6 +26,14 @@ from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 CREATE_URL = os.getenv("VKSBOT_CREATE_URL", "https://salutejazz.ru/calls/create")
 LINK_RE = re.compile(r"https://salutejazz\.ru/calls/[A-Za-z0-9_-]+(?:\?[^\s\"'<]*)?")
 
+# Таймауты и повторы. 45_000ms не всегда хватает через корпоративный NAT/SSL:
+# раньше одна неудачная попытка приводила к «бот не вернул ссылку» и встрече
+# без ссылки. Теперь goto идёт с повторами, wait_until="load" (SPA на
+# domcontentloaded ещё рисует форму), а общий timeout берём из env.
+GOTO_TIMEOUT_MS = int(os.getenv("VKSBOT_GOTO_TIMEOUT_MS", "90000"))
+GOTO_ATTEMPTS = int(os.getenv("VKSBOT_GOTO_ATTEMPTS", "3"))
+CREATE_TIMEOUT_S = int(os.getenv("VKSBOT_TIMEOUT", "120"))
+
 # Платформа salutejazz.ru НЕ имеет API планирования встреч: комната живёт
 # «сегодня», и дата начала встречи задаётся только полем datetime-local
 # в форме создания (если оно есть на странице). Ниже — попытка заполнить
@@ -161,7 +169,7 @@ class VkxBotPlaywright:
             time.sleep(0.3)
         return None, None
 
-    def create_call(self, title: str, name: str, timeout: int = 60,
+    def create_call(self, title: str, name: str, timeout: int = CREATE_TIMEOUT_S,
                     date: str | None = None) -> dict:
         """Создать встречу на SaluteJazz и вернуть ссылку.
 
@@ -211,8 +219,23 @@ class VkxBotPlaywright:
                 context.clear_permissions()
                 page = context.new_page()
                 page.set_default_timeout(timeout * 1000)
-                page.goto(CREATE_URL, wait_until="domcontentloaded",
-                          timeout=45_000)
+                # goto с повторами: через NAT/SSL первый заход иногда виснет;
+                # один TimeoutError раньше убивал всю попытку создания.
+                last_err = None
+                for attempt in range(GOTO_ATTEMPTS):
+                    try:
+                        page.goto(CREATE_URL, wait_until="load",
+                                  timeout=GOTO_TIMEOUT_MS)
+                        last_err = None
+                        break
+                    except Exception as e:  # noqa: BLE001
+                        last_err = e
+                        log.warning("goto #%d не удался: %s", attempt + 1, e)
+                        time.sleep(2)
+                if last_err is not None:
+                    raise RuntimeError(
+                        f"salutejazz.ru недоступен после {GOTO_ATTEMPTS} "
+                        f"попыток: {last_err}")
 
                 # Ждём, пока SPA отрендерит форму (input или кнопку)
                 page.wait_for_selector("input, textarea, button",
