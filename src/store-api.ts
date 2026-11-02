@@ -16,6 +16,7 @@ import {
   rsvpAPI,
   trashAPI,
   clientTodayKey,
+  clientNowHm,
 } from "./api/client";
 import { normalizeVksLink, sanitizeVksLink, isVksLink } from "./utils/vksLink";
 import { forceRelogin } from "./api/client";
@@ -160,6 +161,10 @@ export function meetingToApi(data: any): any {
   // предупреждением вместо тихой записи вчерашней даты или 422.
   if (out.date && typeof out.date === "string" && /^\d{4}-\d{2}-\d{2}/.test(out.date)) {
     out.echo_client_today = clientTodayKey();
+    // Полный локальный момент («сейчас» по часам компьютера) — сервер
+    // использует его ТОЛЬКО для текста подсказки в ошибке 422, дату он не
+    // меняет никогда (выбранная пользователем дата сохраняется как есть).
+    out.echo_client_now = clientNowHm();
   }
   // Ссылка ВКС: бэкенд валидирует её как `url` (обязательна схема https://).
   // Пользователь мог вставить «salutejazz.ru/calls/...» без протокола или со

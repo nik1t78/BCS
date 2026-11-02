@@ -599,6 +599,27 @@ export function clientTodayKey(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/** Локальное «сейчас» в HH:mm по часам компьютера пользователя.
+ *  В связке с clientTodayKey() даёт полный локальный момент — используется
+ *  как echo_client_now для серверной подсказки в тексте ошибки 422. */
+export function clientNowHm(): string {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/** Момент «сейчас» на СЕРВЕРЕ (Unix-мс) — абсолютный, не зависит от часов
+ *  браузера: это Date.now() ответа /api/time плюс измеренное смещение.
+ *  Критично для проверки «выбранное время уже прошло?»: раньше форма
+ *  сверялась только с offset'ом и при рассинхроненном календаре ОС молча
+ *  отправляла прошедшую дату/время, а сервер записывал её как есть либо
+ *  отбивал невнятной ошибкой. Если синхронизация ещё не выполнена —
+ *  null (вызывающий обязан сначала дождаться syncServerTime или
+ *  положиться на серверную проверку). */
+export function serverNowMsOrNull(): number | null {
+  if (!timeSyncOk) return null;
+  return Date.now() + timeOffsetMs;
+}
+
 /** Актуализировать смещение часов (вызывается при открытии формы создания). */
 export async function syncServerTime(force = false): Promise<void> {
   // force=true — «принудительно, прямо сейчас». Критично для submit-проверок:
