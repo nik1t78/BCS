@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { User, Meeting } from "../types";
-import { authAPI, downloadBlob, adminLoadAPI, roomsAPI, guessServerTodayKey } from "../api/client";
+import { authAPI, downloadBlob, adminLoadAPI, roomsAPI, guessServerTodayKey, serverNowDate } from "../api/client";
 import { unwrapList, mapMeeting } from "../store-api";
 import { exportToExcel } from "../utils/export";
 import { SortMode, SORT_OPTIONS, sortMeetings } from "../utils/meetingSort";
@@ -559,7 +559,9 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     reminderMinutes: 15,
     recurring: "none",
     priority: "medium",
-    createdAt: new Date().toISOString(),
+    // Фикс «дата создания прошедшим числом»: время берётся с поправкой на
+    // серверные часы (/api/time), а не с possibly сбитых часов браузера.
+    createdAt: serverNowDate().toISOString(),
     isPrivate: false,
   };
   const [meetingForm, setMeetingForm] = useState<Meeting>(emptyMeeting);

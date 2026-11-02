@@ -809,7 +809,11 @@ export default function UserPanel({
     reminderMinutes: getDefaultReminder(),
     recurring: "none",
     priority: "medium",
-    createdAt: new Date().toISOString(),
+    // Фикс «дата создания уходит прошедшим числом»: раньше бралось время
+    // браузера (new Date()) — при сбитых/отставших часах Windows в БД
+    // записывалась вчерашняя дата. serverNowDate() учитывает offset из
+    // /api/time (и localStorage), поэтому «сейчас» всегда серверное.
+    createdAt: serverNowDate().toISOString(),
     isPrivate: false,
   };
 
