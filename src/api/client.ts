@@ -566,11 +566,18 @@ export async function syncServerTime(): Promise<void> {
     // syncServerTime() молча падал, isTimeSynced() оставался false, offset=0 и
     // форма считала «сейчас» по локальным (возможно сбитым) часам Windows —
     // корректный выбор на сегодня отклонялся как «прошедший».
-    const timeUrl = `${API_BASE_URL.replace(/\/+$/, "")}/time`;
-    const res = await fetch(timeUrl, { headers: { Accept: "application/json" } });
+    const timeUrl = `${API_BASE_URL.replace(/\/+$/, "")}/time?_=${t0}`;
+    // cache: 'no-store' + фикс «сегодня 02.11, а создаёт 01.11»: без него nginx/
+    // браузер могли отдать закешированный ответ /api/time вчерашней выдержки —
+    // offset получался смещённым на сутки, «серверное сегодня» отставало, и
+    // форма молча подставляла в заявку предыдущий день.
+    const res = await fetch(timeUrl, { headers: { Accept: "application/json", "Cache-Control": "no-cache" }, cache: "no-store" });
     if (!res.ok) return;
     const t1 = Date.now();
     const data = await res.json();
+    // Сервер эхом возвращает наш cache-bust ('echo'). Если echo не совпал —
+    // это протухший (закэшированный) ответ из прокси: доверять ему нельзя.
+    if (data?.echo !== undefined && data.echo !== null && Number(data.echo) !== t0) return;
     const serverMs = Date.parse(data?.server_time ?? "");
     if (Number.isNaN(serverMs)) return;
     // Оценка серверного «сейчас» на момент t1: прибавляем половину времени запроса

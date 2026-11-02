@@ -33,11 +33,20 @@ Route::get('/health', function () {
 // валидация «нельзя создать встречу в прошедшем времени» отклоняет корректный
 // выбор пользователя («время не совпадает»). Фронт замеряет
 // offset = serverTime - clientTime и корректирует им «сейчас» в форме.
-Route::get('/time', function () {
+Route::get('/time', function (\Illuminate\Http\Request $request) {
+    // Кэш-гард: фронт (syncServerTime) не ставит no-store, а nginx/браузер или
+    // промежуточный прокси могут отдавать закешированный ответ. Тогда offset
+    // часов считается от «вчерашнего» server_time, серверное «сегодня» отстаёт
+    // на сутки и форма создаёт встречу 01.11 вместо реальных 02.11
+    // («сегодня 02.11, а создаёт 01.11»). Запрещаем кэширование явно + cache-bust.
+    $bust = (string) $request->get('_');
     return response()->json([
         'server_time' => now()->toIso8601String(),
         'timezone' => config('app.timezone'),
-    ]);
+        'echo' => $bust !== '' ? (int) $bust : null,
+    ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+      ->header('Pragma', 'no-cache')
+      ->header('Expires', '0');
 });
 
 // Лёгкий эндпоинт «метки изменений» для клиентского кеша списка встреч:

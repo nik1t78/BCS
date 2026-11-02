@@ -299,10 +299,36 @@ class MeetingController extends Controller
         // дата не раньше сегодня, а если сегодня — начало не раньше «сейчас».
         $now = \Carbon\CarbonImmutable::now();
         $startAt = \Carbon\CarbonImmutable::parse($validated['date'])->setTimeFromTimeString($validated['start_time']);
+        // Финальная страховка «выбрал 02.11, а записало 01.11»: если фронт
+        // прислал ВЧЕРАШНЮЮ дату с временем начала НЕ позже серверного «сейчас»
+        // (страница открыта через полночь, кривой offset из localStorage,
+        // автоподгонка не успела), это почти наверняка устаревший дефолт
+        // формы, а не осознанный выбор пользователя. Переносим такую заявку
+        // на серверное «сегодня» и честно сообщаем об этом в warnings —
+        // фронт показывает их alert'ом после сохранения. Осознанные даты
+        // глубже в прошлом (позавчера и ранее) по-прежнему отбиваются ниже.
         if ($startAt->lessThan($now)) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
-                'start_time' => ['Нельзя создать встречу в прошедшем времени. Выберите будущую дату или более поздний слот.'],
-            ]);
+            $sentDateKey = \Illuminate\Support\Carbon::parse($validated['date'])->toDateString();
+            $todayKey = $now->toDateString();
+            $yesterdayKey = $now->copy()->subDay()->toDateString();
+            $startHm = substr((string) $validated['start_time'], 0, 5);
+            $endHm = substr((string) $validated['end_time'], 0, 5);
+            $nowHm = $now->format('H:i');
+            if ($sentDateKey === $yesterdayKey && $startHm <= $nowHm) {
+                $autoFixNotes[] = sprintf(
+                    'дата %s уже прошла — встреча перенесена на сегодня (%s), время %s–%s сохранено',
+                    $sentDateKey,
+                    $todayKey,
+                    $startHm,
+                    $endHm
+                );
+                $validated['date'] = $todayKey;
+                $startAt = \Carbon\CarbonImmutable::parse($validated['date'])->setTimeFromTimeString($validated['start_time']);
+            } else {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'start_time' => ['Нельзя создать встречу в прошедшем времени. Выберите будущую дату или более поздний слот.'],
+                ]);
+            }
         }
 
         // Автофикс «конец раньше/равен началу»: встреча с нулевой длительностью

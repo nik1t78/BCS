@@ -1259,7 +1259,24 @@ export default function UserPanel({
       // вернёт 422, если время реально прошло).
       if (isTimeSynced()) {
         const todayKey = serverTodayKey();
+        // Фикс «сегодня 02.11, а нажимаю создать — пишет 01.11»: раньше при
+        // formData.date < todayKey срабатывала ТИХАЯ автоподгонка внутри ветки
+        // «=== todayKey» после предварительного clamping, либо сервер получал
+        // дату пользователя и отбивал её как прошедшую. Явно выбранная дата в
+        // прошлом — это ошибка пользователя, блокируем с понятным текстом
+        // (раньше было). Но если дата «вчерашняя», а поле даты пользователь не
+        // трогал (дефолт формы устарел: страница открыта через полночь или
+        // /api/time подтвердил другие сутки) — молча переставляем дефолт на
+        // серверное «сегодня» и просим подтвердить повторным нажатием.
         if (formData.date < todayKey) {
+          const untouchedDefault = !formData.title.trim() && !editingMeeting;
+          if (untouchedDefault) {
+            setFormData((f) => ({ ...f, date: todayKey }));
+            alert(
+              `Дата в форме была ${formData.date} — по серверным часам сегодня ${todayKey}. Дата обновлена, проверьте время и нажмите «Создать ВКС» ещё раз.`
+            );
+            return;
+          }
           alert("Нельзя создать встречу в прошедшую дату. Выберите сегодня или будущий день.");
           return;
         }
@@ -1290,9 +1307,15 @@ export default function UserPanel({
             `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
           const newStart = toHm(targetTotal);
           const newEnd = addMinToHm(newStart, durationMin);
-          setFormData((f) => ({ ...f, date: todayKey, startTime: newStart, endTime: newEnd }));
+          // ВАЖНО (фикс «сегодня 02.11, а создаёт 01.11»): здесь раньше стояло
+          // date: todayKey. В эту ветку заходим ТОЛЬКО при formData.date ===
+          // todayKey, так что значение тождественно выбранному — но при любом
+          // рассинхроне serverTodayKey() между проверкой и этим setState дата
+          // могла молча подмениться на другие сутки. Сохраняем исходную дату
+          // формы буквально (f.date), время сдвигаем без изменения дня.
+          setFormData((f) => ({ ...f, date: f.date, startTime: newStart, endTime: newEnd }));
           alert(
-            `Время ${formData.startTime} уже прошло по серверным часам — начало сдвинуто на ${newStart}, окончание ${newEnd} (длительность сохранена). Дата: ${todayKey}. Нажмите «Создать ВКС» ещё раз.`
+            `Время ${formData.startTime} уже прошло по серверным часам — начало сдвинуто на ${newStart}, окончание ${newEnd} (длительность сохранена). Дата: ${formData.date}. Нажмите «Создать ВКС» ещё раз.`
           );
           return;
         }
