@@ -99,6 +99,11 @@ services:
     container_name: vks-frontend-builder
     restart: "no"
     networks: [vks-network]
+    # Принудительная пересборка при каждом `up`: без этого старый контейнер-
+    # сборщик не пересоздаётся, том frontend_build остаётся с прошлым бандлом,
+    # и браузер продолжает получать СТАРЫЙ JS (причина «дата всё ещё 01.11»
+    # после git pull + build).
+    pull_policy: build
     volumes:
       - type: volume
         source: frontend_build
