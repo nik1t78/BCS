@@ -11,17 +11,13 @@ import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { toDateKey, formatRuDate } from "../utils/dateKey";
 import { icsAPI, guessServerTodayKey, clientTodayKey, syncServerTime, serverNowDate, serverTodayKeyTz, serverNowHmTz } from "../api/client";
 
-/** Часы главной страницы: «сейчас» по СЕРВЕРНОМУ времени (с offset из
- *  /api/time / localStorage), а не по часам браузера. При сбитой дате/времени
- *  в Windows локальные часы отстают на сутки — «Сегодня» в расписании и счётчик
- *  до ближайшей встречи считались от «29», хотя сервер жил 30-м (жалоба:
- *  «сегодня у меня 30 число, а он записывает 29»). */
+/** Часы главной страницы: «сейчас» ПО ЧАСАМ КОМПЬЮТЕРА пользователя.
+ *  ФИКС «Кола опять ушла прошедшим числом»: раньше бралось серверное время
+ *  (offset из /api/time) — при рассинхроне/протухшем кэше offset'а «Сегодня»
+ *  в расписании, счётчиках и предзаполнении уезжало на сутки назад. Теперь
+ *  единая база — локальные часы; прошлое отсекает сервер (422 с подсказкой). */
 const nowForUi = (): Date => {
-  try {
-    return serverNowDate();
-  } catch {
-    return new Date();
-  }
+  return new Date();
 };
 
 interface DashboardProps {
@@ -307,7 +303,11 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
       // и поле type=date). Раньше brалось serverTodayKeyTz() — при рассинхроне
       // /api/time или другом поясе модалка открывалась с вчерашней датой.
       todayK = clientTodayKey();
-      nowHm = serverNowHmTz();
+      // ФИКС «Кола опять ушла прошедшим числом»: время — тоже по часам
+      // компьютера (единая база с полем «Дата»); серверный offset больше не
+      // участвует — при рассинхроне он уводил предзаполнение на сутки назад.
+      const __nd = new Date();
+      nowHm = `${String(__nd.getHours()).padStart(2, "0")}:${String(__nd.getMinutes()).padStart(2, "0")}`;
     } catch {
       todayK = toDateKey(currentTime);
       nowHm = currentTime.toTimeString().slice(0, 5);

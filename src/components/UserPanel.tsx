@@ -64,15 +64,13 @@ const localTotalMinutesNow = (): number => {
   return d.getHours() * 60 + d.getMinutes();
 };
 
-/** «Сейчас» по серверным часам (offset из /api/time / localStorage); при
- *  рассинхроне часов браузера возвращает серверный день месяца — используется
- *  как якорь недельного вида календаря. */
+/** «Сейчас» по ЧАСАМ КОМПЬЮТЕРА пользователя — якорь недельного вида
+ *  календаря. ФИКС «Кола опять ушла прошедшим числом»: раньше якорь брался
+ *  от серверных часов (offset из /api/time) — при рассинхроне сетка
+ *  открывалась на вчерашний день. Пользователь просил: ничего не подменять,
+ *  что на компьютере, то и показываем. */
 export const serverTodayDayNum = (): number => {
-  try {
-    return serverNowDate().getDate();
-  } catch {
-    return new Date().getDate();
-  }
+  return new Date().getDate();
 };
 
 /** «Сегодня» по ЧАСАМ СЕРВЕРА И В ПОЯСЕ СЕРВЕРА (Europe/Moscow, см. /api/time).
@@ -732,16 +730,12 @@ export default function UserPanel({
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"list" | "calendar">("list");
   const [calMonth, setCalMonth] = useState(() => {
-    // Календарь «Мои конференции» открывается на СЕРВЕРНОМ «сегодня» (offset из
-    // /api/time / localStorage), а не по часам браузера: при сбитой дате в Windows
-    // сетка стартовала с «29», когда сервер жил 30-м — встречи на 30.10 уезжали за
-    // видимый диапазон и казались «неправильной датой».
-    let d: Date;
-    try {
-      d = serverNowDate();
-    } catch {
-      d = new Date();
-    }
+    // ФИКС «Кола опять ушла прошедшим числом»: календарь «Мои конференции»
+    // открывается на «сегодня» ПО ЧАСАМ КОМПЬЮТЕРА пользователя, а не по
+    // серверному времени (offset из /api/time): при любом рассинхроне сетка
+    // стартовала с вчерашнего дня, и только что созданная встреча «уезжала»
+    // на прошедшее число. Что показывает Windows — то и в календаре.
+    const d = new Date();
     return { y: d.getFullYear(), m: d.getMonth(), d: d.getDate() };
   });
   const [calView, setCalView] = useState<"month" | "week">("month");
@@ -918,16 +912,19 @@ export default function UserPanel({
   // ===== Фильтры: статус / комната / тег / поиск по названию, описанию, участникам =====
   // «Сейчас» в ЕДИНОМ виде YYYY-MM-DDTHH:mm — как даты встреч с бэкенда
   // (локальные московские сутки). Сравниваем строками.
-  // ВАЖНО (фикс «новые встречи исчезают из Предстоящих»): раньше здесь
-  // использовались ЛОКАЛЬНЫЕ часы браузера + localTodayKey(). Если часы или
-  // дата на устройстве расходились с сервером (Europe/Moscow), только что
-  // созданная будущая встреча мгновенно считалась «прошедшей» и пропадала
-  // из фильтра «Предстоящие». Теперь берём серверные часы и серверную дату
-  // (синхронизация /api/time, см. serverNowHmTz/serverTodayKeyTz) — та же
-  // база, что использует форма создания и серверная валидация прошлого.
-  // ВАЖНО: serverNowHmTz() читает HH:mm через Intl В ПОЯСЕ СЕРВЕРА; getHours()
-  // от Date вернул бы локальный час браузера (расхождение до ±3ч для MSK).
-  const nowIso = () => `${serverTodayKeyTz()}T${serverNowHmTz()}`;
+  // ФИКС «Кола опять ушла прошедшим числом»: «сейчас» для списков — по
+  // ЧАСАМ КОМПЬЮТЕРА (единая база с полем «Дата» формы и clientTodayKey).
+  // Раньше использовалось серверное время (serverTodayKeyTz/serverNowHmTz,
+  // offset из /api/time): при рассинхроне часов или протухшем кэше offset'а
+  // «сегодня» на клиенте отставало на сутки — свежесозданная встреча типа
+  // «Кола 03.11 09:40» мгновенно считалась завершённой/прошедшей и карточка
+  // отображалась с прошедшим числом. Окончательную проверку прошлого делает
+  // сервер (meetings:auto-complete + валидация создания 422) — UI дату не
+  // подменяет никогда.
+  const nowIso = () => {
+    const d = new Date();
+    return `${clientTodayKey()}T${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  };
   useEffect(() => {
     // Актуализируем смещение часов при загрузке панели и каждые 5 минут,
     // чтобы фильтры «Предстоящие/Прошедшие» не уплывали при расхождении
@@ -1027,8 +1024,13 @@ export default function UserPanel({
   // создали «ежедневно» 29.10, а на 30.10 в списке всё ещё висело «29.10.2026»
   // («выбрал 30-е — показывает 29-е»). Здесь серия заменяется её ближайшим
   // предстоящим вхождением, и дата на карточке = реальный день проведения.
+  // ФИКС «Кола опять ушла прошедшим числом»: «сегодня» берётся по ЧАСАМ
+  // КОМПЬЮТЕРА (clientTodayKey) — единая база с полем «Дата» формы; раньше
+  // использовалось серверное «сегодня» (serverTodayKeyTz), и при рассинхроне
+  // часов/offset'а только что созданная встреча разворачивалась/скрывалась
+  // так, будто сегодня — вчера.
   const expandRecurringUpcoming = (list: Meeting[]): Meeting[] => {
-    const today = serverTodayKeyTz();
+    const today = clientTodayKey();
     const out: Meeting[] = [];
     for (const m of list) {
       if (!m.recurring || m.recurring === "none" || m.status !== "scheduled") {
@@ -2302,12 +2304,10 @@ export default function UserPanel({
             arr.push(m);
             byDate.set(m.date, arr);
           });
-          let __todayD: Date;
-          try {
-            __todayD = serverNowDate();
-          } catch {
-            __todayD = new Date();
-          }
+          // «Сегодня» в сетке календаря — по ЧАСАМ КОМПЬЮТЕРА (ФИКС «Кола
+          // ушла прошедшим числом»: серверный offset подсвечивал/открывал
+          // вчерашний день при рассинхроне часов).
+          const __todayD = new Date();
           const todayIso = isoOf(__todayD);
           const cells: { d: Date; inMonth: boolean }[] = [];
           if (calView === "month") {
@@ -2378,12 +2378,9 @@ export default function UserPanel({
                   <button
                     onClick={() => {
                       setCalMonth(() => {
-                        let n: Date;
-                        try {
-                          n = serverNowDate();
-                        } catch {
-                          n = new Date();
-                        }
+                        // «Сегодня» — по часам компьютера (ФИКС «Кола ушла
+                        // прошедшим числом»: серверный offset уводил на сутки).
+                        const n = new Date();
                         return { y: n.getFullYear(), m: n.getMonth(), d: n.getDate() };
                       });
                     }}

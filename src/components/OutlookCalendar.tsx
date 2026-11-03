@@ -4,7 +4,6 @@
 // Используется и в пользовательском «Расписании», и в админ-панели.
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Meeting } from "../types";
-import { serverNowDate } from "../api/client";
 import { occursOn, withDate } from "../utils/recurrence";
 import { toDateKey } from "../utils/dateKey";
 
@@ -167,26 +166,18 @@ export default function OutlookCalendar({
   blockSubtitle,
 }: OutlookCalendarProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  // «Сейчас» для линии текущего времени/подсветки дня — по СЕРВЕРНЫМ часам.
-  // Локальные часы браузера при сбитой дате давали «сегодня = 29», и календарь
-  // подсвечивал не тот день, а кнопка «Сегодня» уводила на сутки назад.
-  const [now, setNow] = useState(() => {
-    try {
-      return serverNowDate();
-    } catch {
-      return new Date();
-    }
-  });
+  // ФИКС «Кола опять ушла прошедшим числом»: «сейчас» для линии текущего
+  // времени/подсветки дня — по ЧАСАМ КОМПЬЮТЕРА пользователя. Раньше бралось
+  // серверное время (offset из /api/time): при рассинхроне часов или протухшем
+  // кэше offset'а календарь подсвечивал вчерашний день, и свежая встреча
+  // выглядела записанной прошедшим числом.
+  const [now, setNow] = useState(() => new Date());
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
 
   // Живая линия «сейчас»
   useEffect(() => {
     const tick = () => {
-      try {
-        setNow(serverNowDate());
-      } catch {
-        setNow(new Date());
-      }
+      setNow(new Date());
     };
     tick();
     const t = setInterval(tick, 60_000);
