@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { User, Meeting } from "../types";
-import { authAPI, downloadBlob, adminLoadAPI, roomsAPI, guessServerTodayKey } from "../api/client";
+import { authAPI, downloadBlob, adminLoadAPI, roomsAPI, guessServerTodayKey, serverNowDate } from "../api/client";
 import { unwrapList, mapMeeting } from "../store-api";
 import { exportToExcel } from "../utils/export";
 import { SortMode, SORT_OPTIONS, sortMeetings } from "../utils/meetingSort";
@@ -559,13 +559,9 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     reminderMinutes: 15,
     recurring: "none",
     priority: "medium",
-    // ФИКС («уходит прошедшим числом»): createdAt не уходит на сервер —
-    // Laravel сам ставит created_at по своим часам. Локальное значение нужно
-    // только для отрисовки карточки до перезагрузки: берём честные локальные
-    // часы (new Date()), без offset из /api/time — иначе при нераспознанной/
-    // протухшей синхронизации «сейчас» отстаёт на сутки и новая встреча
-    // показывается вчерашним числом.
-    createdAt: new Date().toISOString(),
+    // Фикс «дата создания прошедшим числом»: время берётся с поправкой на
+    // серверные часы (/api/time), а не с possibly сбитых часов браузера.
+    createdAt: serverNowDate().toISOString(),
     isPrivate: false,
   };
   const [meetingForm, setMeetingForm] = useState<Meeting>(emptyMeeting);
@@ -2086,24 +2082,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 {botLogs.length === 0 && !botLogLoading && (
                   <tr>
                     <td colSpan={7} className="px-4 py-8 text-center text-gray-400 dark:text-gray-500">
-                      {/* Фикс ложной тревоги: пустой журнал при включённом боте —
-                          это НЕ обязательно «бот не работает». При QUEUE_CONNECTION=sync
-                          ссылки создаются синхронно, без очереди; «0 в ожидании» —
-                          норма. Подсказка зависит от реальных флагов из system-status. */}
-                      {sysStatus?.vks_bot?.auto ? (
-                        <>
-                          Записей нет за последнюю сутки. Если встречи с ВКС создавались —
-                          проверьте лог контейнера:{" "}
-                          <code className="text-xs bg-gray-100 dark:bg-gray-700 px-1 rounded">docker compose logs --since 30m queue</code>
-                          {" "}(в PowerShell: перенаправьте вывод в файл и откройте его).
-                          Очередь: {sysStatus?.services?.queue?.ok ? `${sysStatus.services.queue.pending ?? 0} в ожидании · ${sysStatus.services.queue.failed_24h ?? 0} ошибок/24ч` : "нет данных"} — при sync-очереди счётчик всегда нулевой, это нормально.
-                        </>
-                      ) : (
-                        <>
-                          Записей нет — автопилот выключен (проверьте VKSBOT_AUTO=true в .env)
-                          или бот ещё не создавал ссылки.
-                        </>
-                      )}
+                      Записей нет — бот ещё не создавал ссылки (проверьте VKSBOT_AUTO=true и воркер очереди)
                     </td>
                   </tr>
                 )}
