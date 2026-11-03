@@ -707,7 +707,15 @@ class MeetingController extends Controller
         ]);
 
         $newEnd = substr($validated['end_time'] ?? $meeting->end_time, 0, 5);
-        $newDate = \Illuminate\Support\Carbon::parse($validated['date'])->toDateString();
+        // Канон YYYY-MM-DD без Carbon::parse: берём календарную часть строки как есть.
+        // Carbon::parse для «2026-11-03» даёт полночь Europe/Moscow, а приведение
+        // к UTC (сохранение/сравнение) сдвигает сутки назад — выбрал 03.11,
+        // сохранилось 02.11. Прямой regex исключает любые таймзонные сдвиги.
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})/', trim((string)$validated['date']), $dm)) {
+            $newDate = "{$dm[1]}-{$dm[2]}-{$dm[3]}";
+        } else {
+            $newDate = substr(trim((string)$validated['date']), 0, 10);
+        }
 
         // Серверная валидация конфликтов: у организатора/участников не должно
         // быть пересечений на новом слоте (если перенос не подтверждён force=true).
