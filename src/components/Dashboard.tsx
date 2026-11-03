@@ -9,7 +9,7 @@ import UserPanel from "./UserPanel";
 import type { MeetingPrefill } from "./UserPanel";
 import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { toDateKey, formatRuDate } from "../utils/dateKey";
-import { icsAPI, guessServerTodayKey, syncServerTime, serverNowDate, serverTodayKeyTz, serverNowHmTz } from "../api/client";
+import { icsAPI, guessServerTodayKey, clientTodayKey, syncServerTime, serverNowDate, serverTodayKeyTz, serverNowHmTz } from "../api/client";
 
 /** Часы главной страницы: «сейчас» по СЕРВЕРНОМУ времени (с offset из
  *  /api/time / localStorage), а не по часам браузера. При сбитой дате/времени
@@ -302,7 +302,11 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
     let todayK: string;
     let nowHm: string;
     try {
-      todayK = serverTodayKeyTz();
+      // ФИКС «Кола ушла прошедшим числом»: дата предзаполнения = честная
+      // локальная дата компьютера (то же, что показывает системный календарь
+      // и поле type=date). Раньше brалось serverTodayKeyTz() — при рассинхроне
+      // /api/time или другом поясе модалка открывалась с вчерашней датой.
+      todayK = clientTodayKey();
       nowHm = serverNowHmTz();
     } catch {
       todayK = toDateKey(currentTime);
