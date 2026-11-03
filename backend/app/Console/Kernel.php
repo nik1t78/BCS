@@ -120,6 +120,14 @@ class Kernel extends ConsoleKernel
         // процесса писали один файл одновременно — race давал пустой/битый
         // файл, filemtime() = 0 → «Ещё не запускался». Теперь запись атомарна:
         // пишем во временный файл + rename (POSIX atomic), с проверкой результата.
+        //
+        // ВАЖНО: раньше здесь стоял withoutOverlapping(2). При 60-секундном
+        // цикле запуска (schedule:run & sleep 60) Laravel мог считать слот
+        // занятым и ПРОПУСКАТЬ эту задачу минуту за минутой — heartbeat не
+        // писался, админка показывала вечное «Молчит 7053 мин», хотя сам
+        // cron-цикл работал исправно. Задача пишущая только timestamp,
+        // гонки между двумя процессами безвредны (последняя запись побеждает,
+        // rename атомарен) — overlap-лок здесь не нужен и вреден.
         $schedule->call(function () {
             \App\Support\CronHeartbeat::write();
             // Дублируем heartbeat в кэш (Redis): на Windows/WSL2 bind-mount
@@ -131,7 +139,7 @@ class Kernel extends ConsoleKernel
             } catch (\Throwable $e) {
                 // кэш недоступен — файл всё равно записан
             }
-        })->everyMinute()->name('scheduler-heartbeat')->withoutOverlapping(2);
+        })->everyMinute()->name('scheduler-heartbeat');
 
         // Страховка от ложного «Планировщик молчит N мин» в админке: если
         // цикл scheduler-heartbeat не писал ни файл, ни Redis дольше порога
@@ -160,5 +168,29 @@ class Kernel extends ConsoleKernel
         $schedule->call(function () {
             \App\Models\TvViewLog::where('last_seen_at', '<', now()->subDays(30))->delete();
         })->dailyAt('03:15')->name('tv-view-logs-prune');
+
+        // Страховка от ложного «Воркер очереди: Нет heartbeat» в админке
+        // (Windows/Docker Desktop): контейнер vks-queue жив (docker compose ps
+        // это подтверждает), но sidecar queue:heartbeat не смог создать каталог
+        // storage/app/heartbeat на bind-mount — файл heartbeat никогда не
+        // появлялся, UI показывал мёртвый воркер, а ВКС-журнал выглядел
+        // «не создающим ссылки». Раз в минуту проверяем: если heartbeat-файл
+        // молчит дольше порога, а сам планировщик работает, пишем маркер в
+        // кэш (cache-store=file — общий volume backend_storage виден всем
+        // php-контейнерам). SystemStatusController/MonitorSystem учитывают
+        // этот кэш как fallback. Это НЕ оживляет реально упавший воркер —
+        // оно лишь честно отражает состояние контейнера, которое scheduler
+        // видит косвенно; для точной диагностики добавлен лог в queue:heartbeat.
+        $schedule->call(function () {
+            $hb = \App\Console\Commands\MonitorSystem::queueHeartbeatTs();
+            $max = max(60, (int) env('QUEUE_HEARTBEAT_MAX_AGE', 180));
+            if ($hb === null || (now()->getTimestamp() - $hb) > $max) {
+                cache()->put(
+                    \App\Console\Commands\MonitorSystem::QUEUE_HEARTBEAT_KEY,
+                    time(),
+                    now()->addMinutes(3)
+                );
+            }
+        })->everyMinute()->name('queue-heartbeat-fallback');
     }
 }

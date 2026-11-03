@@ -55,6 +55,15 @@ export const localTodayKey = (): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
+/** «Сейчас» в минутах дня ПО ЧАСАМ КОМПЬЮТЕРА (локальные сутки браузера).
+ *  ФИКС «на компе другое число, а форма откатывает дату/время назад»: дефолт
+ *  формы считается от локальных часов — что видит пользователь в Windows,
+ *  то и уходит в заявке; сервер проверяет прошлое по своим часам. */
+const localTotalMinutesNow = (): number => {
+  const d = new Date();
+  return d.getHours() * 60 + d.getMinutes();
+};
+
 /** «Сейчас» по серверным часам (offset из /api/time / localStorage); при
  *  рассинхроне часов браузера возвращает серверный день месяца — используется
  *  как якорь недельного вида календаря. */
@@ -107,21 +116,17 @@ export const minDateKey = (): string => guessServerTodayKey();
  *  ставим: «serverNowHm» тогда = локальные часы браузера, и при сбитых часах
  *  input min молча отсекал корректный выбор пользователя. */
 export const minStartHm = (dateKey: string): string => {
-  // ВАЖНО: сравнение только СТРОГО с серверным «сегодня». Раньше здесь было
-  // `!isTimeSynced()` как условие «сегодня» — при недоступном /api/time любая
-  // дата, равная дате браузера (т.е. выбранное сегодня), считалась «сегодня по
-  // серверу», и input min молча отсекал корректный выбор пользователя, а форма
-  // перебивала дату/время локальными часами («сегодня 30-е — а записало 29-е»).
-  if (!(dateKey === serverTodayKey() && isTimeSynced())) return "00:00";
-  // Фикс «перебивает мой выбор / сохраняло не то время»: нижняя граница —
-  // ближайший «ровный» слот КРАТНЫЙ 5 МИНУТАМ СТРОГО ПОСЛЕ серверного «сейчас»
-  // (14:41 → 14:45, ровно 14:45 → 14:50). Раньше сюда попадало произвольное
-  // «сейчас+10» (14:51), не кратное шагу 5 мин: браузер помечал значение поля
-  // «Начало*» невалидным, пользователь ставил «ровное» 14:45, которое оказалось
-  // меньше границы, и автосдвиг при сохранении молча возвращал 14:51 — отсюда
-  // ощущение «дата/время сохраняются неправильные». Граница округлена ВВЕРХ до
-  // 5-минутки, поэтому любой ровный слот после неё легален и не перебивается.
-  const total = serverTotalMinutesNow();
+  // ФИКС «на компе другое число, а форма откатывает выбор назад»: нижняя
+  // граница времени ставится ТОЛЬКО когда выбранная дата совпадает с датеЙ
+  // часов компьютера (поле type=time живёт в локальном времени браузера —
+  // сравнивать его с серверным «сейчас» некорректно: при рассинхроне input
+  // min молча отсекал корректный выбор пользователя). Ограничение считается
+  // от ЛОКАЛЬНЫХ часов; окончательную проверку прошлого делает сервер.
+  if (dateKey !== clientTodayKey()) return "00:00";
+  // Нижняя граница — ближайший «ровный» слот КРАТНЫЙ 5 МИНУТАМ СТРОГО ПОСЛЕ
+  // текущего момента по часам компьютера (14:41 → 14:45, ровно 14:45 → 14:50).
+  const d = new Date();
+  const total = d.getHours() * 60 + d.getMinutes();
   const t = Math.min(Math.ceil((total + 1) / 5) * 5, 23 * 60 + 55);
   return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
 };
@@ -138,16 +143,9 @@ export const clampFormTimes = (
   // Вечерний предел создания (20:00) актуален ТОЛЬКО для «сегодня»: на
   // будущую дату слот в 21:00 абсолютно легитимен. Раньше обрезка шла для
   // любой даты — встреча на завтра/29-е молча «уезжала» с выбранного времени.
-  const isToday = date === serverTodayKey();
-  if (isToday && isTimeSynced()) {
-    // Автоподгонка только при подтверждённой сверке часов с сервером: без
-    // /api/time «serverNowHm» = локальные часы браузера и молча перебивала
-    // корректный выбор пользователя («выбрал 30-е — записало 29-е»).
-    const minS = minStartHm(date);
-    if (s < minS) s = minS;
-    if (isLateTime(s)) s = LATE_CREATE_LIMIT_HM;
-  }
-  if (!e || e <= s) e = addMinToHm(s, 30);
+  // ФИКС «откатывает мой выбор назад»: автоподгонка времени убрана полностью
+  // (и серверный clamp, и локальный): форма НИКОГДА не меняет то, что видно
+  // пользователю; прошедший слот отсекает поле min + сервер (422 с подсказкой).
   return { startTime: s, endTime: e };
 };
 
@@ -436,7 +434,7 @@ function CreateMeetingForm({
             type="time"
             required
             min={editing ? undefined : minStartHm(formData.date)}
-            max={formData.date === serverTodayKey() ? LATE_CREATE_LIMIT_HM : "23:59"}
+            max={formData.date === clientTodayKey() ? LATE_CREATE_LIMIT_HM : "23:59"}
             value={formData.startTime}
             onChange={(e) => {
               const startTime = e.target.value;
@@ -457,9 +455,9 @@ function CreateMeetingForm({
             }}
             className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
           />
-          {!editing && formData.date === serverTodayKey() && (
+          {!editing && formData.date === clientTodayKey() && (
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              Сегодня можно выбрать время не раньше {minStartHm(formData.date)} (по часам сервера).
+              Сегодня можно выбрать время не раньше {minStartHm(formData.date)} (по часам вашего компьютера).
             </p>
           )}
         </div>
@@ -790,11 +788,11 @@ export default function UserPanel({
     // невалидным, и пользователь видел «не то, что выбрал». Теперь дефолт всегда
     // кратен 5 и совпадает с нижней границей поля (minStartHm).
     startTime: (() => {
-      const t = Math.min(Math.ceil((serverTotalMinutesNow() + 1) / 5) * 5, 23 * 60 + 55);
+      const t = Math.min(Math.ceil((localTotalMinutesNow() + 1) / 5) * 5, 23 * 60 + 55);
       return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
     })(),
     endTime: (() => {
-      const t = Math.min(Math.ceil((serverTotalMinutesNow() + 1) / 5) * 5, 23 * 60 + 45);
+      const t = Math.min(Math.ceil((localTotalMinutesNow() + 1) / 5) * 5, 23 * 60 + 45);
       return addMinToHm(`${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`, 60);
     })(),
     organizerId: user.id,
@@ -809,7 +807,11 @@ export default function UserPanel({
     reminderMinutes: getDefaultReminder(),
     recurring: "none",
     priority: "medium",
-    createdAt: new Date().toISOString(),
+    // Фикс «дата создания уходит прошедшим числом»: раньше бралось время
+    // браузера (new Date()) — при сбитых/отставших часах Windows в БД
+    // записывалась вчерашняя дата. serverNowDate() учитывает offset из
+    // /api/time (и localStorage), поэтому «сейчас» всегда серверное.
+    createdAt: serverNowDate().toISOString(),
     isPrivate: false,
   };
 
@@ -876,25 +878,13 @@ export default function UserPanel({
   // (название пустое, значения равны дефолтным).
   useEffect(() => {
     if (!showForm || editingMeeting) return;
-    let cancelled = false;
-    syncServerTime().finally(() => {
-      if (cancelled) return;
-      if (!isTimeSynced()) return;
-      setFormData((f) => {
-        const untouchedDefault =
-          !f.title.trim() &&
-          f.startTime === emptyMeeting.startTime &&
-          f.endTime === emptyMeeting.endTime;
-        if (!untouchedDefault) return f;
-        if (f.startTime >= minStartHm(f.date) && f.endTime > f.startTime) return f;
-        const clamped = clampFormTimes(f.date, f.startTime, f.endTime);
-        return { ...f, startTime: clamped.startTime, endTime: clamped.endTime };
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // ФИКС «на компе другое число, а форма сама откатывает/передвигает дату и
+    // время назад»: автоподгонка дефолта полностью убрана. Раньше этот эффект
+    // после /api/time молча перебивал выбранные значения «серверным сейчас» —
+    // при рассинхроне часов пользователь видел одно, а на сервер уходило
+    // другое (прошедшее). Теперь форма НИКОГДА не трогает то, что видит
+    // пользователь: дефолт = локальные часы компьютера, всё правится только
+    // руками; защиту от прошлой даты обеспечивает сервер (422 с подсказкой).
   }, [showForm]);
 
   const loadData = async () => {
@@ -964,7 +954,7 @@ export default function UserPanel({
         // Дату берём по ЧАСАМ СЕРВЕРА — локальные часы в docker-окружении могут
         // расходиться, и сервер вернёт пустой список для «своей» даты.
         meetingsAPI
-          .roomsAvailability({ date: serverTodayKey() })
+          .roomsAvailability({ date: clientTodayKey() })
           .then((av: any) => {
             const list: any[] = av?.data ?? av ?? [];
             setRoomsCatalog(list.map(mapRoom));
@@ -1221,7 +1211,7 @@ export default function UserPanel({
     // оно имело смысл только для «сегодня на сегодня». Раньше эта проверка
     // стояла первой и резала любые слоты после 20:00 даже на завтра/через
     // неделю («выбираю 29-е, а запись уезжает/не создаётся»).
-    if (formData.date === serverTodayKey() && isLateTime(formData.startTime)) {
+    if (formData.date === clientTodayKey() && isLateTime(formData.startTime)) {
       alert(
         `Нельзя создать встречу сегодня позже ${LATE_CREATE_LIMIT_HM}. Выберите время начала до ${LATE_CREATE_LIMIT_HM} или перенесите встречу на будущий день.`
       );
@@ -1804,7 +1794,7 @@ export default function UserPanel({
                       type="time"
                       required
                       min={editingMeeting ? undefined : minStartHm(formData.date)}
-                      max={formData.date === serverTodayKey() ? LATE_CREATE_LIMIT_HM : "23:59"}
+                      max={formData.date === clientTodayKey() ? LATE_CREATE_LIMIT_HM : "23:59"}
                       value={formData.startTime}
                       onChange={(e) => {
                         const startTime = e.target.value;
@@ -1824,9 +1814,9 @@ export default function UserPanel({
                       }}
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
                     />
-                    {!editingMeeting && formData.date === serverTodayKey() && (
+                    {!editingMeeting && formData.date === clientTodayKey() && (
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Сегодня можно выбрать время не раньше {minStartHm(formData.date)} (по часам сервера).
+                        Сегодня можно выбрать время не раньше {minStartHm(formData.date)} (по часам вашего компьютера).
                       </p>
                     )}
                   </div>
