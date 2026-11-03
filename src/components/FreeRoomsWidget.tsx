@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Room, RoomAvailability } from "../types";
-import { roomsAPI, meetingsAPI, syncServerTime, serverNowHmTz, serverTodayKeyTz } from "../api/client";
+import { roomsAPI, meetingsAPI, syncServerTime, serverNowHmTz, clientTodayKey } from "../api/client";
 import {
   computeFreeSlots,
   splitSlotIntoBlocks,
@@ -45,7 +45,7 @@ interface FreeRoomsWidgetProps {
  * форму создания ВКС с предзаполненными датой, временем и залом.
  */
 export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
-  const [date, setDate] = useState<string>(() => serverTodayKeyTz());
+  const [date, setDate] = useState<string>(() => clientTodayKey());
   const [infos, setInfos] = useState<RoomInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -165,7 +165,7 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
         // иначе при расхождении часов устройства свободные окна ошибочно
         // помечались прошедшими и виджет пустел после перезагрузки страницы.
         const curMin = serverNowMin();
-        const isToday = date === serverTodayKeyTz();
+        const isToday = date === clientTodayKey();
         const toMin = (s: string): number => {
           if (/^\d{1,2}:\d{2}$/.test(s)) {
             const [h, m] = s.split(":").map(Number);
@@ -223,7 +223,7 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, tick]);
 
-  const isToday = date === serverTodayKeyTz();
+  const isToday = date === clientTodayKey();
 
   // Шкала и подпись «рабочего дня» — по гибкому графику залов. Если у всех
   // залов на дату график закрыт — виджет честно это покажет.

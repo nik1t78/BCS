@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Room, RoomAvailability } from "../types";
-import { roomsAPI, meetingsAPI, syncServerTime, serverNowHmTz, serverTodayKeyTz } from "../api/client";
+import { roomsAPI, meetingsAPI, syncServerTime, serverNowHmTz, clientTodayKey } from "../api/client";
 import { computeFreeSlots, minToHm, hmToMin, WORK_DAY_START_MIN, WORK_DAY_END_MIN } from "../utils/freeSlots";
 // toDateKey больше не используется: автоподгонка даты модалки убрана (см. фикс
 // «Свободные залы пустеют / слоты уезжают на другой день» в эффекте [open]).
@@ -25,7 +25,11 @@ interface RoomBookingModalProps {
 // виджета «Свободные залы» и серверной валидации прошлого. Локальный
 // todayKey() расходился с сервером при других часах/поясе устройства:
 // слоты будущего времени ошибочно помечались прошедшими и пропадали.
-const todayKey = (): string => serverTodayKeyTz();
+// ФИКС «на компе другое число, а модалка откатывает дату назад»: дефолт и
+// нижняя граница поля «Дата» — локальные сутки компьютера пользователя
+// (clientTodayKey), БЕЗ серверного offset: раньше при рассинхроне часов
+// форма молча подставляла вчерашнюю дату и заявка уходила прошедшим числом.
+const todayKey = (): string => clientTodayKey();
 
 /** «Сейчас» в минутах дня по серверным часам и поясу (Intl, см. /api/time). */
 const serverNowMin = (): number => {
