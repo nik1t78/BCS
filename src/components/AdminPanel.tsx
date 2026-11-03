@@ -2082,7 +2082,24 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 {botLogs.length === 0 && !botLogLoading && (
                   <tr>
                     <td colSpan={7} className="px-4 py-8 text-center text-gray-400 dark:text-gray-500">
-                      Записей нет — бот ещё не создавал ссылки (проверьте VKSBOT_AUTO=true и воркер очереди)
+                      {/* Фикс ложной тревоги: пустой журнал при включённом боте —
+                          это НЕ обязательно «бот не работает». При QUEUE_CONNECTION=sync
+                          ссылки создаются синхронно, без очереди; «0 в ожидании» —
+                          норма. Подсказка зависит от реальных флагов из system-status. */}
+                      {sysStatus?.vks_bot?.auto ? (
+                        <>
+                          Записей нет за последнюю сутки. Если встречи с ВКС создавались —
+                          проверьте лог контейнера:{" "}
+                          <code className="text-xs bg-gray-100 dark:bg-gray-700 px-1 rounded">docker compose logs --since 30m queue</code>
+                          {" "}(в PowerShell: перенаправьте вывод в файл и откройте его).
+                          Очередь: {svc.queue?.ok ? `${svc.queue.pending ?? 0} в ожидании · ${svc.queue.failed_24h ?? 0} ошибок/24ч` : "нет данных"} — при sync-очереди счётчик всегда нулевой, это нормально.
+                        </>
+                      ) : (
+                        <>
+                          Записей нет — автопилот выключен (проверьте VKSBOT_AUTO=true в .env)
+                          или бот ещё не создавал ссылки.
+                        </>
+                      )}
                     </td>
                   </tr>
                 )}
