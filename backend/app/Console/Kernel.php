@@ -120,6 +120,14 @@ class Kernel extends ConsoleKernel
         // процесса писали один файл одновременно — race давал пустой/битый
         // файл, filemtime() = 0 → «Ещё не запускался». Теперь запись атомарна:
         // пишем во временный файл + rename (POSIX atomic), с проверкой результата.
+        //
+        // ВАЖНО: раньше здесь стоял withoutOverlapping(2). При 60-секундном
+        // цикле запуска (schedule:run & sleep 60) Laravel мог считать слот
+        // занятым и ПРОПУСКАТЬ эту задачу минуту за минутой — heartbeat не
+        // писался, админка показывала вечное «Молчит 7053 мин», хотя сам
+        // cron-цикл работал исправно. Задача пишущая только timestamp,
+        // гонки между двумя процессами безвредны (последняя запись побеждает,
+        // rename атомарен) — overlap-лок здесь не нужен и вреден.
         $schedule->call(function () {
             \App\Support\CronHeartbeat::write();
             // Дублируем heartbeat в кэш (Redis): на Windows/WSL2 bind-mount
@@ -131,7 +139,7 @@ class Kernel extends ConsoleKernel
             } catch (\Throwable $e) {
                 // кэш недоступен — файл всё равно записан
             }
-        })->everyMinute()->name('scheduler-heartbeat')->withoutOverlapping(2);
+        })->everyMinute()->name('scheduler-heartbeat');
 
         // Страховка от ложного «Планировщик молчит N мин» в админке: если
         // цикл scheduler-heartbeat не писал ни файл, ни Redis дольше порога
