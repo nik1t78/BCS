@@ -138,8 +138,8 @@ export const clampFormTimes = (
   startTime: string,
   endTime: string
 ): { startTime: string; endTime: string } => {
-  let s = startTime || "10:00";
-  let e = endTime || "";
+  const s = startTime || "10:00";
+  const e = endTime || "";
   // Вечерний предел создания (20:00) актуален ТОЛЬКО для «сегодня»: на
   // будущую дату слот в 21:00 абсолютно легитимен. Раньше обрезка шла для
   // любой даты — встреча на завтра/29-е молча «уезжала» с выбранного времени.
