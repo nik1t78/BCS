@@ -2092,7 +2092,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                           проверьте лог контейнера:{" "}
                           <code className="text-xs bg-gray-100 dark:bg-gray-700 px-1 rounded">docker compose logs --since 30m queue</code>
                           {" "}(в PowerShell: перенаправьте вывод в файл и откройте его).
-                          Очередь: {svc.queue?.ok ? `${svc.queue.pending ?? 0} в ожидании · ${svc.queue.failed_24h ?? 0} ошибок/24ч` : "нет данных"} — при sync-очереди счётчик всегда нулевой, это нормально.
+                          Очередь: {sysStatus?.services?.queue?.ok ? `${sysStatus.services.queue.pending ?? 0} в ожидании · ${sysStatus.services.queue.failed_24h ?? 0} ошибок/24ч` : "нет данных"} — при sync-очереди счётчик всегда нулевой, это нормально.
                         </>
                       ) : (
                         <>
