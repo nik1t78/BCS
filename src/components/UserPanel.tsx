@@ -8,6 +8,7 @@ import {
   serverTodayKeyTz,
   serverNowHmTz,
   guessServerTodayKey,
+  serverNowDate,
   clientTodayKey,
   clientNowHm,
 } from "../api/client";
@@ -54,22 +55,15 @@ export const localTodayKey = (): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-/** «Сейчас» в минутах дня ПО ЧАСАМ КОМПЬЮТЕРА (локальные сутки браузера).
- *  ФИКС «на компе другое число, а форма откатывает дату/время назад»: дефолт
- *  формы считается от локальных часов — что видит пользователь в Windows,
- *  то и уходит в заявке; сервер проверяет прошлое по своим часам. */
-const localTotalMinutesNow = (): number => {
-  const d = new Date();
-  return d.getHours() * 60 + d.getMinutes();
-};
-
-/** «Сейчас» по ЧАСАМ КОМПЬЮТЕРА пользователя — якорь недельного вида
- *  календаря. ФИКС «Кола опять ушла прошедшим числом»: раньше якорь брался
- *  от серверных часов (offset из /api/time) — при рассинхроне сетка
- *  открывалась на вчерашний день. Пользователь просил: ничего не подменять,
- *  что на компьютере, то и показываем. */
+/** «Сейчас» по серверным часам (offset из /api/time / localStorage); при
+ *  рассинхроне часов браузера возвращает серверный день месяца — используется
+ *  как якорь недельного вида календаря. */
 export const serverTodayDayNum = (): number => {
-  return new Date().getDate();
+  try {
+    return serverNowDate().getDate();
+  } catch {
+    return new Date().getDate();
+  }
 };
 
 /** «Сегодня» по ЧАСАМ СЕРВЕРА И В ПОЯСЕ СЕРВЕРА (Europe/Moscow, см. /api/time).
@@ -101,13 +95,10 @@ const serverTotalMinutesNow = (): number => {
 // (toDateKey(new Date())). При рассинхроне часов/пояса она могла быть ВЧЕРАШНЕЙ
 // относительно серверных суток — и наоборот, при корректных локальных часах,
 // но отставшем сервере, отсекала выбранный сегодня день как «прошедший».
-// Теперь граница = ЧЕСТНАЯ ЛОКАЛЬНАЯ ДАТА компьютера (clientTodayKey): ни
-// offset из /api/time, ни таймзона сервера в ней не участвуют. Раньше
-// guessServerTodayKey() возвращал «серверное сегодня» — при рассинхроне оно
-// отставало на сутки, и min отсекал реальный сегодняшний день как
-// «прошедший» («Кола 02.11» при фактическом 03.11). Дефолт даты в форме —
-// тот же clientTodayKey, всё согласовано: что на компьютере, то и в поле.
-export const minDateKey = (): string => clientTodayKey();
+// Теперь граница совпадает с эталоном, который использует вся остальная логика
+// формы (guessServerTodayKey: локальная дата + offset из последней сверки
+// /api/time, переживающий перезагрузку через localStorage).
+export const minDateKey = (): string => guessServerTodayKey();
 
 /** Нижняя граница для поля «Начало» (type=time): если встреча сегодня —
  *  не раньше текущего серверного времени (с поправкой offset из /api/time),
@@ -116,17 +107,21 @@ export const minDateKey = (): string => clientTodayKey();
  *  ставим: «serverNowHm» тогда = локальные часы браузера, и при сбитых часах
  *  input min молча отсекал корректный выбор пользователя. */
 export const minStartHm = (dateKey: string): string => {
-  // ФИКС «на компе другое число, а форма откатывает выбор назад»: нижняя
-  // граница времени ставится ТОЛЬКО когда выбранная дата совпадает с датеЙ
-  // часов компьютера (поле type=time живёт в локальном времени браузера —
-  // сравнивать его с серверным «сейчас» некорректно: при рассинхроне input
-  // min молча отсекал корректный выбор пользователя). Ограничение считается
-  // от ЛОКАЛЬНЫХ часов; окончательную проверку прошлого делает сервер.
-  if (dateKey !== clientTodayKey()) return "00:00";
-  // Нижняя граница — ближайший «ровный» слот КРАТНЫЙ 5 МИНУТАМ СТРОГО ПОСЛЕ
-  // текущего момента по часам компьютера (14:41 → 14:45, ровно 14:45 → 14:50).
-  const d = new Date();
-  const total = d.getHours() * 60 + d.getMinutes();
+  // ВАЖНО: сравнение только СТРОГО с серверным «сегодня». Раньше здесь было
+  // `!isTimeSynced()` как условие «сегодня» — при недоступном /api/time любая
+  // дата, равная дате браузера (т.е. выбранное сегодня), считалась «сегодня по
+  // серверу», и input min молча отсекал корректный выбор пользователя, а форма
+  // перебивала дату/время локальными часами («сегодня 30-е — а записало 29-е»).
+  if (!(dateKey === serverTodayKey() && isTimeSynced())) return "00:00";
+  // Фикс «перебивает мой выбор / сохраняло не то время»: нижняя граница —
+  // ближайший «ровный» слот КРАТНЫЙ 5 МИНУТАМ СТРОГО ПОСЛЕ серверного «сейчас»
+  // (14:41 → 14:45, ровно 14:45 → 14:50). Раньше сюда попадало произвольное
+  // «сейчас+10» (14:51), не кратное шагу 5 мин: браузер помечал значение поля
+  // «Начало*» невалидным, пользователь ставил «ровное» 14:45, которое оказалось
+  // меньше границы, и автосдвиг при сохранении молча возвращал 14:51 — отсюда
+  // ощущение «дата/время сохраняются неправильные». Граница округлена ВВЕРХ до
+  // 5-минутки, поэтому любой ровный слот после неё легален и не перебивается.
+  const total = serverTotalMinutesNow();
   const t = Math.min(Math.ceil((total + 1) / 5) * 5, 23 * 60 + 55);
   return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
 };
@@ -138,14 +133,21 @@ export const clampFormTimes = (
   startTime: string,
   endTime: string
 ): { startTime: string; endTime: string } => {
-  const s = startTime || "10:00";
-  const e = endTime || "";
+  let s = startTime || "10:00";
+  let e = endTime || "";
   // Вечерний предел создания (20:00) актуален ТОЛЬКО для «сегодня»: на
   // будущую дату слот в 21:00 абсолютно легитимен. Раньше обрезка шла для
   // любой даты — встреча на завтра/29-е молча «уезжала» с выбранного времени.
-  // ФИКС «откатывает мой выбор назад»: автоподгонка времени убрана полностью
-  // (и серверный clamp, и локальный): форма НИКОГДА не меняет то, что видно
-  // пользователю; прошедший слот отсекает поле min + сервер (422 с подсказкой).
+  const isToday = date === serverTodayKey();
+  if (isToday && isTimeSynced()) {
+    // Автоподгонка только при подтверждённой сверке часов с сервером: без
+    // /api/time «serverNowHm» = локальные часы браузера и молча перебивала
+    // корректный выбор пользователя («выбрал 30-е — записало 29-е»).
+    const minS = minStartHm(date);
+    if (s < minS) s = minS;
+    if (isLateTime(s)) s = LATE_CREATE_LIMIT_HM;
+  }
+  if (!e || e <= s) e = addMinToHm(s, 30);
   return { startTime: s, endTime: e };
 };
 
@@ -434,7 +436,7 @@ function CreateMeetingForm({
             type="time"
             required
             min={editing ? undefined : minStartHm(formData.date)}
-            max={formData.date === clientTodayKey() ? LATE_CREATE_LIMIT_HM : "23:59"}
+            max={formData.date === serverTodayKey() ? LATE_CREATE_LIMIT_HM : "23:59"}
             value={formData.startTime}
             onChange={(e) => {
               const startTime = e.target.value;
@@ -455,9 +457,9 @@ function CreateMeetingForm({
             }}
             className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
           />
-          {!editing && formData.date === clientTodayKey() && (
+          {!editing && formData.date === serverTodayKey() && (
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              Сегодня можно выбрать время не раньше {minStartHm(formData.date)} (по часам вашего компьютера).
+              Сегодня можно выбрать время не раньше {minStartHm(formData.date)} (по часам сервера).
             </p>
           )}
         </div>
@@ -729,12 +731,16 @@ export default function UserPanel({
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"list" | "calendar">("list");
   const [calMonth, setCalMonth] = useState(() => {
-    // ФИКС «Кола опять ушла прошедшим числом»: календарь «Мои конференции»
-    // открывается на «сегодня» ПО ЧАСАМ КОМПЬЮТЕРА пользователя, а не по
-    // серверному времени (offset из /api/time): при любом рассинхроне сетка
-    // стартовала с вчерашнего дня, и только что созданная встреча «уезжала»
-    // на прошедшее число. Что показывает Windows — то и в календаре.
-    const d = new Date();
+    // Календарь «Мои конференции» открывается на СЕРВЕРНОМ «сегодня» (offset из
+    // /api/time / localStorage), а не по часам браузера: при сбитой дате в Windows
+    // сетка стартовала с «29», когда сервер жил 30-м — встречи на 30.10 уезжали за
+    // видимый диапазон и казались «неправильной датой».
+    let d: Date;
+    try {
+      d = serverNowDate();
+    } catch {
+      d = new Date();
+    }
     return { y: d.getFullYear(), m: d.getMonth(), d: d.getDate() };
   });
   const [calView, setCalView] = useState<"month" | "week">("month");
@@ -768,15 +774,14 @@ export default function UserPanel({
     id: "",
     title: "",
     description: "",
-    // ФИКС «Кола опять ушла прошедшим числом»: дата по умолчанию = ЧЕСТНАЯ
-    // локальная дата компьютера (clientTodayKey — то же, что показывает поле
-    // type=date и системные часы). Раньше здесь было «серверное сегодня»
-    // (guessServerTodayKey с offset из /api/time): при рассинхроне часов,
-    // протухшем кэше /api/time или другом поясе форма стартовала с вчерашней
-    // датой, и пользователь сохранял её, не заметив подмены. Никаких
-    // серверных перестановок больше нет — что на компьютере, то и в форме;
-    // реально прошедшую дату отклонит сервер с ясной подсказкой.
-    date: clientTodayKey(),
+    // ВАЖНО: дата по умолчанию берётся из СЕРВЕРНЫХ часов (guessServerTodayKey —
+    // локальная дата + смещение из последней сверки /api/time; эффект при
+    // открытии формы затем подтверждает её через serverTodayKeyTz). Раньше
+    // использовалось toDateKey(new Date()) браузера — при сбитых часах/дате
+    // на устройстве или другом поясе форма стартовала с «29» вместо реального
+    // серверного «30», и пользователь сохранял неверную дату, ничего не
+    // заметив («сегодня у меня 30-е, а записывает 29-е»).
+    date: guessServerTodayKey(),
     // Время начала по умолчанию — ближайший «ровный» (кратный 5 мин) слот после
     // серверного «сейчас», чтобы при открытии формы сразу был валидный слот
     // (иначе дефолт 10:00 оказывается в прошлом и сервер отклоняет заявку).
@@ -785,11 +790,11 @@ export default function UserPanel({
     // невалидным, и пользователь видел «не то, что выбрал». Теперь дефолт всегда
     // кратен 5 и совпадает с нижней границей поля (minStartHm).
     startTime: (() => {
-      const t = Math.min(Math.ceil((localTotalMinutesNow() + 1) / 5) * 5, 23 * 60 + 55);
+      const t = Math.min(Math.ceil((serverTotalMinutesNow() + 1) / 5) * 5, 23 * 60 + 55);
       return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
     })(),
     endTime: (() => {
-      const t = Math.min(Math.ceil((localTotalMinutesNow() + 1) / 5) * 5, 23 * 60 + 45);
+      const t = Math.min(Math.ceil((serverTotalMinutesNow() + 1) / 5) * 5, 23 * 60 + 45);
       return addMinToHm(`${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`, 60);
     })(),
     organizerId: user.id,
@@ -804,17 +809,11 @@ export default function UserPanel({
     reminderMinutes: getDefaultReminder(),
     recurring: "none",
     priority: "medium",
-    // ФИКС ОКОНЧАТЕЛЬНЫЙ («Кола опять ушла прошедшим числом»): это поле
-    // НЕ отправляется на сервер — meetingToApi вырезает createdAt, а Laravel
-    // сам ставит created_at по СВОИМ честным часам (в БД запись всегда
-    // актуальная). Но локальный объект встречи использовался для отображения
-    // карточки ДО перезагрузки списка: serverNowDate() = локальные часы +
-    // offset из /api/time. Если синхронизация не успела выполниться или
-    // ответ закэшился протухшим, «локальное сейчас» отставало на сутки — и
-    // свежесозданная встреча показывалась с ПРОШЕДШИМ числом, хотя в базе
-    // всё было верно. Поэтому здесь — просто new Date(): что на компьютере,
-    // то и в форме; дату не подменяем и не откатываем никогда.
-    createdAt: new Date().toISOString(),
+    // Фикс «дата создания уходит прошедшим числом»: раньше бралось время
+    // браузера (new Date()) — при сбитых/отставших часах Windows в БД
+    // записывалась вчерашняя дата. serverNowDate() учитывает offset из
+    // /api/time (и localStorage), поэтому «сейчас» всегда серверное.
+    createdAt: serverNowDate().toISOString(),
     isPrivate: false,
   };
 
@@ -881,13 +880,25 @@ export default function UserPanel({
   // (название пустое, значения равны дефолтным).
   useEffect(() => {
     if (!showForm || editingMeeting) return;
-    // ФИКС «на компе другое число, а форма сама откатывает/передвигает дату и
-    // время назад»: автоподгонка дефолта полностью убрана. Раньше этот эффект
-    // после /api/time молча перебивал выбранные значения «серверным сейчас» —
-    // при рассинхроне часов пользователь видел одно, а на сервер уходило
-    // другое (прошедшее). Теперь форма НИКОГДА не трогает то, что видит
-    // пользователь: дефолт = локальные часы компьютера, всё правится только
-    // руками; защиту от прошлой даты обеспечивает сервер (422 с подсказкой).
+    let cancelled = false;
+    syncServerTime().finally(() => {
+      if (cancelled) return;
+      if (!isTimeSynced()) return;
+      setFormData((f) => {
+        const untouchedDefault =
+          !f.title.trim() &&
+          f.startTime === emptyMeeting.startTime &&
+          f.endTime === emptyMeeting.endTime;
+        if (!untouchedDefault) return f;
+        if (f.startTime >= minStartHm(f.date) && f.endTime > f.startTime) return f;
+        const clamped = clampFormTimes(f.date, f.startTime, f.endTime);
+        return { ...f, startTime: clamped.startTime, endTime: clamped.endTime };
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showForm]);
 
   const loadData = async () => {
@@ -917,19 +928,16 @@ export default function UserPanel({
   // ===== Фильтры: статус / комната / тег / поиск по названию, описанию, участникам =====
   // «Сейчас» в ЕДИНОМ виде YYYY-MM-DDTHH:mm — как даты встреч с бэкенда
   // (локальные московские сутки). Сравниваем строками.
-  // ФИКС «Кола опять ушла прошедшим числом»: «сейчас» для списков — по
-  // ЧАСАМ КОМПЬЮТЕРА (единая база с полем «Дата» формы и clientTodayKey).
-  // Раньше использовалось серверное время (serverTodayKeyTz/serverNowHmTz,
-  // offset из /api/time): при рассинхроне часов или протухшем кэше offset'а
-  // «сегодня» на клиенте отставало на сутки — свежесозданная встреча типа
-  // «Кола 03.11 09:40» мгновенно считалась завершённой/прошедшей и карточка
-  // отображалась с прошедшим числом. Окончательную проверку прошлого делает
-  // сервер (meetings:auto-complete + валидация создания 422) — UI дату не
-  // подменяет никогда.
-  const nowIso = () => {
-    const d = new Date();
-    return `${clientTodayKey()}T${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-  };
+  // ВАЖНО (фикс «новые встречи исчезают из Предстоящих»): раньше здесь
+  // использовались ЛОКАЛЬНЫЕ часы браузера + localTodayKey(). Если часы или
+  // дата на устройстве расходились с сервером (Europe/Moscow), только что
+  // созданная будущая встреча мгновенно считалась «прошедшей» и пропадала
+  // из фильтра «Предстоящие». Теперь берём серверные часы и серверную дату
+  // (синхронизация /api/time, см. serverNowHmTz/serverTodayKeyTz) — та же
+  // база, что использует форма создания и серверная валидация прошлого.
+  // ВАЖНО: serverNowHmTz() читает HH:mm через Intl В ПОЯСЕ СЕРВЕРА; getHours()
+  // от Date вернул бы локальный час браузера (расхождение до ±3ч для MSK).
+  const nowIso = () => `${serverTodayKeyTz()}T${serverNowHmTz()}`;
   useEffect(() => {
     // Актуализируем смещение часов при загрузке панели и каждые 5 минут,
     // чтобы фильтры «Предстоящие/Прошедшие» не уплывали при расхождении
@@ -960,7 +968,7 @@ export default function UserPanel({
         // Дату берём по ЧАСАМ СЕРВЕРА — локальные часы в docker-окружении могут
         // расходиться, и сервер вернёт пустой список для «своей» даты.
         meetingsAPI
-          .roomsAvailability({ date: clientTodayKey() })
+          .roomsAvailability({ date: serverTodayKey() })
           .then((av: any) => {
             const list: any[] = av?.data ?? av ?? [];
             setRoomsCatalog(list.map(mapRoom));
@@ -1029,13 +1037,8 @@ export default function UserPanel({
   // создали «ежедневно» 29.10, а на 30.10 в списке всё ещё висело «29.10.2026»
   // («выбрал 30-е — показывает 29-е»). Здесь серия заменяется её ближайшим
   // предстоящим вхождением, и дата на карточке = реальный день проведения.
-  // ФИКС «Кола опять ушла прошедшим числом»: «сегодня» берётся по ЧАСАМ
-  // КОМПЬЮТЕРА (clientTodayKey) — единая база с полем «Дата» формы; раньше
-  // использовалось серверное «сегодня» (serverTodayKeyTz), и при рассинхроне
-  // часов/offset'а только что созданная встреча разворачивалась/скрывалась
-  // так, будто сегодня — вчера.
   const expandRecurringUpcoming = (list: Meeting[]): Meeting[] => {
-    const today = clientTodayKey();
+    const today = serverTodayKeyTz();
     const out: Meeting[] = [];
     for (const m of list) {
       if (!m.recurring || m.recurring === "none" || m.status !== "scheduled") {
@@ -1222,7 +1225,7 @@ export default function UserPanel({
     // оно имело смысл только для «сегодня на сегодня». Раньше эта проверка
     // стояла первой и резала любые слоты после 20:00 даже на завтра/через
     // неделю («выбираю 29-е, а запись уезжает/не создаётся»).
-    if (formData.date === clientTodayKey() && isLateTime(formData.startTime)) {
+    if (formData.date === serverTodayKey() && isLateTime(formData.startTime)) {
       alert(
         `Нельзя создать встречу сегодня позже ${LATE_CREATE_LIMIT_HM}. Выберите время начала до ${LATE_CREATE_LIMIT_HM} или перенесите встречу на будущий день.`
       );
@@ -1287,16 +1290,6 @@ export default function UserPanel({
     // (422 валидация, истёкший токен и т.п.) — без проверки форма
     // «тихо» закрывалась, и казалось, что создание конференции не работает.
     const payload: Meeting = { ...formData };
-    // ФИКС «выбрал 03.11, а расписание показывает 02.11»: канонизируем дату
-    // строго до YYYY-MM-DD ИЗ ВЫБРАННОГО значения (никаких new Date(): парсинг
-    // «2026-11-03» как UTC-полночь в таймзоне западнее UTC давал «02.11»).
-    if (typeof payload.date === "string") {
-      const __dm = payload.date.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (__dm) payload.date = `${__dm[1]}-${__dm[2]}-${__dm[3]}`;
-    }
-    // Отладочное эхо: какие значения реально уходят на сервер. При жалобе на
-    // дату администратор открывает F12 → Console и видит строку [vks-date].
-    console.info("[vks-date]", payload.date, payload.startTime, payload.endTime);
     // Страховки от «сервер отклонил заявку»: значения полей приводим к тем
     // форматам, которые принимает бэкенд (HH:mm, reminder_minutes 5..1440).
     payload.startTime = normHm(payload.startTime);
@@ -1327,7 +1320,7 @@ export default function UserPanel({
     if (!payload.link) {
       setSavingNote("Создаём ссылку ВКС на salutejazz.ru…");
       try {
-        const botRes = await createVksViaBot(payload.title || "Встреча", user.name, undefined, payload.date);
+        const botRes = await createVksViaBot(payload.title || "Встреча", user.name, 75_000, payload.date);
         payload.link = botRes.link;
         // skipped=true — автосоздание через бота ВЫКЛЮЧЕНО (VITE_VKS_AUTOBOT=0,
         // штатный режим экономии RAM): предупреждать пользователя не нужно.
@@ -1369,7 +1362,7 @@ export default function UserPanel({
     } else if (!isVksLink(payload.link) && !/^https?:\/\//i.test(String(payload.link).trim())) {
       // не ссылка вовсе (обрывки текста из буфера обмена) — создаём новую
       try {
-        const botRes = await createVksViaBot(payload.title || "Встреча", user.name, undefined, payload.date);
+        const botRes = await createVksViaBot(payload.title || "Встреча", user.name, 75_000, payload.date);
         payload.link = botRes.link;
         if (!botRes.real && !botRes.skipped) {
           alert("Бот недоступен — ссылка сгенерирована локально (комнаты на платформе ещё нет).");
@@ -1815,7 +1808,7 @@ export default function UserPanel({
                       type="time"
                       required
                       min={editingMeeting ? undefined : minStartHm(formData.date)}
-                      max={formData.date === clientTodayKey() ? LATE_CREATE_LIMIT_HM : "23:59"}
+                      max={formData.date === serverTodayKey() ? LATE_CREATE_LIMIT_HM : "23:59"}
                       value={formData.startTime}
                       onChange={(e) => {
                         const startTime = e.target.value;
@@ -1835,9 +1828,9 @@ export default function UserPanel({
                       }}
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
                     />
-                    {!editingMeeting && formData.date === clientTodayKey() && (
+                    {!editingMeeting && formData.date === serverTodayKey() && (
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Сегодня можно выбрать время не раньше {minStartHm(formData.date)} (по часам вашего компьютера).
+                        Сегодня можно выбрать время не раньше {minStartHm(formData.date)} (по часам сервера).
                       </p>
                     )}
                   </div>
@@ -2319,10 +2312,12 @@ export default function UserPanel({
             arr.push(m);
             byDate.set(m.date, arr);
           });
-          // «Сегодня» в сетке календаря — по ЧАСАМ КОМПЬЮТЕРА (ФИКС «Кола
-          // ушла прошедшим числом»: серверный offset подсвечивал/открывал
-          // вчерашний день при рассинхроне часов).
-          const __todayD = new Date();
+          let __todayD: Date;
+          try {
+            __todayD = serverNowDate();
+          } catch {
+            __todayD = new Date();
+          }
           const todayIso = isoOf(__todayD);
           const cells: { d: Date; inMonth: boolean }[] = [];
           if (calView === "month") {
@@ -2393,9 +2388,12 @@ export default function UserPanel({
                   <button
                     onClick={() => {
                       setCalMonth(() => {
-                        // «Сегодня» — по часам компьютера (ФИКС «Кола ушла
-                        // прошедшим числом»: серверный offset уводил на сутки).
-                        const n = new Date();
+                        let n: Date;
+                        try {
+                          n = serverNowDate();
+                        } catch {
+                          n = new Date();
+                        }
                         return { y: n.getFullYear(), m: n.getMonth(), d: n.getDate() };
                       });
                     }}

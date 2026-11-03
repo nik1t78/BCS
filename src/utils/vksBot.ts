@@ -31,31 +31,8 @@ const BOT_URL = (import.meta.env.VITE_VKS_BOT_URL as string) || "/vks-bot";
 const AUTOBOT_ENABLED = import.meta.env.VITE_VKS_AUTOBOT !== "0";
 
 /** Сколько раз подряд может не повезти с ботом, прежде чем фронт
- *  «сдастся» и сохранит локальную ссылку. Повтор имеет смысл только при
- *  сбое самого Selenium-прогона — сетевые обрывы/abort повтор сразу
- *  ловит те же таймауты (см. isRetryableBotError). */
+ *  «сдастся» и сохранит локальную ссылку (каждая попытка до ~75 c). */
 const BOT_ATTEMPTS = 2;
-
-/** Таймаут fetch одной попытки. Согласован с инфраструктурой:
- *  nginx proxy_read_timeout=90s, внутренний лимет бота CREATE_TIMEOUT_S=120s.
- *  Раньше фронт обрывал запрос на 75 с — именно из-за этого в консоли
- *  сыпалось «AbortError: signal is aborted without reason», хотя бот ещё
- *  работал над созданием комнаты. */
-const BOT_FETCH_TIMEOUT_MS = 88_000;
-
-/** Ошибки, которые НЕЧЕГО повторять: обрыв по нашему таймауту,
- *  недоступность прокси/сервера (HTTP-статусы, DNS, connection reset).
- *  Вторая попытка при них удваивает ожидание пользователя (до ~3 минут)
- *  и даёт тот же AbortError. При такой ошибке сразу отдаём локальную
- *  ссылку (real=false) — создание встречи не блокируется. */
-function isRetryableBotError(e: unknown): boolean {
-  const name = e instanceof Error ? e.name : "";
-  if (name === "AbortError") return false; // наш ctrl.abort() по таймауту
-  const msg = String(e instanceof Error ? e.message : e).toLowerCase();
-  if (/failed to fetch|networkerror|err_(http|connection|internet|name)|econn|socket|dns/.test(msg)) return false;
-  if (/bot http (408|429|500|502|503|504)/.test(msg)) return false; // прокси упал / сервер занят
-  return true; // «бот не вернул ссылку», оверлей на странице и т.п. — имеет смысл второй прогон
-}
 
 export interface BotCreateResult {
   link: string;
@@ -81,10 +58,7 @@ export interface BotCreateResult {
  */
 async function botAttempt(title: string, name: string, timeoutMs: number, date?: string): Promise<BotCreateResult> {
   const ctrl = new AbortController();
-  // Причину abort задаём ЯВНО: без неё браузер выбрасывает бессмысленное
-  // «AbortError: signal is aborted without reason» — по логу невозможно
-  // понять, чей это таймаут (фронта, nginx или бота).
-  const timer = setTimeout(() => ctrl.abort(`бот не ответил за ${Math.round(timeoutMs / 1000)} с`), timeoutMs);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   // Секрет бота (заголовок X-Bot-Token) — то же значение, что BOT_TOKENS в .env.
   // Без него сервер бота отвечает 401, если BOT_TOKENS настроены.
   const botToken = (import.meta.env.VITE_VKS_BOT_TOKEN as string) || "";
@@ -149,7 +123,7 @@ async function botAttempt(title: string, name: string, timeoutMs: number, date?:
  *   прокидывается боту, чтобы комната на salutejazz.ru создавалась на верные
  *   сутки. Если не передана, бот подставит «сегодня» по Москве.
  */
-export async function createVksViaBot(title: string, name: string, timeoutMs = BOT_FETCH_TIMEOUT_MS, date?: string): Promise<BotCreateResult> {
+export async function createVksViaBot(title: string, name: string, timeoutMs = 75_000, date?: string): Promise<BotCreateResult> {
   if (!AUTOBOT_ENABLED) {
     // Бот выключен (экономия RAM контейнера vks-bot) — мгновенная
     // локальная генерация ссылки в эталонном формате платформы.
@@ -159,9 +133,6 @@ export async function createVksViaBot(title: string, name: string, timeoutMs = B
   }
   // До BOT_ATTEMPTS попыток: Selenium-прогон на salutejazz.ru иногда
   // спотыкается о временный оверлей/редирект — повтор обычно помогает.
-  // НО: сетевые обрывы/таймауты (AbortError, 502/504, Failed to fetch)
-  // повторять бессмысленно — сразу отдаём локальную ссылку, иначе
-  // пользователь ждёт ~3 минуты ради того же AbortError в консоли.
   let lastError = "";
   for (let i = 0; i < BOT_ATTEMPTS; i++) {
     try {
@@ -170,7 +141,6 @@ export async function createVksViaBot(title: string, name: string, timeoutMs = B
       lastError = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
       console.warn(`[vksBot] попытка ${i + 1}/${BOT_ATTEMPTS} не удалась:`, e);
-      if (!isRetryableBotError(e)) break; // обрыв сети/таймаут — не долбим бота повторно
     }
   }
   // Все попытки исчерпаны — фолбэк, чтобы создание встречи не блокировалось.

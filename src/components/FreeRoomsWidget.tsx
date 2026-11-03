@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Room, RoomAvailability } from "../types";
-import { roomsAPI, meetingsAPI, syncServerTime, clientTodayKey } from "../api/client";
+import { roomsAPI, meetingsAPI, syncServerTime, serverNowHmTz, serverTodayKeyTz } from "../api/client";
 import {
   computeFreeSlots,
   splitSlotIntoBlocks,
@@ -12,17 +12,16 @@ import {
 } from "../utils/freeSlots";
 import { hoursForDate, FALLBACK_DAY_HOURS, type DayHours } from "../utils/roomSchedule";
 
-/** «Сейчас» в минутах дня ПО ЧАСАМ КОМПЬЮТЕРА.
- *  ФИКС «Кола опять ушла прошедшим числом»: раньше бралось серверное время
- *  (offset из /api/time + пояс Europe/Moscow). Поле «Дата» и слоты при этом
- *  живут по локальным суткам (clientTodayKey) — при рассинхроне часов или
- *  протухшем кэше offset'а граница «уже прошло» считалась от другой базы:
- *  окна сегодняшнего дня помечались прошедшими и виджет пустел, а выбранная
- *  дата уезжала на вчера. Теперь всё в одной базе — часы компьютера;
- *  окончательную проверку прошлого делает сервер (422 с подсказкой). */
+/** «Сейчас» в минутах дня ПО ЧАСАМ И ПОЯСУ СЕРВЕРА (Europe/Moscow, см. /api/time).
+ *  Фикс «Свободные залы пустеют после обновления страницы»: расчёт свободных
+ *  окон шёл по локальным часам браузера. Если часы устройства расходились с
+ *  сервером или пояс браузера не московский, все окна дня ошибочно помечались
+ *  прошедшими (isPast) и исчезали из зелёной зоны — виджет выглядел пустым.
+ *  Важно: serverNowHmTz() читает время через Intl в поясе сервера; getHours()
+ *  от Date вернул бы локальный час браузера (расхождение до ±3ч для MSK). */
 const serverNowMin = (): number => {
-  const d = new Date();
-  return d.getHours() * 60 + d.getMinutes();
+  const [h, m] = serverNowHmTz().split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
 };
 
 interface RoomInfo {
@@ -46,7 +45,7 @@ interface FreeRoomsWidgetProps {
  * форму создания ВКС с предзаполненными датой, временем и залом.
  */
 export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
-  const [date, setDate] = useState<string>(() => clientTodayKey());
+  const [date, setDate] = useState<string>(() => serverTodayKeyTz());
   const [infos, setInfos] = useState<RoomInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -166,7 +165,7 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
         // иначе при расхождении часов устройства свободные окна ошибочно
         // помечались прошедшими и виджет пустел после перезагрузки страницы.
         const curMin = serverNowMin();
-        const isToday = date === clientTodayKey();
+        const isToday = date === serverTodayKeyTz();
         const toMin = (s: string): number => {
           if (/^\d{1,2}:\d{2}$/.test(s)) {
             const [h, m] = s.split(":").map(Number);
@@ -224,7 +223,7 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, tick]);
 
-  const isToday = date === clientTodayKey();
+  const isToday = date === serverTodayKeyTz();
 
   // Шкала и подпись «рабочего дня» — по гибкому графику залов. Если у всех
   // залов на дату график закрыт — виджет честно это покажет.

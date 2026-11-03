@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Room, RoomAvailability } from "../types";
-import { roomsAPI, meetingsAPI, syncServerTime, clientTodayKey } from "../api/client";
+import { roomsAPI, meetingsAPI, syncServerTime, serverNowHmTz, serverTodayKeyTz } from "../api/client";
 import { computeFreeSlots, minToHm, hmToMin, WORK_DAY_START_MIN, WORK_DAY_END_MIN } from "../utils/freeSlots";
 // toDateKey больше не используется: автоподгонка даты модалки убрана (см. фикс
 // «Свободные залы пустеют / слоты уезжают на другой день» в эффекте [open]).
@@ -25,23 +25,12 @@ interface RoomBookingModalProps {
 // виджета «Свободные залы» и серверной валидации прошлого. Локальный
 // todayKey() расходился с сервером при других часах/поясе устройства:
 // слоты будущего времени ошибочно помечались прошедшими и пропадали.
-// ФИКС «на компе другое число, а модалка откатывает дату назад»: дефолт и
-// нижняя граница поля «Дата» — локальные сутки компьютера пользователя
-// (clientTodayKey), БЕЗ серверного offset: раньше при рассинхроне часов
-// форма молча подставляла вчерашнюю дату и заявка уходила прошедшим числом.
-const todayKey = (): string => clientTodayKey();
+const todayKey = (): string => serverTodayKeyTz();
 
-/** «Сейчас» в минутах дня ПО ЧАСАМ КОМПЬЮТЕРА.
- *  ФИКС «Кола опять ушла прошедшим числом»: раньше бралось серверное время
- *  (offset из /api/time + пояс Europe/Moscow). Поле «Дата» при этом живёт по
- *  локальным суткам (clientTodayKey) — при рассинхроне часов/кэша offset'а
- *  граница «уже прошло» считалась от другой базы, слоты сегодняшнего дня
- *  помечались прошедшими, и модалка открывалась с вчерашней датой. Теперь
- *  всё в одной базе — часы компьютера; окончательную проверку прошлого
- *  делает сервер (422 с подсказкой). */
+/** «Сейчас» в минутах дня по серверным часам и поясу (Intl, см. /api/time). */
 const serverNowMin = (): number => {
-  const d = new Date();
-  return d.getHours() * 60 + d.getMinutes();
+  const [h, m] = serverNowHmTz().split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
 };
 
 /** «HH:MM» → минуты; поддержка 24:00 */
