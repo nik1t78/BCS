@@ -367,8 +367,23 @@ class MeetingController extends Controller
         // ПРЯМО ИЗ СТРОКИ регуляркой (календарные компоненты без поясов),
         // перестановка суток невозможна в принципе.
         $rawDate = (string) $request->input('date');
+        $canonFromValidated = '';
         if (preg_match('/^(\d{4})-(\d{2})-(\d{2})/', substr(trim((string) $validated['date']), 0, 10), $dm)) {
-            $validated['date'] = sprintf('%04d-%02d-%02d', (int) $dm[1], (int) $dm[2], (int) $dm[3]);
+            $canonFromValidated = sprintf('%04d-%02d-%02d', (int) $dm[1], (int) $dm[2], (int) $dm[3]);
+        }
+        // Из СТРОКИ ЗАПРОСА тоже извлекаем канон регуляркой — НЕ через
+        // Carbon::parse: Laravel-валидатор 'date' уже мог прогнать значение
+        // через DateTimeInterface и вернуть Carbon, созданный из ISO-строки
+        // «...T...Z» по поясу UTC (дата могла уехать на сутки). Если в сырой
+        // строке есть явные календарные компоненты YYYY-MM-DD — верим им.
+        $canonFromRaw = '';
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})/', trim($rawDate), $rm)) {
+            $canonFromRaw = sprintf('%04d-%02d-%02d', (int) $rm[1], (int) $rm[2], (int) $rm[3]);
+        }
+        if ($canonFromRaw !== '') {
+            $validated['date'] = $canonFromRaw;
+        } elseif ($canonFromValidated !== '') {
+            $validated['date'] = $canonFromValidated;
         } elseif ($rawDate !== '') {
             // неканоничный формат («03.11.2026» уже смержено выше в store,
             // но сторонние клиенты могут прислать что угодно) — единственный

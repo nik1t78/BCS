@@ -716,6 +716,20 @@ export function guessServerTodayKey(): string {
   return clientTodayKey();
 }
 
+/** Ключ «сегодня» из ЛЮБОГО значения даты (YYYY-MM-DD, ISO с таймзоной,
+ *  Date) БЕЗ часовых поясов: берём первые 10 символов строки как есть.
+ *  ЗАПРЕЩЕНО new Date("2026-11-03"): парсер трактует bare-date как UTC-полночь,
+ *  и getFullYear()/getMonth() в поясе западнее UTC дают «2 ноября» — именно так
+ *  встречам приписывало прошедшее число. */
+export function todayKeyOf(v: string | Date): string {
+  if (v instanceof Date) {
+    return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`;
+  }
+  const m = String(v ?? "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  return clientTodayKey();
+}
+
 /** «Сейчас» с поправкой на серверные часы (Date учитывает offset).
  *  КРИТИЧНО: offset доверяется ТОЛЬКО успешной сверке /api/time в текущей
  *  вкладке (timeSyncOk). Значение из localStorage раньше подтягивалось сюда
