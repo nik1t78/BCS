@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { User, Meeting } from "../types";
-import { authAPI, downloadBlob, adminLoadAPI, roomsAPI, guessServerTodayKey, serverNowDate } from "../api/client";
+import { authAPI, downloadBlob, adminLoadAPI, roomsAPI, guessServerTodayKey } from "../api/client";
 import { unwrapList, mapMeeting } from "../store-api";
 import { exportToExcel } from "../utils/export";
 import { SortMode, SORT_OPTIONS, sortMeetings } from "../utils/meetingSort";
@@ -559,9 +559,13 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     reminderMinutes: 15,
     recurring: "none",
     priority: "medium",
-    // Фикс «дата создания прошедшим числом»: время берётся с поправкой на
-    // серверные часы (/api/time), а не с possibly сбитых часов браузера.
-    createdAt: serverNowDate().toISOString(),
+    // ФИКС («уходит прошедшим числом»): createdAt не уходит на сервер —
+    // Laravel сам ставит created_at по своим часам. Локальное значение нужно
+    // только для отрисовки карточки до перезагрузки: берём честные локальные
+    // часы (new Date()), без offset из /api/time — иначе при нераспознанной/
+    // протухшей синхронизации «сейчас» отстаёт на сутки и новая встреча
+    // показывается вчерашним числом.
+    createdAt: new Date().toISOString(),
     isPrivate: false,
   };
   const [meetingForm, setMeetingForm] = useState<Meeting>(emptyMeeting);

@@ -9,7 +9,7 @@ import UserPanel from "./UserPanel";
 import type { MeetingPrefill } from "./UserPanel";
 import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { toDateKey, formatRuDate } from "../utils/dateKey";
-import { icsAPI, guessServerTodayKey, clientTodayKey, syncServerTime, serverNowDate, serverTodayKeyTz, serverNowHmTz } from "../api/client";
+import { icsAPI, guessServerTodayKey, clientTodayKey } from "../api/client";
 
 /** Часы главной страницы: «сейчас» ПО ЧАСАМ КОМПЬЮТЕРА пользователя.
  *  ФИКС «Кола опять ушла прошедшим числом»: раньше бралось серверное время

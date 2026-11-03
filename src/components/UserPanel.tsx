@@ -8,7 +8,6 @@ import {
   serverTodayKeyTz,
   serverNowHmTz,
   guessServerTodayKey,
-  serverNowDate,
   clientTodayKey,
   clientNowHm,
 } from "../api/client";
@@ -805,11 +804,17 @@ export default function UserPanel({
     reminderMinutes: getDefaultReminder(),
     recurring: "none",
     priority: "medium",
-    // Фикс «дата создания уходит прошедшим числом»: раньше бралось время
-    // браузера (new Date()) — при сбитых/отставших часах Windows в БД
-    // записывалась вчерашняя дата. serverNowDate() учитывает offset из
-    // /api/time (и localStorage), поэтому «сейчас» всегда серверное.
-    createdAt: serverNowDate().toISOString(),
+    // ФИКС ОКОНЧАТЕЛЬНЫЙ («Кола опять ушла прошедшим числом»): это поле
+    // НЕ отправляется на сервер — meetingToApi вырезает createdAt, а Laravel
+    // сам ставит created_at по СВОИМ честным часам (в БД запись всегда
+    // актуальная). Но локальный объект встречи использовался для отображения
+    // карточки ДО перезагрузки списка: serverNowDate() = локальные часы +
+    // offset из /api/time. Если синхронизация не успела выполниться или
+    // ответ закэшился протухшим, «локальное сейчас» отставало на сутки — и
+    // свежесозданная встреча показывалась с ПРОШЕДШИМ числом, хотя в базе
+    // всё было верно. Поэтому здесь — просто new Date(): что на компьютере,
+    // то и в форме; дату не подменяем и не откатываем никогда.
+    createdAt: new Date().toISOString(),
     isPrivate: false,
   };
 

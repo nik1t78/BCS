@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { User, MeetingTemplate } from "../types";
 import { getTemplates, createTemplate, updateTemplate, deleteTemplate } from "../store-api";
-import { serverNowDate } from "../api/client";
+
 
 interface TemplatesProps {
   userId: string;
@@ -26,9 +26,10 @@ export default function Templates({ userId }: TemplatesProps) {
     recurring: "none",
     isPrivate: false,
     defaultParticipants: [],
-    // Фикс «дата создания прошедшим числом»: серверное «сейчас» (/api/time),
-    // а не локальные часы браузера (могли отставать на сутки).
-    createdAt: serverNowDate().toISOString(),
+    // ФИКС («уходит прошедшим числом»): createdAt не уходит на сервер —
+    // Laravel сам ставит created_at по своим часам. Здесь только честные
+    // локальные часы (new Date()), без offset из /api/time.
+    createdAt: new Date().toISOString(),
   };
 
   const [formData, setFormData] = useState<MeetingTemplate>(emptyTemplate);
