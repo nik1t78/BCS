@@ -1,5 +1,11 @@
 import { Meeting } from "../types";
-import { guessServerTodayKey, serverNowDate } from "../api/client";
+import { getServerTimezone, serverNowDate, serverNowHmTz, serverTodayKeyTz } from "../api/client";
+
+/** Абсолютный «серверный сейчас» в виде "YYYY-MM-DDTHH:MM" ПО ЯВНОСТИ — для
+ *  честного сравнения с `${date}T${time}` встреч (both are wall-clock strings). */
+export function serverNowDateTimeStr(): string {
+  return `${serverTodayKeyTz()}T${serverNowHmTz()}`;
+}
 export type SortMode = "smart" | "soonest" | "latest" | "title" | "newest";
 export const SORT_OPTIONS: { value: SortMode; label: string }[] = [
   { value: "smart", label: "Умная сортировка (сначала сегодняшние)" },
@@ -20,14 +26,20 @@ export function getMeetingGroup(m: Meeting): { key: string; label: string } {
   // «Сегодня/Завтра» считаем по СЕРВЕРНЫМ часам (offset+TZ из /api/time, см.
   // src/api/client.ts): при сбитых часах/дате на компьютере пользователя встреча
   // на 30-е попадала в группу «29-го» и наоборот («неправильная дата в
-  // Расписании»). guessServerTodayKey() использует offset из localStorage,
-  // поэтому корректна и сразу после перезагрузки страницы, до первого /api/time.
+  // Расписании»).
   const serverNow = serverNowDate();
-  const serverToday = guessServerTodayKey();
+  // «Сегодня» на сервере — через Intl В ПОЯСЕ СЕРВЕРА (serverTodayKeyTz), а не
+  // guessServerTodayKey(): последний берёт локальную дату браузера + offset из
+  // последней синхронизации. При поясе браузера ≠ пояс сервера (например, браузер
+  // в UTC, сервер Europe/Moscow после 21:00 MSK) это давало расхождение на сутки:
+  // сегодняшняя встреча определялась как «прошлая» и падала в группу
+  // «Прошедшие и отменённые» («фронт выдал 02.11 как прошедшее, хотя сегодня 03.11»).
+  const serverToday = serverTodayKeyTz();
   // «Завтра» на сервере = сегодня(сервер) + 1 день, вычисляется от абсолютного
   // момента времени: сутки берём по поясу сервера через Intl (en-CA даёт YYYY-MM-DD).
+  const tzName = getServerTimezone();
   const tomorrowParts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Moscow",
+    timeZone: tzName,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -38,7 +50,7 @@ export function getMeetingGroup(m: Meeting): { key: string; label: string } {
   // ключ даты собираем вручную из компонентов (без TZ-сдвига toISOString)
   const weekEndKey = (() => {
     const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Europe/Moscow",
+      timeZone: tzName,
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -47,14 +59,30 @@ export function getMeetingGroup(m: Meeting): { key: string; label: string } {
     return `${g("year")}-${g("month")}-${g("day")}`;
   })();
   const dt = toDateTime(m);
-  const nowStr = `${serverToday}T${String(serverNow.getHours()).padStart(2, "0")}:${String(serverNow.getMinutes()).padStart(2, "0")}`;
+  // Абсолютный серверный «сейчас» (дата+время по поясу сервера). Раньше здесь
+  // был баг: строка now собиралась как `${serverToday}T${serverNow.getHours()}`
+  // — дата бралась ПО ЯВНОСТИ СЕРВЕРА, а часы через getHours() — В ПОЯСЕ
+  // БРАУЗЕРА. При TZ=UTC и сервере Europe/Moscow получалось, например,
+  // «2026-11-03T09:00» вместо реальных «12:00»: встречи позже этого момента
+  // ошибочно уходили в «Без точной даты», а дата на карточке выглядела так,
+  // будто она уже прошла. Берём serverNowHmTz() (Intl по поясу сервера).
+  const nowStr = `${serverToday}T${serverNowHmTz()}`;
+  // Прошедшие ДАТЫ (встреча закончилась до серверного «сегодня») — всегда в
+  // группу «Прошедшие», даже если статус ещё не обновлён планировщиком
+  // (meetings:auto-complete крутится каждые 5 минут, и после деплоя/простоя
+  // cron'а встречи за 02.11 могли висеть со статусом scheduled): раньше они
+  // попадали в «Ближайшая неделя»/«Без точной даты» и фронт показывал их как
+  // будущие.
+  const endStr = `${m.date}T${m.endTime || m.startTime || "23:59"}`;
+  if (endStr.slice(0, 10) < serverToday || endStr < nowStr) {
+    return { key: "past", label: "Прошедшие и отменённые" };
+  }
   if (dt.slice(0, 10) === serverToday) return { key: "today", label: "Сегодня" };
   if (dt.slice(0, 10) === tomorrowServer) return { key: "tomorrow", label: "Завтра" };
   if (dt.slice(0, 10) <= weekEndKey) return { key: "week", label: "Ближайшая неделя" };
-  if (dt < nowStr) return { key: "overdue", label: "Без точной даты" };
   return { key: "later", label: "Позже" };
 }
-const GROUP_ORDER = ["today", "tomorrow", "week", "later", "overdue", "past"];
+const GROUP_ORDER = ["today", "tomorrow", "week", "later", "past"];
 function compareBy(mode: SortMode, a: Meeting, b: Meeting): number {
   switch (mode) {
     case "soonest":
