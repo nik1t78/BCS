@@ -1,5 +1,5 @@
 import { Meeting } from "../types";
-import { getServerTimezone } from "../api/client";
+import { getServerTimezone } from "../api/serverTime";
 
 // Экспорт конференции в формат .ics (RFC 5545) — для импорта в Outlook / Google Calendar
 

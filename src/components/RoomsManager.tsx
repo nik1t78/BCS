@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { roomsAPI, guessServerTodayKey } from "../api/client";
+import { roomsAPI } from "../api/client";
+import { serverTodayKey as guessServerTodayKey } from "../api/serverTime";
 import type { Room, RoomAvailability } from "../types";
 import type { RoomSchedule } from "../utils/roomSchedule";
 import ScheduleEditor from "./ScheduleEditor";

@@ -9,7 +9,8 @@ import UserPanel from "./UserPanel";
 import type { MeetingPrefill } from "./UserPanel";
 import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { toDateKey, formatRuDate } from "../utils/dateKey";
-import { icsAPI, guessServerTodayKey, syncServerTime, serverNowDate, serverTodayKeyTz, serverNowHmTz } from "../api/client";
+import { icsAPI } from "../api/client";
+import { syncServerTime, serverNowDate, serverTodayKey as serverTodayKeyTz, serverNowHm as serverNowHmTz, serverTodayKey as guessServerTodayKey } from "../api/serverTime";
 
 /** Часы главной страницы: «сейчас» по СЕРВЕРНОМУ времени (с offset из
  *  /api/time / localStorage), а не по часам браузера. При сбитой дате/времени
