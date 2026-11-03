@@ -96,6 +96,11 @@ services:
       args:
         VITE_VKS_AUTOBOT: "${VITE_VKS_AUTOBOT:-0}"
         VITE_VKS_BOT_TOKEN: "${BOT_TOKENS:-}"
+        # BUILD_ID меняет значение при каждой команде up => compose всегда
+        # пересобирает образ и перезапускает сборщик => том frontend_build
+        # гарантированно получает СВЕЖИЙ бандл (защита от «код на сервере
+        # новый, а браузер показывает старую дату»).
+        BUILD_ID: "${BUILD_ID:-always-rebuild}"
     container_name: vks-frontend-builder
     restart: "no"
     networks: [vks-network]

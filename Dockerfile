@@ -22,6 +22,12 @@ ARG VITE_VKS_AUTOBOT=0
 ENV VITE_VKS_AUTOBOT=$VITE_VKS_AUTOBOT
 ARG VITE_VKS_BOT_TOKEN=
 ENV VITE_VKS_BOT_TOKEN=$VITE_VKS_BOT_TOKEN
+# BUILD_ID — «сброс кеша слоёв»: меняется при каждом docker compose up, поэтому
+# COPY src/public ниже и RUN npm run build всегда выполняются заново и том
+# frontend_build гарантированно получает свежий бандл (защита от показа браузером
+# старого JS после git pull без --no-cache).
+ARG BUILD_ID=dev
+RUN echo "build id: $BUILD_ID"
 RUN npm run build
 
 # Финальный крошечный образ-экспортёр (alpine, без node)
