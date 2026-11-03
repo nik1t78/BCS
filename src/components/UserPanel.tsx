@@ -1287,6 +1287,16 @@ export default function UserPanel({
     // (422 валидация, истёкший токен и т.п.) — без проверки форма
     // «тихо» закрывалась, и казалось, что создание конференции не работает.
     const payload: Meeting = { ...formData };
+    // ФИКС «выбрал 03.11, а расписание показывает 02.11»: канонизируем дату
+    // строго до YYYY-MM-DD ИЗ ВЫБРАННОГО значения (никаких new Date(): парсинг
+    // «2026-11-03» как UTC-полночь в таймзоне западнее UTC давал «02.11»).
+    if (typeof payload.date === "string") {
+      const __dm = payload.date.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (__dm) payload.date = `${__dm[1]}-${__dm[2]}-${__dm[3]}`;
+    }
+    // Отладочное эхо: какие значения реально уходят на сервер. При жалобе на
+    // дату администратор открывает F12 → Console и видит строку [vks-date].
+    console.info("[vks-date]", payload.date, payload.startTime, payload.endTime);
     // Страховки от «сервер отклонил заявку»: значения полей приводим к тем
     // форматам, которые принимает бэкенд (HH:mm, reminder_minutes 5..1440).
     payload.startTime = normHm(payload.startTime);

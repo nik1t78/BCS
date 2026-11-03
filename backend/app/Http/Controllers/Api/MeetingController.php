@@ -358,12 +358,23 @@ class MeetingController extends Controller
         // Валидация даты: Laravel 'date' пропускает любой парсинг Carbon
         // (в т.ч. относительные строки). Строго принимаем YYYY-MM-DD или
         // DD.MM.YYYY — иначе битая дата из формы могла лечь в БД «как есть».
+        // ФИКС «выбрал 03.11, а расписание показывает 02.11»: раньше дата
+        // проходила через Carbon::parse($raw)->toDateString(). Если фронт
+        // присылает полный ISO-таймстемп ("2026-11-03T00:00:00.000Z"), parse
+        // трактует его как UTC и переводит в пояс приложения; при поясе
+        // западнее UTC (или кривом TZ контейнера) сутки уезжали НАЗАД —
+        // выбранное «03» сохранялось как «02». Теперь канон Y-m-d берётся
+        // ПРЯМО ИЗ СТРОКИ регуляркой (календарные компоненты без поясов),
+        // перестановка суток невозможна в принципе.
         $rawDate = (string) $request->input('date');
-        if ($rawDate !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}/', substr($validated['date'], 0, 10))) {
-            // приводим к каноничному Y-m-d из разобранных компонентов
-            $validated['date'] = \Carbon\CarbonImmutable::parse($validated['date'])->toDateString();
-        } elseif (isset($validated['date'])) {
-            $validated['date'] = \Carbon\CarbonImmutable::parse($validated['date'])->toDateString();
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})/', substr(trim((string) $validated['date']), 0, 10), $dm)) {
+            $validated['date'] = sprintf('%04d-%02d-%02d', (int) $dm[1], (int) $dm[2], (int) $dm[3]);
+        } elseif ($rawDate !== '') {
+            // неканоничный формат («03.11.2026» уже смержено выше в store,
+            // но сторонние клиенты могут прислать что угодно) — единственный
+            // случай, где допустим парсинг Carbon; forceTZ убирает суточный
+            // сдвиг при разборе строки БЕЗ таймзоны как UTC-полночь
+            $validated['date'] = \Carbon\CarbonImmutable::parse($validated['date'], new \DateTimeZone($now->timezone()->getName()))->toDateString();
         }
 
         $validated['organizer_id'] = $request->user()->id;
