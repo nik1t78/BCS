@@ -1,17 +1,14 @@
 import React, { useState, useEffect, useRef } from "react";
 import { User, Meeting, Tag, ScheduleConflict } from "../types";
+import { roomsAPI, meetingsAPI, clientTodayKey, clientNowHm } from "../api/client";
 import {
-  roomsAPI,
-  meetingsAPI,
   syncServerTime,
   isTimeSynced,
-  serverTodayKeyTz,
-  serverNowHmTz,
-  guessServerTodayKey,
+  serverTodayKey as serverTodayKeyTz,
+  serverNowHm as serverNowHmTz,
   serverNowDate,
-  clientTodayKey,
-  clientNowHm,
-} from "../api/client";
+  serverTodayKey as guessServerTodayKey,
+} from "../api/serverTime";
 import {
   getMeetings,
   createMeeting,

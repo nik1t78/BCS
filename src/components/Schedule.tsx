@@ -7,7 +7,8 @@ import {
   checkRescheduleConflicts,
   updateMeeting,
 } from "../store-api";
-import { roomsAPI, serverNowDate } from "../api/client";
+import { roomsAPI } from "../api/client";
+import { serverNowDate } from "../api/serverTime";
 import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { occursOn } from "../utils/recurrence";
 import { formatRuDate } from "../utils/dateKey";

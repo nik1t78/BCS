@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Room, RoomAvailability } from "../types";
-import { roomsAPI, meetingsAPI, syncServerTime, serverNowHmTz, serverTodayKeyTz } from "../api/client";
+import { roomsAPI, meetingsAPI } from "../api/client";
+import { syncServerTime, serverNowHm as serverNowHmTz, serverTodayKey as serverTodayKeyTz } from "../api/serverTime";
 import {
   computeFreeSlots,
   splitSlotIntoBlocks,

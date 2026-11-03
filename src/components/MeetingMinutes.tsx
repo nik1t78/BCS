@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { MeetingMinute, MeetingTask, TaskComment, User } from "../types";
 import { toDateKey, formatRuDate } from "../utils/dateKey";
-import { guessServerTodayKey } from "../api/client";
+import { serverTodayKey as guessServerTodayKey } from "../api/serverTime";
 import {
   getMinutes,
   addMinute,

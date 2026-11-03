@@ -4,7 +4,7 @@
 // Используется и в пользовательском «Расписании», и в админ-панели.
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Meeting } from "../types";
-import { serverNowDate } from "../api/client";
+import { serverNowDate } from "../api/serverTime";
 import { occursOn, withDate } from "../utils/recurrence";
 import { toDateKey } from "../utils/dateKey";
 

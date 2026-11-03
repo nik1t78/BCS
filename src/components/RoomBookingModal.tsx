@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Room, RoomAvailability } from "../types";
-import { roomsAPI, meetingsAPI, syncServerTime, serverNowHmTz, serverTodayKeyTz } from "../api/client";
+import { roomsAPI, meetingsAPI } from "../api/client";
+import { syncServerTime, serverNowHm as serverNowHmTz, serverTodayKey as serverTodayKeyTz } from "../api/serverTime";
 import { computeFreeSlots, minToHm, hmToMin, WORK_DAY_START_MIN, WORK_DAY_END_MIN } from "../utils/freeSlots";
 // toDateKey больше не используется: автоподгонка даты модалки убрана (см. фикс
 // «Свободные залы пустеют / слоты уезжают на другой день» в эффекте [open]).
