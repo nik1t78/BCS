@@ -1,5 +1,5 @@
 import { Meeting } from "../types";
-import { guessServerTodayKey } from "../api/client";
+import { serverNowDate, serverTodayKeyTz } from "../api/client";
 export type SortMode = "smart" | "soonest" | "latest" | "title" | "newest";
 export const SORT_OPTIONS: { value: SortMode; label: string }[] = [
   { value: "smart", label: "Умная сортировка (сначала сегодняшние)" },
@@ -14,26 +14,24 @@ export function getMeetingGroup(m: Meeting): { key: string; label: string } {
   if (m.status === "completed" || m.status === "cancelled") {
     return { key: "past", label: "Прошедшие и отменённые" };
   }
-  // ФИКС «Кола ушла прошедшим числом» (финальный): «Сегодня/Завтра/Неделя»
-  // считаем от ЧЕСТНОЙ ЛОКАЛЬНОЙ ДАТЫ компьютера — ровно как дефолт и min
-  // поля «Дата» в формах создания (clientTodayKey). Раньше база была
-  // смешанной: форма ставила локальную дату, а группировка сравнивала её с
-  // «серверным сегодня» (offset+TZ из /api/time) — при рассинхроне часов или
-  // протухшем кэше /api/time встреча на реальную дату попадала в группы
-  // «Без точной даты»/«Прошедшие», хотя была будущей. Сверка с прошлым
-  // осталась только там, где она и должна быть — в серверной валидации
-  // (422 с подсказкой); UI ничего не подменяет и не откатывает.
-  const localNow = new Date();
-  const localToday = guessServerTodayKey(); // = clientTodayKey()
+  // ФИКС «дата отображается в прошлом»: границы «Сегодня/Завтра/Неделя»
+  // считаем от ВРЕМЕНИ СЕРВЕРА (serverNowDate/serverTodayKeyTz), а не от
+  // системных часов браузера. Если часы клиента отстают (или пояс другой),
+  // будущая по серверу встреча ошибочно попадала в «Прошедшие». До первой
+  // успешной сверки с /api/time serverNowDate() равен локальному времени,
+  // поэтому поведение не хуже прежнего; окончательную проверку прошлого
+  // делает сервер (422 с подсказкой echo_client_today).
+  const localNow = serverNowDate();
+  const localToday = serverTodayKeyTz();
   const dayKey = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const tomorrowLocal = (() => {
-    const d = new Date();
+    const d = serverNowDate();
     d.setDate(d.getDate() + 1);
     return dayKey(d);
   })();
   const weekEndKey = (() => {
-    const d = new Date();
+    const d = serverNowDate();
     d.setDate(d.getDate() + 7);
     return dayKey(d);
   })();
