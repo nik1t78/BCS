@@ -145,6 +145,14 @@ return Application::configure(basePath: dirname(__DIR__))
                 return null; // 404/429/403 и т.п. отдаём штатно
             }
 
+            // Валидация — НЕ ошибка сервера: Laravel штатно отдаёт 422 с
+            // полями errors.message. Отдаём её до кастомного рендера, иначе
+            // любой 422 (например «нельзя создать встречу в прошлом»)
+            // превращался бы в безликий ответ от этого обработчика.
+            if ($e instanceof \Illuminate\Validation\ValidationException) {
+                return null;
+            }
+
             $status = method_exists($e, 'getStatusCode') ? $e->getStatusCode() : 500;
             if ($status < 400 || $status > 599) {
                 $status = 500;
