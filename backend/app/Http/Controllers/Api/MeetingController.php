@@ -303,6 +303,10 @@ class MeetingController extends Controller
         // буквально минуту назад («09:29, а жму Создать в 09:31») — такая
         // заявка по сути ещё актуальна, отбивать её с 422/500 означало бы
         // «не могу создать ВКС на сегодня» при каждом опоздании на шаг формы.
+        // ФИНАЛЬНАЯ ГАРАНТИЯ (защита от регрессии): дата в БД сохраняется
+        // СТРОГО та, что выбрана пользователем в календаре формы. Здесь
+        // допустима только канонизация формата (dd.mm.yyyy -> Y-m-d), но не
+        // подмена значения на «сегодня» или иную дату.
         $now = \Carbon\CarbonImmutable::now();
         $startAt = \Carbon\CarbonImmutable::parse($validated['date'])->setTimeFromTimeString($validated['start_time']);
         if ($startAt->lessThan($now->copy()->subMinutes(5))) {
