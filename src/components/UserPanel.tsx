@@ -31,7 +31,6 @@ import { SortMode, SORT_OPTIONS, sortMeetings, getMeetingGroup } from "../utils/
 import { exportMeetingToIcs } from "../utils/ics";
 import { getFavoriteIds, toggleFavorite, addFavorites } from "../utils/favorites";
 import {
-  generateVksLink,
   normalizeVksLink,
   isVksLink,
   buildJoinUrl,
@@ -40,9 +39,8 @@ import {
   vksRoomCodeFromLink,
   vksPasswordFromLink,
 } from "../utils/vksLink";
-import { createVksViaBot } from "../utils/vksBot";
 import { isLateTime, LATE_CREATE_LIMIT_HM } from "../utils/freeSlots";
-import { formatRuDate, addMinToHm, toDateKey } from "../utils/dateKey";
+import { formatRuDate, addMinToHm, toDateKey, snapHmTo30 } from "../utils/dateKey";
 
 /** «Сегодня» по локальному времени устройства — НЕ через toISOString()
  *  (UTC может сдвигать дату на день назад/вперёд → виджет показывал
@@ -110,16 +108,10 @@ export const minStartHm = (dateKey: string): string => {
   // серверу», и input min молча отсекал корректный выбор пользователя, а форма
   // перебивала дату/время локальными часами («сегодня 30-е — а записало 29-е»).
   if (!(dateKey === serverTodayKey() && isTimeSynced())) return "00:00";
-  // Фикс «перебивает мой выбор / сохраняло не то время»: нижняя граница —
-  // ближайший «ровный» слот КРАТНЫЙ 5 МИНУТАМ СТРОГО ПОСЛЕ серверного «сейчас»
-  // (14:41 → 14:45, ровно 14:45 → 14:50). Раньше сюда попадало произвольное
-  // «сейчас+10» (14:51), не кратное шагу 5 мин: браузер помечал значение поля
-  // «Начало*» невалидным, пользователь ставил «ровное» 14:45, которое оказалось
-  // меньше границы, и автосдвиг при сохранении молча возвращал 14:51 — отсюда
-  // ощущение «дата/время сохраняются неправильные». Граница округлена ВВЕРХ до
-  // 5-минутки, поэтому любой ровный слот после неё легален и не перебивается.
+  // Начало выбирается только по получасовым слотам. Нижняя граница округляется
+  // ВВЕРХ до ближайших 30 минут, чтобы HTML step=1800 и min не конфликтовали.
   const total = serverTotalMinutesNow();
-  const t = Math.min(Math.ceil((total + 1) / 5) * 5, 23 * 60 + 55);
+  const t = Math.min(Math.ceil((total + 1) / 30) * 30, 23 * 60 + 30);
   return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
 };
 
@@ -431,26 +423,14 @@ function CreateMeetingForm({
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Начало *</label>
           <input
             type="time"
+            step={1800}
             required
             min={editing ? undefined : minStartHm(formData.date)}
             max={formData.date === serverTodayKey() ? LATE_CREATE_LIMIT_HM : "23:59"}
             value={formData.startTime}
             onChange={(e) => {
-              const startTime = e.target.value;
-              setFormData((f) => {
-                const next = { ...f, startTime };
-                // Конец всегда позже начала — иначе 422/500 от сервера.
-                // Сохраняем ДЛИТЕЛЬНОСТЬ встречи (сдвигаем конец на то же число
-                // минут), а не ставим жёсткие +60: раньше при выборе начала
-                // «12:58» конец молча пересчитывался и дата/время «уезжали».
-                if (!next.endTime || next.endTime <= startTime) {
-                  const [sh, sm] = (f.startTime || startTime).split(":").map((x) => parseInt(x, 10) || 0);
-                  const [eh, em] = (f.endTime || "").split(":").map((x) => parseInt(x, 10) || 0);
-                  const dur = f.endTime && eh * 60 + em > sh * 60 + sm ? eh * 60 + em - (sh * 60 + sm) : 60;
-                  next.endTime = addMinToHm(startTime, dur);
-                }
-                return next;
-              });
+              const startTime = snapHmTo30(e.target.value);
+              setFormData((f) => ({ ...f, startTime, endTime: addMinToHm(startTime, 30) }));
             }}
             className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
           />
@@ -465,10 +445,13 @@ function CreateMeetingForm({
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Конец *</label>
           <input
             type="time"
+            step={1800}
             required
-            min={formData.startTime}
             value={formData.endTime}
-            onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+            onChange={(e) => {
+              const endTime = snapHmTo30(e.target.value);
+              setFormData((f) => ({ ...f, endTime, startTime: addMinToHm(endTime, -30) }));
+            }}
             className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
           />
         </div>
@@ -494,9 +477,9 @@ function CreateMeetingForm({
             />
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Ссылка ВКС создаётся автоматически при сохранении встречи (бот проходит salutejazz.ru/calls/create). При
-            желании можно вставить свою ссылку — она сохранится как есть. Данные для приглашения участников показаны
-            ниже.
+            После сохранения встречи сервер поставит создание реальной комнаты SaluteJazz в очередь. Ссылка появится
+            автоматически после завершения; при желании можно вставить свою ссылку вручную. Данные для приглашения
+            участников показаны ниже.
           </p>
           {isVksLink(formData.link) && vksHint && (
             <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2">
@@ -779,27 +762,20 @@ export default function UserPanel({
     // серверного «30», и пользователь сохранял неверную дату, ничего не
     // заметив («сегодня у меня 30-е, а записывает 29-е»).
     date: guessServerTodayKey(),
-    // Время начала по умолчанию — ближайший «ровный» (кратный 5 мин) слот после
-    // серверного «сейчас», чтобы при открытии формы сразу был валидный слот
-    // (иначе дефолт 10:00 оказывается в прошлом и сервер отклоняет заявку).
-    // ВАЖНО (фикс «пишет неправильную дату/время»): раньше дефолт = now+10 без
-    // округления («14:51») — значение не кратно шагу 5 мин, браузер помечал поле
-    // невалидным, и пользователь видел «не то, что выбрал». Теперь дефолт всегда
-    // кратен 5 и совпадает с нижней границей поля (minStartHm).
+    // Время по умолчанию — ближайший получасовой слот после серверного «сейчас».
     startTime: (() => {
-      const t = Math.min(Math.ceil((serverTotalMinutesNow() + 1) / 5) * 5, 23 * 60 + 55);
+      const t = Math.min(Math.ceil((serverTotalMinutesNow() + 1) / 30) * 30, 23 * 60 + 30);
       return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
     })(),
     endTime: (() => {
-      const t = Math.min(Math.ceil((serverTotalMinutesNow() + 1) / 5) * 5, 23 * 60 + 45);
-      return addMinToHm(`${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`, 60);
+      const t = Math.min(Math.ceil((serverTotalMinutesNow() + 1) / 30) * 30, 23 * 60);
+      return addMinToHm(`${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`, 30);
     })(),
     organizerId: user.id,
     participants: [user.id],
     participantEmails: [],
-    // Ссылка ВКС ПУСТАЯ: живая комната создаётся Selenium-ботом на
-    // salutejazz.ru при сохранении (handleSave). Локальная заглушка давала
-    // несуществующий код комнаты → «неправильный пароль» при входе.
+    // Ссылка ВКС остаётся пустой до создания реальной комнаты серверной очередью.
+    // Локальная заглушка давала несуществующий код комнаты и ошибку входа.
     link: "",
     room: "",
     status: "scheduled",
@@ -826,7 +802,7 @@ export default function UserPanel({
         ...emptyMeeting,
         date: initialPrefill.date ?? emptyMeeting.date,
         startTime: initialPrefill.startTime ?? emptyMeeting.startTime,
-        endTime: initialPrefill.endTime ?? emptyMeeting.endTime,
+        endTime: initialPrefill.endTime ?? (initialPrefill.startTime ? addMinToHm(initialPrefill.startTime, 30) : emptyMeeting.endTime),
         room: initialPrefill.room || emptyMeeting.room,
         // Ссылка: либо готовая из prefill (например, вставленная вручную),
         // либо пустая — живая комната создаётся Selenium-ботом при сохранении.
@@ -835,8 +811,8 @@ export default function UserPanel({
     }
     return emptyMeeting;
   });
-  // Индикатор: «Создаём ссылку ВКС…» (пока Selenium-бот работает на salutejazz.ru)
-  const [savingNote, setSavingNote] = useState<string | null>(null);
+  // Индикатор дополнительного сообщения во время сохранения формы.
+  const savingNote: string | null = null;
 
   // Предзаполнение из виджета «Свободные залы» на главной: открываем форму
   // создания ВКС с датой/временем/залом и сразу сгенерированной ссылкой.
@@ -848,7 +824,7 @@ export default function UserPanel({
       ...emptyMeeting,
       date: p.date ?? emptyMeeting.date,
       startTime: p.startTime ?? emptyMeeting.startTime,
-      endTime: p.endTime ?? emptyMeeting.endTime,
+      endTime: p.endTime ?? (p.startTime ? addMinToHm(p.startTime, 30) : emptyMeeting.endTime),
       room: p.room || emptyMeeting.room,
       // Ссылка: готовая из prefill или пустая (бот создаст живую комнату при сохранении).
       link: p.link || "",
@@ -1293,90 +1269,25 @@ export default function UserPanel({
     payload.endTime = normHm(payload.endTime);
     payload.reminderMinutes = normalizeReminderMinutes(payload.reminderMinutes);
     if (payload.endTime <= payload.startTime) {
-      // конец не позже начала — сдвигаем конец на длительность (или +60 мин),
+      // конец не позже начала — автоматически задаём 30 минут,
       // иначе валидация 'after:start_time' на сервере вернёт 422 и встреча
       // не сохранится («нажимаю создать — тишина»)
-      const [sh, sm] = payload.startTime.split(":").map((x) => parseInt(x, 10) || 0);
-      const [eh, em] = formData.endTime.split(":").map((x) => parseInt(x, 10) || 0);
-      const dur = eh * 60 + em > sh * 60 + sm ? eh * 60 + em - (sh * 60 + sm) : 60;
-      payload.endTime = addMinToHm(payload.startTime, dur);
+      payload.endTime = addMinToHm(payload.startTime, 30);
     }
     if (payload.recurring === "none") delete payload.repeatUntil;
     else if (payload.repeatUntil && payload.repeatUntil < payload.date) {
       alert("Дата окончания повтора не может быть раньше даты встречи");
       return;
     }
-    // ВКС: ссылка создаётся автоматически. Сначала пробуем Selenium-бота,
-    // который реально заходит на https://salutejazz.ru/calls/create, вводит
-    // название встречи и имя организатора и возвращает живую ссылку.
-    // Если бот недоступен — генерируем ссылку локально в том же формате.
-    // ВАЖНО: если ссылка уже есть в поле, но она НЕ ведёт на нашу платформу
-    // (например, вставлен текст приглашения или посторонний URL при авто-
-    // сценарии), заменяем её автоматически созданной — иначе встреча
-    // сохранялась со «странным» адресом вместо рабочей ссылки ВКС.
-    if (!payload.link) {
-      setSavingNote("Создаём ссылку ВКС на salutejazz.ru…");
-      try {
-        const botRes = await createVksViaBot(payload.title || "Встреча", user.name, 75_000, payload.date);
-        payload.link = botRes.link;
-        // skipped=true — автосоздание через бота ВЫКЛЮЧЕНО (VITE_VKS_AUTOBOT=0,
-        // штатный режим экономии RAM): предупреждать пользователя не нужно.
-        // Alert ниже — только при РЕАЛЬНОЙ попытке обратиться к боту, которая
-        // не удалась (контейнер vks-bot не запущен / 401 из-за BOT_TOKENS /
-        // таймаут Selenium).
-        if (!botRes.real && !botRes.skipped) {
-          // Бот был ВКЛЮЧЁН (VITE_VKS_AUTOBOT=1), но реально не смог создать
-          // встречу — это сбой, о котором пользователя надо предупредить.
-          // ВАЖНО: предупреждение адресовано администратору сервера, а НЕ
-          // пользователю встречи — встреча всё равно сохранится и работать
-          // будет (организатор создаёт комнату вручную по кнопке «Создать
-          // вручную» на salutejazz.ru). Команда ниже — для запуска на сервере
-          // 10.48.4.235 в папке проекта, а не в браузере.
-          const NL2 = String.fromCharCode(10);
-          alert(
-            "Внимание: Selenium-бот не смог создать встречу на salutejazz.ru" +
-              (botRes.error ? ` (${botRes.error})` : "") +
-              "." +
-              NL2 +
-              NL2 +
-              "Ссылка сгенерирована локально — такой комнаты на платформе ещё нет, вход может потребовать создания встречи организатором." +
-              NL2 +
-              NL2 +
-              "Администратору сервера: проверить контейнер vks-bot командой (в папке проекта на сервере):" +
-              NL2 +
-              "docker compose --profile bot up -d vks-bot"
-          );
-        }
-      } catch {
-        payload.link = generateVksLink();
-        alert(
-          "Не удалось создать ссылку через бота — ссылка сгенерирована локально. " +
-            "Администратору сервера: docker compose --profile bot up -d vks-bot"
-        );
-      } finally {
-        setSavingNote(null);
-      }
-    } else if (!isVksLink(payload.link) && !/^https?:\/\//i.test(String(payload.link).trim())) {
-      // не ссылка вовсе (обрывки текста из буфера обмена) — создаём новую
-      try {
-        const botRes = await createVksViaBot(payload.title || "Встреча", user.name, 75_000, payload.date);
-        payload.link = botRes.link;
-        if (!botRes.real && !botRes.skipped) {
-          alert("Бот недоступен — ссылка сгенерирована локально (комнаты на платформе ещё нет).");
-        }
-      } catch {
-        payload.link = generateVksLink();
-      }
-    } else if (isVksLink(payload.link)) {
-      // ВАЖНО: ссылка на нашу платформу (в т.ч. созданная вручную на
-      // salutejazz.ru, напр. /calls/09pa0i?psw=...) сохраняется КАК ЕСТЬ —
-      // только чистка от мусора и дописывание https://. Код комнаты и пароль
-      // НЕ меняем, иначе ссылка «не совпадает» с живой комнатой.
+    // Реальная ссылка SaluteJazz создаётся асинхронно на сервере после
+    // сохранения встречи. Секрет бота никогда не попадает в браузер, а
+    // несколько задач могут выполняться параллельно через Laravel queue.
+    if (payload.link && isVksLink(payload.link)) {
       payload.link = sanitizeVksLink(payload.link);
-    } else {
-      // посторонняя ссылка (zoom/webex/…) — сохраняем как есть; пустое поле
-      // ниже никогда не бывает (ссылка генерируется при открытии формы)
+    } else if (payload.link && /^https?:\/\//i.test(String(payload.link).trim())) {
       payload.link = payload.link.trim();
+    } else {
+      delete payload.link;
     }
 
     clearLastMeetingSaveError();
@@ -1803,25 +1714,14 @@ export default function UserPanel({
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Начало *</label>
                     <input
                       type="time"
+                      step={1800}
                       required
                       min={editingMeeting ? undefined : minStartHm(formData.date)}
                       max={formData.date === serverTodayKey() ? LATE_CREATE_LIMIT_HM : "23:59"}
                       value={formData.startTime}
                       onChange={(e) => {
-                        const startTime = e.target.value;
-                        setFormData((f) => {
-                          const next = { ...f, startTime };
-                          // Конец всегда позже начала (иначе сервер → 422), но
-                          // с сохранением ДЛИТЕЛЬНОСТИ: раньше жёсткий +60 и
-                          // обрезка молча меняли выбранное время встречи.
-                          if (!next.endTime || next.endTime <= startTime) {
-                            const [sh, sm] = (f.startTime || startTime).split(":").map((x) => parseInt(x, 10) || 0);
-                            const [eh, em] = (f.endTime || "").split(":").map((x) => parseInt(x, 10) || 0);
-                            const dur = f.endTime && eh * 60 + em > sh * 60 + sm ? eh * 60 + em - (sh * 60 + sm) : 60;
-                            next.endTime = addMinToHm(startTime, dur);
-                          }
-                          return next;
-                        });
+                        const startTime = snapHmTo30(e.target.value);
+                        setFormData((f) => ({ ...f, startTime, endTime: addMinToHm(startTime, 30) }));
                       }}
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
                     />
@@ -1836,10 +1736,13 @@ export default function UserPanel({
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Конец *</label>
                     <input
                       type="time"
+                      step={1800}
                       required
-                      min={formData.startTime}
                       value={formData.endTime}
-                      onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                      onChange={(e) => {
+                        const endTime = snapHmTo30(e.target.value);
+                        setFormData((f) => ({ ...f, endTime, startTime: addMinToHm(endTime, -30) }));
+                      }}
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:border-blue-500"
                     />
                   </div>
@@ -1866,8 +1769,8 @@ export default function UserPanel({
                       />
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      Ссылка ВКС создаётся автоматически при сохранении встречи (бот проходит
-                      salutejazz.ru/calls/create). При желании можно вставить свою ссылку — она сохранится как есть.
+                      После сохранения встречи сервер поставит создание реальной комнаты SaluteJazz в очередь. Ссылка
+                      появится автоматически после завершения; при желании можно вставить свою ссылку вручную.
                       Данные для приглашения участников показаны ниже.
                     </p>
                     {isVksLink(formData.link) && vksHint && (

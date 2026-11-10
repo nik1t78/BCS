@@ -39,13 +39,9 @@ class VksAutopilot extends Command
         $botExpected = filter_var(config('services.vks_bot.expected', env('VKSBOT_EXPECTED', false)), FILTER_VALIDATE_BOOLEAN);
 
         if (!$botExpected) {
-            // Бот не развёрнут (профиль bot выключен). Автопилот всё равно
-            // полезен: ставит в очередь встречи БЕЗ ссылки, чтобы воркер
-            // записал локальную ссылку и строку в дневник «ВКС-бот».
-            // Проверка живости чужих ссылок (HTTP на платформу) при этом
-            // пропускается — она нужна только вместе с настоящим ботом.
-            $this->queueMeetingsWithoutLink();
-
+            // Без реального браузерного бота не ставим фиктивные задачи в очередь:
+            // локальные случайные URL не являются комнатами SaluteJazz.
+            $this->info('vks:autopilot — бот отключён, создание ссылок пропущено');
             return self::SUCCESS;
         }
 
@@ -91,8 +87,9 @@ class VksAutopilot extends Command
             if (!$alive) {
                 // Комната мертва/не создана: снимаем ссылку и ставим задачу
                 // боту на создание новой (воркер впишет актуальную).
-                $meeting->update(['link' => null]);
-                CreateVksLinkJob::dispatch($meeting->id);
+                $meeting->update(['link' => null, 'vks_link_status' => 'pending']);
+                \App\Support\MeetingCache::bump(\App\Support\MeetingCache::roomIdsFromNames([$meeting->room]));
+                CreateVksLinkJob::dispatch($meeting->id)->onQueue('vks');
                 $queued++;
             }
         }
@@ -122,7 +119,7 @@ class VksAutopilot extends Command
                 continue;
             }
             cache()->put($lockKey, 1, now()->addMinutes(15));
-            CreateVksLinkJob::dispatch($meeting->id);
+            CreateVksLinkJob::dispatch($meeting->id)->onQueue('vks');
             $queued++;
         }
 
@@ -130,40 +127,4 @@ class VksAutopilot extends Command
         return self::SUCCESS;
     }
 
-    /**
-     * Режим без бота (VKSBOT_EXPECTED=false): всем будущим встречам без
-     * ссылки ставим CreateVksLinkJob — воркер сгенерирует локальную ссылку
-     * и запишет строку в дневник «ВКС-бот» (BotLog). Дедуп по кэшу 15 мин.
-     */
-    private function queueMeetingsWithoutLink(): void
-    {
-        $queued = 0;
-        $now = now();
-
-        $meetings = Meeting::query()
-            ->where('status', 'scheduled')
-            ->where(function ($q) use ($now) {
-                $q->whereDate('date', '>', $now->toDateString())
-                  ->orWhere(function ($q2) use ($now) {
-                      $q2->whereDate('date', '=', $now->toDateString())
-                         ->whereTime('start_time', '>=', $now->format('H:i:s'));
-                  });
-            })
-            ->where(function ($q) {
-                $q->whereNull('link')->orWhere('link', '');
-            })
-            ->cursor();
-
-        foreach ($meetings as $meeting) {
-            $lockKey = 'vks_queued_' . $meeting->id;
-            if (cache()->has($lockKey)) {
-                continue;
-            }
-            cache()->put($lockKey, 1, now()->addMinutes(15));
-            CreateVksLinkJob::dispatch($meeting->id);
-            $queued++;
-        }
-
-        $this->info("vks:autopilot (режим без бота) — поставлено в очередь {$queued}");
-    }
 }

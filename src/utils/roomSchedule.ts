@@ -1,7 +1,7 @@
 // Гибкий график залов: рабочие часы по дням недели + нерабочие дни (праздники).
 // Формат совпадает с серверным rooms.schedule (см. App\Models\Room::normalizeSchedule):
 //   { days: { mon:{start,end}|null, ... sun }, closed: ["YYYY-MM-DD", ...] }
-// null-график у зала = дефолт: пн–пт 08:00–20:00, сб/вс выходной.
+// null-график у зала = стандартный диапазон 08:00–20:00; на главной выходные не блокируют бронирование.
 
 export interface DayHours { start: string; end: string } // "HH:MM"
 export interface RoomSchedule {

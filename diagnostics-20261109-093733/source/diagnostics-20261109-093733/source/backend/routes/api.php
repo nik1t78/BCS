@@ -1,0 +1,326 @@
+<?php
+
+use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\MeetingController;
+use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\TagController;
+use App\Http\Controllers\Api\TemplateController;
+use App\Http\Controllers\Api\AttachmentController;
+use App\Http\Controllers\Api\MeetingHistoryController;
+use App\Http\Controllers\Api\MeetingMinuteController;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+
+// Публичные маршруты (с rate limiting: общий лимит + жёсткий на подбор пароля)
+Route::middleware('throttle:api')->group(function () {
+    Route::post('/auth/register', [AuthController::class, 'register']);
+    Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:login');
+    Route::post('/auth/refresh', [AuthController::class, 'refresh'])->middleware('throttle:login');
+});
+
+// Health check
+Route::get('/health', function () {
+    return response()->json([
+        'status' => 'ok',
+        'timestamp' => now()->toIso8601String(),
+        'version' => '1.0.0',
+    ]);
+});
+
+// Синхронизация часов: фронт определяет «сейчас» по локальным часам браузера,
+// а сервер — по своим (в docker TZ=Europe/Moscow). Если часы расходятся,
+// валидация «нельзя создать встречу в прошедшем времени» отклоняет корректный
+// выбор пользователя («время не совпадает»). Фронт замеряет
+// offset = serverTime - clientTime и корректирует им «сейчас» в форме.
+Route::get('/time', function (\Illuminate\Http\Request $request) {
+    // Кэш-гард: фронт (syncServerTime) не ставит no-store, а nginx/браузер или
+    // промежуточный прокси могут отдавать закешированный ответ. Тогда offset
+    // часов считается от «вчерашнего» server_time, серверное «сегодня» отстаёт
+    // на сутки и форма создаёт встречу 01.11 вместо реальных 02.11
+    // («сегодня 02.11, а создаёт 01.11»). Запрещаем кэширование явно + cache-bust.
+    $bust = (string) $request->get('_');
+    return response()->json([
+        'server_time' => now()->toIso8601String(),
+        'timezone' => config('app.timezone'),
+        'echo' => $bust !== '' ? (int) $bust : null,
+    ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+      ->header('Pragma', 'no-cache')
+      ->header('Expires', '0');
+});
+
+// Лёгкий эндпоинт «метки изменений» для клиентского кеша списка встреч:
+// фронт сверяет stamp и при отсутствии изменений отдаёт закэшированный
+// список, не выкачивая все страницы /meetings (главная причина лагов).
+Route::middleware('auth:sanctum')->get('/meta/stamps', function (\Illuminate\Http\Request $request) {
+    return response()->json(['data' => [
+        // Cache::get не должен ронять эндпоинт: при недоступном кэш-хранилище
+        // (redis упал/не сконфигурирован) отдаём 0 — фронт просто сходит на полный запрос.
+        'meetings_changed' => \App\Support\SafeCache::get('meetings:changed', 0),
+    ]]);
+});
+
+// Realtime-канал уведомлений (Server-Sent Events) — ОБЯЗАТЕЛЬНО вне группы
+// auth:sanctum/throttle:api. Причина: у EventSource нет способа отправить
+// заголовок Authorization, токен передаётся только в query (?token=...).
+// Внутри sanctum-группы такой запрос не аутентифицируется гардой и падал
+// с 401/500 (fatal уже после отправки SSE-заголовков). Маршрут объявляется
+// здесь, контроль сам резолвит пользователя по ?token= через Sanctum::findByToken.
+// throttle:120,60 — «120 запросов в течение 60 секунд» (второй параметр —
+// DECAY SECONDS). Раньше стояло throttle:2,60 («2 запроса за минуту») — это
+// ОШИБКА: SSE-стрим держит соединение открытым, но при каждом сетевом ретрае
+// (nginx proxy_read_timeout, обрыв Wi-Fi, sleep/wake ноутбука) браузер открывает
+// НОВЫЙ /notifications/stream, и после 3 reconnect'ов на минуту все остальные
+// запросы того же пользователя/IP получали 429 Too Many Requests в цикле.
+// 120/мин = штатные reconnect + запас; защита от флуда остаётся.
+Route::middleware('throttle:120,60')->get('/notifications/stream', [\App\Http\Controllers\Api\NotificationStreamController::class, 'stream']);
+
+// Пункт 5 плана: «экран ожидания» в зале. Телевизор открывает /tv/{room}?token=...
+// без логина; токен зала (rooms.tv_token) даёт доступ только на чтение нейтральных
+// полей расписания этого зала. Throttle защищает от скрапинга чужими токенами.
+// Маршрут принимает {room} и ПО НАЗВАНИЮ, и по id: страница /tv/ резолвит зал
+// по name (человекочитаемый адрес для телевизора), поэтому JS при поллинге
+// передаёт ровно тот сегмент, что стоит в URL экрана. Привязка модели по id
+// на таких адресах давала 404 («Not Found») — экран не мог получить расписание.
+// throttle:600,60 — «600 запросов в течение 60 секунд» (второй параметр Laravel
+// RateLimiter — DECAY SECONDS, не минуты). Раньше стояло throttle:30,1 =
+// 30/мин на IP: все телевизоры офиса выходят с одного NAT-IP, и уже 3 экрана
+// (поллинг каждые 10 с = 180/мин) гарантированно ловили 429.
+Route::middleware('throttle:600,60')->get('/tv/{room}/all', function (\Illuminate\Http\Request $request, string $room) {
+    $model = is_numeric($room)
+        ? \App\Models\Room::find((int) $room)
+        : \App\Models\Room::where('name', urldecode($room))->first();
+    if (!$model || !$model->is_active) {
+        return response()->json(['message' => 'Зал не найден'], 404);
+    }
+    return app(\App\Http\Controllers\Api\TvScreenController::class)->all($request, $model);
+});
+
+Route::middleware('throttle:600,60')->get('/tv/{room}/next', function (\Illuminate\Http\Request $request, string $room) {
+    // is_numeric() — встроенная функция PHP. \Illuminate\Support\Str::isNumeric()
+    // НЕ существует (Str не имеет такого метода/макроса) и давала
+    // BadMethodCallException → HTTP 500 на /api/tv/{id}/next.
+    $model = is_numeric($room)
+        ? \App\Models\Room::find((int) $room)
+        : \App\Models\Room::where('name', urldecode($room))->first();
+    if (!$model || !$model->is_active) {
+        return response()->json(['message' => 'Зал не найден'], 404);
+    }
+    // Вызываем контроллер явно, передав резолвленную модель: внутри идёт
+    // hash_equals сверка токена (403 при неверном) и выдача расписания зала.
+    return app(\App\Http\Controllers\Api\TvScreenController::class)->next($request, $model);
+});
+
+// Пункт 2 плана: «вечная» ссылка /api/m/{id} — всегда редиректит на актуальную
+// комнату ВКС встречи. Используется в QR-кодах и уведомлениях: даже если
+// автопилот пересоздал комнату, старая ссылка/QR остаются рабочими.
+// ВАЖНО про throttle: второй параметр Laravel RateLimiter — DECAY SECONDS,
+// а НЕ минуты. Раньше стояло throttle:60,1 (= всего 60 запросов в МИНУТУ):
+// страница ожидания /m/{id} опрашивает статус каждую секунду с нескольких
+// экранов одного NAT-IP и мгновенно упиралась в лимит («Too Many Attempts»).
+// 600,60 = 600 запросов в минуту — запас на все открытые страницы ожидания.
+Route::middleware('throttle:600,60')->get('/m/{meeting}', function (\App\Models\Meeting $meeting) {
+    if (!$meeting->link) {
+        return response()->view('vks-waiting', ['meeting' => $meeting]);
+    }
+    // no-store: страница-редирект не должна кэшироваться браузером ТВ —
+    // иначе после пересоздания комнаты QR/SSE-ссылка ещё долго ведёт на старую.
+    return redirect()->away($meeting->link)->header('Cache-Control', 'no-store');
+})->whereNumber('meeting');
+
+// Защищённые маршруты
+Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
+    // Auth
+    Route::post('/auth/logout', [AuthController::class, 'logout']);
+    Route::post('/auth/logout-all', [AuthController::class, 'logoutAll']);
+    Route::get('/auth/sessions', [AuthController::class, 'sessions']);
+    Route::get('/auth/user', [AuthController::class, 'user']);
+
+    // Profile
+    Route::put('/profile', [UserController::class, 'updateProfile']);
+    Route::post('/profile/change-password', [UserController::class, 'changePassword']);
+
+    // Публичный справочник пользователей (ФИО для календаря/карточек) —
+    // доступен любому авторизованному, права админа не требуются
+    Route::get('/users', [UserController::class, 'publicList']);
+
+    // ВНИМАНИЕ: статические маршруты /meetings/... должны быть объявлены ДО
+    // apiResource('meetings'), иначе Laravel матчит их как /meetings/{meeting}
+    // с route-model-binding (implicit bind) и падает с ModelNotFoundException
+    // ("No query results for model [App\Models\Meeting] check-conflicts").
+
+    // Проверка конфликтов расписания (пересечения по времени у одних и тех же людей).
+    // ОБЯЗАТЕЛЬНО с whereNumber: иначе запросы вида /meetings/check-conflicts?users=1,1
+    // при устаревшем кэше маршрутов на сервере могут матчиться как /meetings/{meeting}
+    // и давать 404 "No query results for model [App\Models\Meeting]".
+    Route::get('/meetings/check-conflicts', [\App\Http\Controllers\Api\ScheduleConflictController::class, 'check'])
+        ->whereNumber('meeting')->name('meetings.check-conflicts');
+
+    // Агрегированная доступность всех залов на дату — доступна всем авторизованным
+    Route::get('/meetings/rooms-availability', [\App\Http\Controllers\Api\RoomController::class, 'allAvailability'])
+        ->whereNumber('meeting')->name('meetings.rooms-availability');
+
+    // Meetings
+    Route::post('/meetings/{meeting}/retry-vks-link', [MeetingController::class, 'retryVksLink']);
+    Route::apiResource('meetings', MeetingController::class);
+    Route::get('/meetings-stats', [MeetingController::class, 'getStats']);
+
+    // Пункт 8 плана: «Экспресс-бронь» — встреча на N минут в свободном зале одним кликом.
+    Route::post('/express-meeting', [\App\Http\Controllers\Api\ExpressMeetingController::class, 'store']);
+    // Пункт 4 плана: PNG QR-кода вечной ссылки /m/{id}. whereNumber — чтобы путь
+    // не конфликтовал с /meetings/{meeting}/... (apiResource матчит и другие сегменты).
+    Route::get('/meetings/{meeting}/qr', [\App\Http\Controllers\Api\ExpressMeetingController::class, 'qr'])
+        ->whereNumber('meeting');
+
+    // Корзина мягко удалённых встреч
+    Route::get('/trash', [\App\Http\Controllers\Api\MeetingTrashController::class, 'index']);
+    Route::post('/trash/{id}/restore', [\App\Http\Controllers\Api\MeetingTrashController::class, 'restore']);
+    Route::delete('/trash/{id}', [\App\Http\Controllers\Api\MeetingTrashController::class, 'destroyForever']);
+
+    // Notifications
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::put('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+    Route::put('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+    Route::delete('/notifications/clear', [NotificationController::class, 'clearAll']);
+    Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
+
+    // NB: /notifications/stream объявлен ВЫШЕ, вне этой auth:sanctum-группы —
+    // EventSource не шлёт заголовок Authorization (токен только в ?token=).
+
+    // Settings
+    Route::get('/settings', [UserController::class, 'getSettings']);
+    Route::put('/settings', [UserController::class, 'updateSettings']);
+
+    // Tags
+    Route::get('/tags', [TagController::class, 'index']);
+    Route::post('/tags', [TagController::class, 'store']);
+    Route::put('/tags/{id}', [TagController::class, 'update']);
+    Route::delete('/tags/{id}', [TagController::class, 'destroy']);
+
+    // Templates
+    Route::get('/templates', [TemplateController::class, 'index']);
+    Route::post('/templates', [TemplateController::class, 'store']);
+    Route::put('/templates/{id}', [TemplateController::class, 'update']);
+    Route::delete('/templates/{id}', [TemplateController::class, 'destroy']);
+
+    // Attachments
+    Route::get('/meetings/{meetingId}/attachments', [AttachmentController::class, 'index']);
+    Route::post('/meetings/{meetingId}/attachments', [AttachmentController::class, 'store']);
+    Route::delete('/attachments/{id}', [AttachmentController::class, 'destroy']);
+
+    // Meeting History
+    Route::get('/meetings/{meetingId}/history', [MeetingHistoryController::class, 'index']);
+
+    // Протокол встречи (minutes) и задачи/action items
+    Route::get('/meetings/{meeting}/minutes', [MeetingMinuteController::class, 'minutesIndex']);
+    Route::post('/meetings/{meeting}/minutes', [MeetingMinuteController::class, 'minutesStore']);
+    Route::put('/meetings/{meeting}/minutes/{minute}', [MeetingMinuteController::class, 'minutesUpdate']);
+    Route::delete('/meetings/{meeting}/minutes/{minute}', [MeetingMinuteController::class, 'minutesDestroy']);
+
+    Route::get('/meetings/{meeting}/tasks', [MeetingMinuteController::class, 'tasksIndex']);
+    Route::post('/meetings/{meeting}/tasks', [MeetingMinuteController::class, 'tasksStore']);
+    Route::put('/meetings/{meeting}/tasks/{task}', [MeetingMinuteController::class, 'tasksUpdate']);
+    Route::delete('/meetings/{meeting}/tasks/{task}', [MeetingMinuteController::class, 'tasksDestroy']);
+
+    // Экспорт протокола встречи: PDF-файл (скачивание) и отправка файлом в MAX.
+    // Доступ — как к протоколу (hasAccess), для MAX — только организатор/админ.
+    Route::get('/meetings/{meeting}/minutes/export-pdf', [MeetingMinuteController::class, 'exportPdf']);
+    Route::post('/meetings/{meeting}/minutes/send-max', [MeetingMinuteController::class, 'sendMax']);
+
+    // Комментарии к задачам (action items)
+    Route::post('/meetings/{meeting}/tasks/{task}/comments', [MeetingMinuteController::class, 'taskCommentStore']);
+    Route::delete('/meetings/{meeting}/tasks/{task}/comments/{comment}', [MeetingMinuteController::class, 'taskCommentDestroy']);
+
+    // Отмена встречи с уведомлением участников / перенос (drag&drop в Schedule)
+    Route::post('/meetings/{meeting}/cancel', [MeetingController::class, 'cancel']);
+    Route::put('/meetings/{meeting}/reschedule', [MeetingController::class, 'reschedule']);
+
+    // RSVP: подтверждение присутствия участником + сводка для организатора
+    Route::get('/meetings/{meeting}/rsvp', [\App\Http\Controllers\Api\MeetingRsvpController::class, 'index']);
+    Route::post('/meetings/{meeting}/rsvp', [\App\Http\Controllers\Api\MeetingRsvpController::class, 'store']);
+
+    // Переговорные комнаты: справочник и доступность (бронирование через поле room встречи)
+    Route::get('/rooms', [\App\Http\Controllers\Api\RoomController::class, 'index']);
+    Route::get('/rooms/{room}/availability', [\App\Http\Controllers\Api\RoomController::class, 'availability']);
+
+    // Массовая загрузка участников встречи списком/CSV (id, логин или ФИО через ; , \n)
+    Route::post('/meetings/{meeting}/participants/bulk', [\App\Http\Controllers\Api\MeetingBulkParticipantsController::class, 'store']);
+
+    // Экспорт расписания в iCalendar (.ics): скачать или подписаться ссылкой
+    Route::get('/schedule.ics', [\App\Http\Controllers\Api\MeetingIcsController::class, 'index']);
+
+    // Web Push: подписки браузера на push-уведомления
+    Route::post('/push/subscribe', [\App\Http\Controllers\Api\PushSubscriptionController::class, 'store']);
+    Route::get('/push/subscriptions', [\App\Http\Controllers\Api\PushSubscriptionController::class, 'index']);
+    Route::delete('/push/subscribe/{id}', [\App\Http\Controllers\Api\PushSubscriptionController::class, 'destroy']);
+    Route::post('/push/test', [\App\Http\Controllers\Api\PushSubscriptionController::class, 'testPush']);
+
+    // Интеграция с мессенджером MAX (max.ru): deep-link на чат бота для уведомлений
+    Route::get('/max/status', function (\Illuminate\Http\Request $request) {
+        // enabled = реально рабочий режим (флаг И заданный токен), как в MaxMessengerService::isEnabled().
+        // ВАЖНО: читаем через App\Services\MaxMessengerService (он использует config()),
+        // а не env() напрямую — после config:cache env() вернул бы null и статус был бы ложным.
+        return response()->json([
+            'enabled' => \App\Services\MaxMessengerService::isEnabled(),
+            'flagOn' => \App\Services\MaxMessengerService::flagOn(),
+            'tokenSet' => \App\Services\MaxMessengerService::token() !== '',
+            'linked' => isset($request->user()->max_chat_id),
+            'botLink' => \App\Services\MaxMessengerService::botLink(),
+            'linkedChatId' => $request->user()->max_chat_id,
+        ]);
+    });
+    Route::put('/max/link', function (\Illuminate\Http\Request $request) {
+        $validated = $request->validate(['chat_id' => 'required|string|max:100']);
+        $request->user()->update(['max_chat_id' => $validated['chat_id']]);
+        return response()->json(['message' => 'Аккаунт MAX привязан']);
+    });
+    Route::delete('/max/link', function (\Illuminate\Http\Request $request) {
+        $request->user()->update(['max_chat_id' => null]);
+        return response()->json(['message' => 'Привязка MAX удалена']);
+    });
+
+    // Admin routes (admin + moderator)
+    Route::middleware('can:admin-or-moderator')->group(function () {
+        Route::post('/rooms', [\App\Http\Controllers\Api\RoomController::class, 'store']);
+        Route::put('/rooms/{room}', [\App\Http\Controllers\Api\RoomController::class, 'update']);
+        Route::delete('/rooms/{room}', [\App\Http\Controllers\Api\RoomController::class, 'destroy']);
+
+        Route::get('/admin/users', [UserController::class, 'index']);
+        Route::get('/admin/users/{id}', [UserController::class, 'show']);
+        Route::put('/admin/users/{id}', [UserController::class, 'update']);
+        Route::put('/admin/users/{id}/toggle-active', [UserController::class, 'toggleActive']);
+    });
+
+    // Admin only routes
+    Route::middleware('can:admin')->group(function () {
+        Route::post('/admin/users', [UserController::class, 'store']);
+        Route::delete('/admin/users/{id}', [UserController::class, 'destroy']);
+        Route::put('/admin/users/{id}/role', [UserController::class, 'changeRole']);
+        Route::get('/admin/stats', [UserController::class, 'getStats']);
+        Route::get('/admin/heatmap', [\App\Http\Controllers\Api\AnalyticsController::class, 'heatmap']);
+        // Дашборд нагрузки системы (встречи по дням/часам, топ комнат, активность)
+        Route::get('/admin/load', [\App\Http\Controllers\Api\AnalyticsController::class, 'load']);
+
+        // Дневник работы ВКС-бота + SLA-метрики (пункты 6–7 плана)
+        Route::get('/admin/bot-log', [\App\Http\Controllers\Api\BotLogController::class, 'index']);
+        Route::get('/admin/bot-log/stats', [\App\Http\Controllers\Api\BotLogController::class, 'stats']);
+
+        // Статус системы: uptime/MySQL/Redis/очереди/бот/экраны ТВ + журнал посещаемости ТВ
+        Route::get('/admin/system-status', [\App\Http\Controllers\Api\SystemStatusController::class, 'show']);
+        Route::get('/admin/tv-views', [\App\Http\Controllers\Api\SystemStatusController::class, 'tvViews']);
+
+        // Аудит-лог действий пользователей (только администратор)
+        Route::get('/admin/audit-logs', [\App\Http\Controllers\Api\AuditLogController::class, 'index']);
+        Route::get('/admin/audit-logs/export', [\App\Http\Controllers\Api\AuditLogController::class, 'export']);
+        
+        // Password management
+        Route::put('/admin/users/{id}/reset-password', [\App\Http\Controllers\Api\AdminController::class, 'resetPassword']);
+        Route::post('/admin/users/bulk-reset-passwords', [\App\Http\Controllers\Api\AdminController::class, 'bulkResetPasswords']);
+        Route::post('/admin/users/{id}/generate-temporary-password', [\App\Http\Controllers\Api\AdminController::class, 'generateTemporaryPassword']);
+    });
+});
+
+// Fallback для SPA
+Route::get('/{any}', function () {
+    return response()->json(['message' => 'Not found'], 404);
+})->where('any', '.*');

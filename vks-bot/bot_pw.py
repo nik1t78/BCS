@@ -132,6 +132,61 @@ class VkxBotPlaywright:
     def __init__(self, headless: bool = True):
         self.headless = headless
         self._lock = threading.Lock()
+        # Держим Chromium запущенным между запросами: холодный запуск браузера
+        # раньше происходил при каждом создании ВКС и занимал заметную часть времени.
+        self._pw = None
+        self._browser = None
+
+    def _get_browser(self):
+        """Лениво запускает Chromium один раз и переиспользует его."""
+        if self._browser is not None:
+            try:
+                if self._browser.is_connected():
+                    return self._browser
+            except Exception:
+                pass
+            self._browser = None
+        if self._pw is None:
+            self._pw = sync_playwright().start()
+        launch_kwargs = dict(
+            headless=self.headless,
+            args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--lang=ru-RU",
+                "--use-fake-ui-for-media-stream",
+                "--use-fake-device-for-media-stream",
+                "--autoplay-policy=no-user-gesture-required",
+                "--disable-background-networking",
+                "--disable-default-apps",
+                "--disable-extensions",
+                "--disable-sync",
+            ],
+        )
+        channel = _browser_channel()
+        if channel:
+            launch_kwargs["executable_path"] = channel
+        else:
+            log.warning("Системный Chromium не найден — используется браузер Playwright")
+        self._browser = self._pw.chromium.launch(**launch_kwargs)
+        log.info("Chromium запущен и готов к повторному использованию")
+        return self._browser
+
+    def close(self):
+        """Корректно закрывает постоянный браузер при остановке сервиса."""
+        with self._lock:
+            try:
+                if self._browser is not None:
+                    self._browser.close()
+            except Exception:
+                pass
+            self._browser = None
+            try:
+                if self._pw is not None:
+                    self._pw.stop()
+            except Exception:
+                pass
+            self._pw = None
 
     @staticmethod
     def _set_value(page, el, text: str):
@@ -178,33 +233,14 @@ class VkxBotPlaywright:
         """
         title = (title or "Встреча").strip()[:120]
         name = (name or "Организатор").strip()[:80]
+        request_started = time.monotonic()
 
         with self._lock:
-            pw = None
             browser = None
+            context = None
             page = None
             try:
-                pw = sync_playwright().start()
-                launch_kwargs = dict(
-                    headless=self.headless,
-                    args=[
-                        "--no-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--lang=ru-RU",
-                        "--use-fake-ui-for-media-stream",
-                        "--use-fake-device-for-media-stream",
-                        "--autoplay-policy=no-user-gesture-required",
-                    ],
-                )
-                channel = _browser_channel()
-                if channel:
-                    launch_kwargs["executable_path"] = channel
-                else:
-                    log.warning(
-                        "Системный chromium не найден — Playwright использует "
-                        "собственный браузер (нужен `playwright install chromium`)"
-                    )
-                browser = pw.chromium.launch(**launch_kwargs)
+                browser = self._get_browser()
                 context = browser.new_context(
                     locale="ru-RU",
                     viewport={"width": 1280, "height": 900},
@@ -217,14 +253,21 @@ class VkxBotPlaywright:
                 )
                 # микрофон/камера не просим — страница не должна показывать диалоги
                 context.clear_permissions()
+                # Не загружаем тяжёлые картинки/шрифты/медиа: для создания
+                # комнаты нужны JS, HTML и API-запросы платформы.
                 page = context.new_page()
+                page.route("**/*", lambda route: route.abort()
+                           if route.request.resource_type in ("image", "font", "media")
+                           else route.continue_())
                 page.set_default_timeout(timeout * 1000)
                 # goto с повторами: через NAT/SSL первый заход иногда виснет;
                 # один TimeoutError раньше убивал всю попытку создания.
                 last_err = None
                 for attempt in range(GOTO_ATTEMPTS):
                     try:
-                        page.goto(CREATE_URL, wait_until="load",
+                        # Для формы достаточно DOM + JS; ждать все картинки,
+                        # шрифты и сторонние ресурсы (load) не требуется.
+                        page.goto(CREATE_URL, wait_until="domcontentloaded",
                                   timeout=GOTO_TIMEOUT_MS)
                         last_err = None
                         break
@@ -237,10 +280,10 @@ class VkxBotPlaywright:
                         f"salutejazz.ru недоступен после {GOTO_ATTEMPTS} "
                         f"попыток: {last_err}")
 
-                # Ждём, пока SPA отрендерит форму (input или кнопку)
-                page.wait_for_selector("input, textarea, button",
-                                       timeout=timeout * 1000)
-                time.sleep(1.5)  # догреваем React-форму
+                # Не используем безусловный wait_for_selector: он раньше выбрасывал
+                # TimeoutError через 20 секунд и не давал отработать ниже циклу
+                # ожидания SPA/повторному поиску полей. Ждём форму в одном месте,
+                # регулярно закрывая возможные оверлеи.
                 _dismiss_overlays(page)
 
                 def _form_ready() -> bool:
@@ -294,13 +337,16 @@ class VkxBotPlaywright:
                                                timeout_ms=8000)
                 if el is None:
                     try:
-                        page.screenshot(path="/tmp/vksbot_fail.png")
-                        log.error("Скриншот неудачной страницы: "
-                                  "/tmp/vksbot_fail.png (docker compose cp "
-                                  "vks-bot:/tmp/vksbot_fail.png .)")
-                    except Exception:
-                        pass
-                    raise RuntimeError("Не найдено поле названия встречи")
+                        page.screenshot(path="/tmp/vksbot_fail.png", full_page=True)
+                        page_title = page.title()
+                        page_url = page.url
+                        body_text = page.locator("body").inner_text(timeout=3000)[:1200]
+                        log.error("Форма SaluteJazz не найдена. url=%r title=%r body=%r; "
+                                  "скриншот: /tmp/vksbot_fail.png (docker compose cp vks-bot:/tmp/vksbot_fail.png .)",
+                                  page_url, page_title, body_text)
+                    except Exception as diag_error:
+                        log.error("Не удалось собрать диагностику страницы: %s", diag_error)
+                    raise RuntimeError("SaluteJazz открыл страницу без видимого поля названия встречи; проверьте авторизацию/капчу/изменение формы. Подробности в логах vks-bot")
                 self._set_value(page, el, title)
                 log.info("Введено название (%s), значение: %r",
                          sel, el.get_attribute("value"))
@@ -379,36 +425,36 @@ class VkxBotPlaywright:
                 # 4) Ждём ссылку вида https://salutejazz.ru/calls/<код>?psw=<пароль>.
                 # Важно: страница /calls/create сама матчится на LINK_RE —
                 # игнорируем URL с «create» и ждём реального кода комнаты.
-                deadline = time.time() + timeout
-
-                def _valid(candidate):
-                    if not candidate:
-                        return False
-                    room_part = candidate.split("/calls/")[1].split("?")[0]
-                    return room_part.lower() != "create"
-
+                # Ожидаем появление ссылки средствами браузера, без постоянного
+                # скачивания полного HTML (page.content() на каждом цикле).
+                page.wait_for_function(
+                    r"""() => {
+                        const re = /https:\/\/salutejazz\.ru\/calls\/[A-Za-z0-9_-]+(?:\?[^\s\"'<]*)?/;
+                        const candidates = [location.href,
+                            ...Array.from(document.querySelectorAll('input')).map(e => e.value || ''),
+                            ...Array.from(document.querySelectorAll('a[href]')).map(e => e.href || '')];
+                        return candidates.some(v => {
+                            const m = String(v).match(re);
+                            return m && !m[0].split('/calls/')[1].split('?')[0].toLowerCase().startsWith('create');
+                        });
+                    }""",
+                    timeout=timeout * 1000,
+                    polling=250,
+                )
                 link = None
-                while time.time() < deadline:
-                    m = LINK_RE.search(page.url)
-                    if m and _valid(m.group(0)):
+                candidates = [page.url]
+                candidates.extend(page.eval_on_selector_all(
+                    "input", "els => els.map(e => e.value || '')"))
+                candidates.extend(page.eval_on_selector_all(
+                    "a[href]", "els => els.map(e => e.href || '')"))
+                for candidate in candidates:
+                    m = LINK_RE.search(candidate or "")
+                    if not m:
+                        continue
+                    room_part = m.group(0).split("/calls/")[1].split("?")[0]
+                    if room_part.lower() != "create":
                         link = m.group(0)
                         break
-                    # иногда ссылка появляется в readonly-поле invite
-                    values = page.eval_on_selector_all(
-                        "input", "els => els.map(e => e.value || '')")
-                    for v in values:
-                        m = LINK_RE.search(v)
-                        if m and _valid(m.group(0)) and m.group(0) != page.url:
-                            link = m.group(0)
-                            break
-                    if link:
-                        break
-                    # copy-to-clipboard кнопки содержат полный URL в разметке
-                    m = LINK_RE.search(page.content())
-                    if m and _valid(m.group(0)):
-                        link = m.group(0)
-                        break
-                    time.sleep(1)
 
                 if not link:
                     raise RuntimeError(
@@ -433,7 +479,8 @@ class VkxBotPlaywright:
                     "created_at": datetime.now(tz_msk).strftime(
                         "%Y-%m-%d %H:%M:%S%z"),
                 }
-                log.info("Готово: %s", link)
+                log.info("Готово: %s (общее время %.2f сек)",
+                         link, time.monotonic() - request_started)
                 return result
 
             except Exception as e:  # noqa: BLE001
@@ -446,12 +493,24 @@ class VkxBotPlaywright:
                     snippet = ""
                 return {"ok": False, "error": str(e), "page_snippet": snippet}
             finally:
-                for closer in (lambda: browser.close() if browser else None,
-                               lambda: pw.stop() if pw else None):
-                    try:
-                        closer()
-                    except Exception:
-                        pass
+                # Закрываем только изолированный контекст текущей задачи.
+                # Сам Chromium остаётся прогретым для следующей ВКС.
+                try:
+                    if context is not None:
+                        context.close()
+                except Exception:
+                    pass
+                # Если браузер аварийно отключился, сбрасываем ссылку —
+                # следующий запрос автоматически поднимет новый процесс.
+                try:
+                    if self._browser is not None and not self._browser.is_connected():
+                        self._browser = None
+                        if self._pw is not None:
+                            self._pw.stop()
+                            self._pw = None
+                except Exception:
+                    self._browser = None
+                    self._pw = None
 
 
 def fallback_local_link() -> str:

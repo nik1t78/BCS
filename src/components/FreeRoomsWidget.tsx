@@ -11,7 +11,7 @@ import {
   WORK_DAY_END_MIN,
   type FreeSlot,
 } from "../utils/freeSlots";
-import { hoursForDate, FALLBACK_DAY_HOURS, type DayHours } from "../utils/roomSchedule";
+import { hoursForDate, type DayHours } from "../utils/roomSchedule";
 
 /** «Сейчас» в минутах дня ПО ЧАСАМ И ПОЯСУ СЕРВЕРА (Europe/Moscow, см. /api/time).
  *  Фикс «Свободные залы пустеют после обновления страницы»: расчёт свободных
@@ -20,6 +20,15 @@ import { hoursForDate, FALLBACK_DAY_HOURS, type DayHours } from "../utils/roomSc
  *  прошедшими (isPast) и исчезали из зелёной зоны — виджет выглядел пустым.
  *  Важно: serverNowHmTz() читает время через Intl в поясе сервера; getHours()
  *  от Date вернул бы локальный час браузера (расхождение до ±3ч для MSK). */
+
+/** Сдвигает календарную дату без UTC-преобразований и сдвига суток. */
+function shiftDateKey(dateKey: string, days: number): string {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const value = new Date(year, month - 1, day);
+  value.setDate(value.getDate() + days);
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
 const serverNowMin = (): number => {
   const [h, m] = serverNowHmTz().split(":").map(Number);
   return (h || 0) * 60 + (m || 0);
@@ -31,7 +40,16 @@ interface RoomInfo {
   busy: { startMin: number; endMin: number; title?: string }[];
   /** Рабочие часы зала на выбранную дату (гибкий график); null — зал закрыт. */
   hours: DayHours | null;
+  /** Если занятость не удалось проверить, слоты не предлагаются. */
+  availabilityError?: boolean;
 }
+
+type AvailabilityCache = {
+  date: string;
+  active: Room[];
+  busyById: Record<string, any[]>;
+  hoursById: Record<string, DayHours | null | undefined>;
+};
 
 interface FreeRoomsWidgetProps {
   /** Клик по свободному слоту → родитель переходит к созданию ВКС с предзаполнением */
@@ -75,7 +93,7 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
 
   // Кэш последнего ответа занятости по дате: на минутном тике обновляем
   // слоты из кэша БЕСШУМНО (без «Загрузка…»), а не с нуля через API.
-  const cacheRef = React.useRef<{ date: string; active: Room[]; busyById: Record<string, any[]> } | null>(null);
+  const cacheRef = React.useRef<AvailabilityCache | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -91,9 +109,17 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
         // (один запрос вместо N+1). Используем его как ОСНОВНОЙ источник —
         // так виджет работает одинаково у admin/moderator/user и не зависит
         // от прав на справочник GET /rooms.
-        const fetchAggregated = async (): Promise<{ active: Room[]; busyById: Record<string, any[]>; hoursById: Record<string, DayHours | null> }> => {
+        const fetchAggregated = async (): Promise<{ active: Room[]; busyById: Record<string, any[]>; hoursById: Record<string, DayHours | null | undefined> }> => {
           const av: any = await meetingsAPI.roomsAvailability({ date });
+          // Backend can return a degraded response if DB/recurrence calculation
+          // failed. Such a response is NOT proof that every room is free.
+          if (av?.degraded === true) {
+            throw new Error("Сервер не смог проверить занятость залов. Бронирование временно недоступно.");
+          }
           const list: any[] = av?.data ?? av ?? [];
+          if (!Array.isArray(list)) {
+            throw new Error("Сервер вернул некорректное расписание залов.");
+          }
           const active: Room[] = list.map((r, i) => ({
             id: String(r.id ?? `room-${i}`),
             name: r.name,
@@ -104,7 +130,7 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
           const busyById: Record<string, any[]> = {};
           // Гибкий график зала на дату: сервер отдаёт room.hours
           // ({start,end}) либо null (закрыт: выходной день/праздник).
-          const hoursById: Record<string, DayHours | null> = {};
+          const hoursById: Record<string, DayHours | null | undefined> = {};
           list.forEach((r, i) => {
             const id = String(r.id ?? `room-${i}`);
             busyById[id] = r.busy ?? [];
@@ -116,35 +142,34 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
 
         let active: Room[] = [];
         let busyById: Record<string, any[]> = {};
-        let hoursById: Record<string, DayHours | null> = {};
+        let hoursById: Record<string, DayHours | null | undefined> = {};
         if (useCacheOnly && cacheRef.current) {
           // Минутный тик по тому же дню — берём данные из кэша, только
           // пересчитываем «прошедшее время» относительно нового «сейчас».
-          ({ active, busyById } = cacheRef.current);
-          hoursById = (cacheRef.current as any).hoursById ?? {};
+          ({ active, busyById, hoursById } = cacheRef.current);
         } else {
-        try {
-          const agg = await fetchAggregated();
-          active = agg.active;
-          busyById = agg.busyById;
-          hoursById = agg.hoursById;
-        } catch {
-          // Старый/необновленный бэкенд без /meetings/rooms-availability (404):
-          // fallback на справочник GET /rooms (доступен админу/модератору).
           try {
-            const res: any = await roomsAPI.list();
-            const roomsList: Room[] = Array.isArray(res) ? res : (res?.data ?? []);
-            active = roomsList.filter((r) => r.isActive !== false);
-            busyById = {};
-          } catch (e2: any) {
-            if (e2?.status === 401) throw new Error("Сессия истекла — обновите страницу");
-            setError(null); // не показываем сырую ошибку — ниже выведем подсказку
-            setInfos([]);
-            setLoading(false);
-            return;
+            const agg = await fetchAggregated();
+            active = agg.active;
+            busyById = agg.busyById;
+            hoursById = agg.hoursById;
+          } catch (aggregateError: any) {
+            // Совместимость со старым API: пробуем справочник + отдельную
+            // проверку каждого зала. Ошибку проверки ниже оставляем rejected,
+            // а не превращаем в busy=[] — иначе занятый зал выглядел бы свободным.
+            try {
+              const res: any = await roomsAPI.list();
+              const roomsList: Room[] = Array.isArray(res) ? res : (res?.data ?? []);
+              if (!Array.isArray(roomsList)) throw new Error("Некорректный список залов");
+              active = roomsList.filter((r) => r.isActive !== false && (r as any).is_active !== false);
+              busyById = {};
+              hoursById = {};
+            } catch (e2: any) {
+              if (e2?.status === 401) throw new Error("Сессия истекла — обновите страницу");
+              throw new Error(aggregateError?.message || "Не удалось получить расписание залов. Проверьте подключение к серверу.");
+            }
           }
-        }
-        cacheRef.current = { date, active, busyById };
+          cacheRef.current = { date, active, busyById, hoursById };
         }
         const results = await Promise.allSettled(
           active.map(async (r) => {
@@ -154,11 +179,7 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
             if (byId) return { busy: byId };
             const byName = busyById[`name::${r.name}`];
             if (byName) return { busy: byName };
-            try {
-              return await roomsAPI.availability(r.id, { date });
-            } catch {
-              return { busy: [] };
-            }
+            return await roomsAPI.availability(r.id, { date });
           })
         );
         if (cancelled) return;
@@ -183,16 +204,23 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
           let hours: DayHours | null | undefined = hoursById[String(room.id)];
           if (hours === undefined) hours = hoursForDate((room as any).schedule, date);
           if (resItem.status !== "fulfilled") {
-            next.push({ room, slots: [], busy: [], hours: hours ?? null });
+            next.push({ room, slots: [], busy: [], hours: hours ?? null, availabilityError: true });
             return;
           }
           const avail: RoomAvailability = (resItem.value as any)?.data ?? resItem.value;
-          const h = hours ?? FALLBACK_DAY_HOURS;
+          // Дни, помеченные в графике как выходные/закрытые, не блокируют
+          // бронирование на главной. Показываем фактическую занятость и
+          // свободные интервалы в стандартном диапазоне 08:00–20:00.
+          const effectiveHours = hours ?? { start: "08:00", end: "20:00" };
+          const h = effectiveHours;
           const fromMin = hmToMin(h.start);
           const toMin2 = hmToMin(h.end);
-          const slots = hours
-            ? computeFreeSlots(avail.busy ?? [], { isToday, nowMin: curMin, dayStartMin: fromMin, dayEndMin: toMin2 })
-            : computeFreeSlots(avail.busy ?? [], { isToday, nowMin: curMin });
+          const slots = computeFreeSlots(avail.busy ?? [], {
+            isToday,
+            nowMin: curMin,
+            dayStartMin: fromMin,
+            dayEndMin: toMin2,
+          });
           const busy = (avail.busy ?? [])
             .map((b: any) => ({
               startMin: toMin(b.start),
@@ -200,7 +228,7 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
               title: b.title || b.meetingTitle || "",
             }))
             .filter((b: any) => b.endMin > b.startMin);
-          next.push({ room, slots, busy, hours });
+          next.push({ room, slots, busy, hours: effectiveHours });
         });
         // Свободные залы — выше списка; внутри — по ближайшему слоту
         // (прошедшие окна в расчёте сортировки не участвуют)
@@ -226,23 +254,19 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
 
   const isToday = date === serverTodayKeyTz();
 
-  // Шкала и подпись «рабочего дня» — по гибкому графику залов. Если у всех
-  // залов на дату график закрыт — виджет честно это покажет.
-  // Фикс подписи «рабочий день 00:00–20:00»: раньше нижняя граница шкалы
-  // бралась из FALLBACK_DAY_HOURS (00:00), даже когда у ВСЕХ залов график
-  // начинался, например, в 08:00 — подпись врала и рисовала пустые зелёные
-  // окна до начала рабочего дня. Теперь масштаб = объединение реальных
-  // графиков залов на выбранную дату; fallback 00:00 остаётся только если
-  // ни один зал не прислал часы (старый бэкенд без поля hours).
-  const openInfos = infos.filter((i) => i.hours !== null);
-  const closedInfos = infos.filter((i) => i.hours === null);
-  const hasRealHours = openInfos.length > 0;
+  // Шкала строится по доступным часам залов. Если дата отмечена в графике
+  // как выходная/закрытая, используем стандартный диапазон 08:00–20:00:
+  // выходной статус не запрещает пользователю выбрать свободный слот.
+  // Все залы отображаются независимо от выходного/праздничного статуса.
+  // Для них всегда есть эффективный диапазон времени и возможность брони.
+  const openInfos = infos;
+  const hasRealHours = openInfos.some((i) => i.hours !== null);
   const scaleStart = hasRealHours
-    ? Math.min(...openInfos.map((i) => hmToMin(i.hours!.start)))
-    : hmToMin(FALLBACK_DAY_HOURS.start);
+    ? Math.min(...openInfos.map((i) => hmToMin((i.hours ?? { start: "08:00", end: "20:00" }).start)))
+    : hmToMin("08:00");
   const scaleEnd = hasRealHours
-    ? Math.max(...openInfos.map((i) => hmToMin(i.hours!.end)))
-    : hmToMin(FALLBACK_DAY_HOURS.end);
+    ? Math.max(...openInfos.map((i) => hmToMin((i.hours ?? { start: "08:00", end: "20:00" }).end)))
+    : hmToMin("20:00");
   const span = Math.max(scaleEnd - scaleStart, 60);
   const spct = (min: number) => ((min - scaleStart) / span) * 100;
   const showNowLine = isToday && nowMin >= scaleStart && nowMin <= scaleEnd;
@@ -251,21 +275,40 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-xl shadow p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold text-gray-800 dark:text-gray-100">
-          <i className="fas fa-door-open mr-2 text-blue-600" aria-hidden="true"></i>
-          Свободные залы
-          <span className="text-xs font-normal text-gray-400 ml-2">
-            {openInfos.length ? `рабочий день ${minToHm(scaleStart)}–${minToHm(scaleEnd)}` : "все залы закрыты на эту дату"}
-          </span>
-        </h3>
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="text-sm border rounded-lg px-2 py-1 bg-white dark:bg-slate-700 dark:text-gray-100 dark:border-slate-600"
-          aria-label="Дата проверки занятости"
-        />
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+        <div>
+          <h3 className="font-semibold text-gray-800 dark:text-gray-100">
+            <i className="fas fa-door-open mr-2 text-blue-600" aria-hidden="true"></i>
+            Свободные залы
+            <span className="text-xs font-normal text-gray-400 ml-2">
+              {openInfos.length ? `${minToHm(scaleStart)}–${minToHm(scaleEnd)}` : ""}
+            </span>
+          </h3>
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            <button type="button" onClick={() => setDate(serverTodayKeyTz())}
+              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${date === serverTodayKeyTz() ? "bg-blue-600 text-white border-blue-600" : "bg-white dark:bg-slate-700 text-gray-600 dark:text-gray-200 border-gray-200 dark:border-slate-600"}`}>
+              Сегодня
+            </button>
+            <button type="button" onClick={() => setDate(shiftDateKey(serverTodayKeyTz(), 1))}
+              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${date === shiftDateKey(serverTodayKeyTz(), 1) ? "bg-blue-600 text-white border-blue-600" : "bg-white dark:bg-slate-700 text-gray-600 dark:text-gray-200 border-gray-200 dark:border-slate-600"}`}>
+              Завтра
+            </button>
+            <button type="button" onClick={() => setDate(shiftDateKey(serverTodayKeyTz(), 2))}
+              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${date === shiftDateKey(serverTodayKeyTz(), 2) ? "bg-blue-600 text-white border-blue-600" : "bg-white dark:bg-slate-700 text-gray-600 dark:text-gray-200 border-gray-200 dark:border-slate-600"}`}>
+              Послезавтра
+            </button>
+          </div>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+          <span>Дата расписания</span>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="text-sm border rounded-lg px-2 py-1 bg-white dark:bg-slate-700 dark:text-gray-100 dark:border-slate-600"
+            aria-label="Дата проверки занятости"
+          />
+        </label>
       </div>
 
       {loading && (
@@ -298,28 +341,23 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
           </div>
 
           <ul className="space-y-2 min-w-[560px] sm:min-w-[640px]">
-            {infos.map(({ room, slots, busy, hours }) => (
+            {infos.map(({ room, slots, busy, hours, availabilityError }) => (
               <li key={room.id}>
                 <div className="flex items-center">
                   <div
                     className="w-16 sm:w-36 shrink-0 pr-2 text-sm text-gray-700 dark:text-gray-200 font-medium truncate"
-                    title={`${room.name} • ${room.capacity} чел.${room.location ? ` • ${room.location}` : ""}${hours ? ` • график ${hours.start}–${hours.end}` : " • закрыт на эту дату"}`}
+                    title={`${room.name} • ${room.capacity} чел.${room.location ? ` • ${room.location}` : ""}${hours ? ` • ${hours.start}–${hours.end}` : ""}`}
                   >
                     <i
-                      className={`fas fa-circle ${!hours ? "text-gray-300 dark:text-gray-600" : slots.length ? "text-emerald-500" : "text-red-400"} text-[8px] mr-2`}
+                      className={`fas fa-circle ${availabilityError ? "text-amber-500" : slots.length ? "text-emerald-500" : "text-red-400"} text-[8px] mr-2`}
                       aria-hidden="true"
                     ></i>
                     {room.name}
+                    {availabilityError && <span className="block text-[10px] text-amber-600 dark:text-amber-400 font-normal">Не удалось проверить занятость</span>}
                   </div>
 
                   {/* Полоса времени зала */}
                   <div className="relative flex-1 h-9 rounded-md bg-gray-100 dark:bg-slate-700 overflow-hidden">
-                    {/* Закрыт на эту дату (выходной по графику/праздник) — серая полоса с подписью */}
-                    {hours === null && (
-                      <div className="absolute inset-0 flex items-center justify-center text-[11px] text-gray-400 dark:text-gray-500 select-none">
-                        <i className="fas fa-lock mr-1.5" aria-hidden="true"></i>Закрыто (нерабочий день)
-                      </div>
-                    )}
                     {/* получасовые деления */}
                     {scaleHours.slice(1).map((m) => (
                       <div
@@ -329,14 +367,19 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
                       />
                     ))}
                     {/* занятые блоки */}
-                    {busy.map((b, i) => (
+                    {busy.map((b, i) => {
+                      const visibleStart = Math.max(scaleStart, b.startMin);
+                      const visibleEnd = Math.min(scaleEnd, b.endMin);
+                      if (visibleEnd <= visibleStart) return null;
+                      return (
                       <div
                         key={`b${i}`}
                         className="absolute top-0 bottom-0 bg-gray-300/80 dark:bg-slate-500/70 border-l-2 border-gray-400 dark:border-slate-400"
-                        style={{ left: `${spct(b.startMin)}%`, width: `${spct(b.endMin) - spct(b.startMin)}%` }}
+                        style={{ left: `${spct(visibleStart)}%`, width: `${spct(visibleEnd) - spct(visibleStart)}%` }}
                         title={`Занято ${minToHm(b.startMin)}–${minToHm(b.endMin)}${b.title ? `: ${b.title}` : ""}`}
                       />
-                    ))}
+                      );
+                    })}
                     {/* свободные окна, разбитые на блоки по 30 минут:
                         будущие — кликабельные зелёные сегменты (выбор времени
                         начала брони), прошедшие — серые некликабельные */}

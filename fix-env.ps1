@@ -51,4 +51,4 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $bytes = [System.IO.File]::ReadAllBytes("$PSScriptRoot\.env")
 if ($bytes -contains 0) { Write-Host "ERROR: NUL bytes still present!" -ForegroundColor Red; exit 1 }
 Write-Host "OK: .env is now UTF-8, no NUL bytes." -ForegroundColor Green
-Select-String -Path .env -Pattern 'VITE_VKS_AUTOBOT|VKSBOT_ENGINE|VKSBOT_URL|BOT_TOKENS|^TZ=' | ForEach-Object { $_.Line }
+Select-String -Path .env -Pattern 'VKSBOT_EXPECTED|VKSBOT_ENGINE|VKSBOT_URL|BOT_TOKENS|^TZ=' | ForEach-Object { $_.Line }

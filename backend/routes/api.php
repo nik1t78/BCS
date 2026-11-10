@@ -86,6 +86,16 @@ Route::middleware('throttle:120,60')->get('/notifications/stream', [\App\Http\Co
 // RateLimiter — DECAY SECONDS, не минуты). Раньше стояло throttle:30,1 =
 // 30/мин на IP: все телевизоры офиса выходят с одного NAT-IP, и уже 3 экрана
 // (поллинг каждые 10 с = 180/мин) гарантированно ловили 429.
+Route::middleware('throttle:600,60')->get('/tv/{room}/all', function (\Illuminate\Http\Request $request, string $room) {
+    $model = is_numeric($room)
+        ? \App\Models\Room::find((int) $room)
+        : \App\Models\Room::where('name', urldecode($room))->first();
+    if (!$model || !$model->is_active) {
+        return response()->json(['message' => 'Зал не найден'], 404);
+    }
+    return app(\App\Http\Controllers\Api\TvScreenController::class)->all($request, $model);
+});
+
 Route::middleware('throttle:600,60')->get('/tv/{room}/next', function (\Illuminate\Http\Request $request, string $room) {
     // is_numeric() — встроенная функция PHP. \Illuminate\Support\Str::isNumeric()
     // НЕ существует (Str не имеет такого метода/макроса) и давала
@@ -151,6 +161,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         ->whereNumber('meeting')->name('meetings.rooms-availability');
 
     // Meetings
+    Route::post('/meetings/{meeting}/retry-vks-link', [MeetingController::class, 'retryVksLink']);
     Route::apiResource('meetings', MeetingController::class);
     Route::get('/meetings-stats', [MeetingController::class, 'getStats']);
 

@@ -7,68 +7,52 @@ use App\Models\Meeting;
 use App\Models\Notification;
 use App\Services\AdminAlert;
 use App\Services\VkSBotClient;
+use App\Support\MeetingCache;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
-/**
- * Пункт 1 плана: асинхронное создание ссылки ВКС через Selenium-бота.
- *
- * Воркер (контейнер vks-queue, php artisan queue:work) вызывает бота и
- * вписывает живую ссылку в уже сохранённую встречу. При неудаче Laravel
- * сам повторяет задачу (tries/backoff), после всех попыток — fallback на
- * локальную ссылку + алерт админу (пункт 3 плана).
- */
-class CreateVksLinkJob implements ShouldQueue
+/** Создаёт реальную комнату SaluteJazz в фоновой очереди. */
+class CreateVksLinkJob implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    /** Кол-во попыток всего (1 + 2 ретрая с backoff). */
-    public $tries = 3;
-
+    public int $tries = 3;
     public array $backoff = [30, 60];
+    public int $timeout = 240;
+    public int $uniqueFor = 900;
 
-    public int $timeout = 180;
+    public function __construct(public int $meetingId) {}
 
-    public function __construct(public int $meetingId)
+    public function uniqueId(): string
     {
+        return 'create-vks-link:' . $this->meetingId;
     }
 
     public function handle(VkSBotClient $client): void
     {
         $meeting = Meeting::with('organizer')->find($this->meetingId);
-        // Встречу могли удалить/отменить, пока задача ждала в очереди.
         if ($meeting === null || in_array($meeting->status, ['cancelled', 'completed'], true)) {
             return;
         }
 
-        $startedAt = microtime(true);
-        $result = $client->create((string) $meeting->title, (string) ($meeting->organizer?->name ?: 'Организатор'), $meeting->date);
-        $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
-
-        // Бот не развёрнут (VKSBOT_EXPECTED=false): create() вернул локальную
-        // ссылку. Записываем её сразу и выходим — без ретраев и failed()-алертов:
-        // ссылки на встречах будут, очередь не падает. В BotLog пишем ОБЯЗАТЕЛЬНО:
-        // иначе дневник «ВКС-бот» в админке выглядит пустым («записей нет»),
-        // хотя автопилот исправно генерирует ссылки.
-        if (empty($result['ok']) && empty($result['error'])) {
-            $meeting->update(['link' => $result['link']]);
-
-            BotLog::create([
-                'meeting_id' => $meeting->id,
-                'action' => 'create',
-                'trigger' => 'queue',
-                'success' => true,
-                'link' => $result['link'],
-                'error' => null,
-                'duration_ms' => $durationMs,
-            ]);
-
+        // Идемпотентность: не создаём повторную комнату, если ссылка уже готова.
+        if (filled($meeting->link) && $meeting->vks_link_status === 'created') {
             return;
         }
+
+        $meeting->update(['vks_link_status' => 'creating']);
+        $startedAt = microtime(true);
+        $result = $client->create(
+            (string) $meeting->title,
+            (string) ($meeting->organizer?->name ?: 'Организатор'),
+            $meeting->date
+        );
+        $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
 
         BotLog::create([
             'meeting_id' => $meeting->id,
@@ -82,39 +66,37 @@ class CreateVksLinkJob implements ShouldQueue
             'duration_ms' => $durationMs,
         ]);
 
-        if (!empty($result['ok'])) {
-            $meeting->update(['link' => $result['link']]);
-            // Пункт 3: уведомить организатора о живой ссылке.
-            try {
-                Notification::create([
-                    'user_id' => $meeting->organizer_id,
-                    'meeting_id' => $meeting->id,
-                    'title' => 'Ссылка ВКС готова',
-                    'message' => sprintf('Встреча «%s» (%s %s–%s) получила живую ссылку: %s',
-                        $meeting->title,
-                        $meeting->date?->format('d.m.Y') ?? '',
-                        substr((string) $meeting->start_time, 0, 5),
-                        substr((string) $meeting->end_time, 0, 5),
-                        $result['link'],
-                    ),
-                    'type' => 'vks_link_ready',
-                    'read' => false,
-                ]);
-            } catch (\Throwable $e) {
-                report($e); // уведомление не должно ломать запись ссылки
-            }
-            return;
+        if (empty($result['ok']) || empty($result['link'])) {
+            throw new \RuntimeException('VKSBot: ' . ($result['error'] ?? 'не удалось создать комнату') . ' ' . ($result['detail'] ?? ''));
         }
 
-        // Неудача: бросаем исключение — Laravel повторит задачу (ретраи),
-        // а после исчерпания попыток вызовет failed().
-        throw new \RuntimeException('VKSBot: ' . ($result['error'] ?? 'unknown') . ' ' . ($result['detail'] ?? ''));
+        $meeting->update([
+            'link' => $result['link'],
+            'vks_link_status' => 'created',
+        ]);
+        MeetingCache::bump(MeetingCache::roomIdsFromNames([$meeting->room]));
+
+        try {
+            Notification::create([
+                'user_id' => $meeting->organizer_id,
+                'meeting_id' => $meeting->id,
+                'title' => 'Ссылка ВКС готова',
+                'message' => sprintf(
+                    'Встреча «%s» (%s %s–%s) получила ссылку: %s',
+                    $meeting->title,
+                    $meeting->date?->format('d.m.Y') ?? '',
+                    substr((string) $meeting->start_time, 0, 5),
+                    substr((string) $meeting->end_time, 0, 5),
+                    $result['link']
+                ),
+                'type' => 'info',
+                'read' => false,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
-    /**
-     * Все попытки исчерпаны (пункт 3 плана): встреча НЕ должна оставаться
-     * вовсе без ссылки — генерируем локальную (формат платформы) и репортим.
-     */
     public function failed(\Throwable $exception): void
     {
         $meeting = Meeting::find($this->meetingId);
@@ -122,32 +104,29 @@ class CreateVksLinkJob implements ShouldQueue
             return;
         }
 
-        $code = substr(preg_replace('/[^a-z0-9]/', '', strtolower(base64_encode(random_bytes(8)))), 0, 8);
-        $pwd = substr(preg_replace('/[^A-Z0-9]/', '', strtoupper(base64_encode(random_bytes(16)))), 0, 16);
-        $fallback = "https://salutejazz.ru/calls/{$code}?psw={$pwd}";
-        $meeting->update(['link' => $fallback]);
-
+        $meeting->update(['vks_link_status' => 'failed']);
+        MeetingCache::bump(MeetingCache::roomIdsFromNames([$meeting->room]));
         BotLog::create([
             'meeting_id' => $meeting->id,
             'action' => 'create',
             'trigger' => 'queue',
             'success' => false,
-            'link' => $fallback,
-            'error' => 'все ретраи исчерпаны — записана локальная ссылка: ' . $exception->getMessage(),
+            'link' => null,
+            'error' => 'Реальная комната не создана после всех попыток: ' . $exception->getMessage(),
             'duration_ms' => 0,
         ]);
 
-        Log::warning('CreateVksLinkJob: бот не смог создать комнату, использована локальная ссылка', [
+        Log::warning('CreateVksLinkJob: SaluteJazz room creation failed', [
             'meeting_id' => $meeting->id,
             'error' => $exception->getMessage(),
         ]);
 
         try {
             AdminAlert::send(sprintf(
-                "⚠️ ВКС-бот не смог создать комнату для встречи «%s» (id %d) после всех ретраев: %s. Записана локальная ссылка, организатор может создать комнату вручную.",
+                '⚠️ Бот не создал комнату для ВКС «%s» (id %d): %s. Реальная ссылка не создана; требуется повторная попытка или ручное создание.',
                 $meeting->title,
                 $meeting->id,
-                mb_substr($exception->getMessage(), 0, 200),
+                mb_substr($exception->getMessage(), 0, 200)
             ));
         } catch (\Throwable $e) {
             report($e);

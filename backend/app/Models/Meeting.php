@@ -22,6 +22,7 @@ class Meeting extends Model
         'participants',
         'participant_emails',
         'link',
+        'vks_link_status',
         'room',
         'status',
         'reminder_minutes',
@@ -33,13 +34,50 @@ class Meeting extends Model
     ];
 
     protected $casts = [
-        'date' => 'date',
-        'repeat_until' => 'date',
+        // SQL DATE — календарный день, а не момент времени. Явный формат
+        // исключает сериализацию полуночи в ISO/UTC с возможным сдвигом суток.
+        'date' => 'date:Y-m-d',
+        'repeat_until' => 'date:Y-m-d',
         'participants' => 'array',
         'participant_emails' => 'array',
         'is_private' => 'boolean',
         'reminder_minutes' => 'integer',
     ];
+
+    /**
+     * SQL DATE должен уходить в API ровно как YYYY-MM-DD.
+     * Не сериализуем его как timestamp/ISO с часовым поясом: иначе
+     * полночь может превратиться в предыдущий календарный день.
+     * Carbon-касты остаются доступны бизнес-логике модели.
+     */
+    public function toArray(): array
+    {
+        $data = parent::toArray();
+
+        foreach (['date', 'repeat_until'] as $field) {
+            if (!array_key_exists($field, $data)) {
+                continue;
+            }
+
+            $raw = $this->getAttributes()[$field] ?? null;
+            if ($raw === null || $raw === '') {
+                $data[$field] = null;
+                continue;
+            }
+
+            if ($raw instanceof \DateTimeInterface) {
+                $data[$field] = $raw->format('Y-m-d');
+                continue;
+            }
+
+            $raw = trim((string) $raw);
+            if (preg_match('/^(\d{4}-\d{2}-\d{2})/', $raw, $match)) {
+                $data[$field] = $match[1];
+            }
+        }
+
+        return $data;
+    }
 
     /**
      * Организатор конференции

@@ -252,6 +252,8 @@ export const meetingsAPI = {
 
   get: (id: string) => apiRequest(`/meetings/${id}`),
 
+  retryVksLink: (id: string) => apiRequest(`/meetings/${id}/retry-vks-link`, { method: "POST" }),
+
   create: (data: any) =>
     apiRequest("/meetings", {
       method: "POST",

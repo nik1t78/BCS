@@ -8,6 +8,14 @@ import { Meeting } from "../types";
 const toDateKey = (d: Date): string =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
+// Строка SQL DATE разбирается как локальная календарная дата.
+// new Date("YYYY-MM-DD") трактует значение как UTC и в некоторых поясах
+// может показать предыдущий день.
+const parseDateKeyLocal = (key: string): Date => {
+  const [year, month, day] = key.slice(0, 10).split("-").map(Number);
+  return new Date(year, month - 1, day);
+};
+
 export const MEETING_OCCURRENCES_LIMIT_DAYS = 92; // ~3 месяца вперёд
 
 /**
@@ -39,7 +47,7 @@ export function occursOnWithBase(
   let baseDate = meeting.date;
   if (meeting.recurring && meeting.recurring !== "none" && meeting.status !== "cancelled") {
     for (let i = 0; i <= MEETING_OCCURRENCES_LIMIT_DAYS; i++) {
-      const d = new Date(`${meeting.date}T00:00:00`);
+      const d = parseDateKeyLocal(meeting.date);
       d.setDate(d.getDate() + i);
       const key = toDateKey(d);
       if (key >= dayKey) break;
@@ -76,9 +84,9 @@ function baseOccurs(meeting: Meeting, date: Date, baseOverride?: string): boolea
   // Ограничиваем горизонт развёртывания, чтобы не перебирать вечность
   const horizon = new Date(date);
   horizon.setDate(horizon.getDate() - MEETING_OCCURRENCES_LIMIT_DAYS);
-  if (new Date(meeting.date) < horizon) return false;
+  if (parseDateKeyLocal(meeting.date) < horizon) return false;
 
-  const base = new Date(`${baseOverride ?? meeting.date}T00:00:00`);
+  const base = parseDateKeyLocal(baseOverride ?? meeting.date);
   switch (meeting.recurring) {
     case "daily":
       return true;

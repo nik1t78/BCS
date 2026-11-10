@@ -47,10 +47,10 @@ x-backend-env: &backend-env
   DB_PORT: 3306
   DB_DATABASE: "${DB_DATABASE:-vks_schedule}"
   DB_USERNAME: "${DB_USERNAME:-vks_user}"
-  DB_PASSWORD: "${DB_PASSWORD:-vks_2026}"
+  DB_PASSWORD: "${DB_PASSWORD:?DB_PASSWORD не задан! Укажите длинный уникальный пароль в .env}"
   REDIS_HOST: redis
   REDIS_PORT: 6379
-  REDIS_PASSWORD: "${REDIS_PASSWORD:-vks_2026_redis}"
+  REDIS_PASSWORD: "${REDIS_PASSWORD:?REDIS_PASSWORD не задан! Укажите длинный уникальный пароль в .env}"
   APP_URL: "http://${SITE_IP:-localhost}"
   # APP_KEY ОБЯЗАТЕЛЕН: SESSION_DRIVER=cookie, поэтому при пустом/битом ключе
   # любой запрос к /api/* падает с HTTP 500 ("Unsupported cipher or incorrect key length").
@@ -67,14 +67,10 @@ x-backend-env: &backend-env
   # чтобы date()/cron-расписания жили в одном часовом поясе.
   TZ: "${TZ:-Europe/Moscow}"
   SESSION_DRIVER: cookie
-  # Redis-расширение в образ НЕ ставится (см. backend/Dockerfile):
-  # очереди — sync, кэш/сессии — файловые. Redis-контейнер оставлен на будущее:
-  # если когда-нибудь поставите phpredis, достаточно переключить эти значения.
+  # Надёжный file cache и database queue: Redis остаётся необязательным.
   CACHE_STORE: "file"
-  # По умолчанию sync (без Redis-расширения в образе). Для ВКС-бота переключите
-  # в .env: QUEUE_CONNECTION=redis — иначе CreateVksLinkJob выполняется
-  # синхронно внутри HTTP-запроса и «Создать конференцию» висит/падает.
-  QUEUE_CONNECTION: "${QUEUE_CONNECTION:-sync}"
+  QUEUE_CONNECTION: "${QUEUE_CONNECTION:-database}"
+  DB_QUEUE_RETRY_AFTER: "${DB_QUEUE_RETRY_AFTER:-300}"
   # Флаги автопилота ВКС-ссылок (см. php artisan vks:autopilot):
   VKSBOT_EXPECTED: "${VKSBOT_EXPECTED:-false}"
   VKSBOT_AUTO: "${VKSBOT_AUTO:-true}"
@@ -94,21 +90,15 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        VITE_VKS_AUTOBOT: "${VITE_VKS_AUTOBOT:-0}"
-        VITE_VKS_BOT_TOKEN: "${BOT_TOKENS:-}"
-        # BUILD_ID меняет значение при каждой команде up => compose всегда
-        # пересобирает образ и перезапускает сборщик => том frontend_build
-        # гарантированно получает СВЕЖИЙ бандл (защита от «код на сервере
-        # новый, а браузер показывает старую дату»).
-        BUILD_ID: "${BUILD_ID:-always-rebuild}"
+        # BUILD_ID можно изменить вручную для принудительной инвалидации слоя.
+        # Обычный watchdog делает `compose up -d` БЕЗ сборки — это не должно
+        # нагружать CPU каждые 5 минут. При релизе используйте `up -d --build`.
+        BUILD_ID: "${BUILD_ID:-stable}"
     container_name: vks-frontend-builder
     restart: "no"
     networks: [vks-network]
-    # Принудительная пересборка при каждом `up`: без этого старый контейнер-
-    # сборщик не пересоздаётся, том frontend_build остаётся с прошлым бандлом,
-    # и браузер продолжает получать СТАРЫЙ JS (причина «дата всё ещё 01.11»
-    # после git pull + build).
-    pull_policy: build
+    # Образ пересобирается только при установке/релизе через `--build`.
+    # Watchdog запускает `compose up -d` без сборки, чтобы не нагружать CPU.
     volumes:
       - type: volume
         source: frontend_build
@@ -131,6 +121,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    stop_grace_period: 30s
     networks: [vks-network]
 
   # Nginx: точка входа (порт 80), раздаёт фронт + static Laravel, фаст-cgi на backend
@@ -159,8 +150,17 @@ services:
         target: /var/www/backend-storage
         read_only: true
     depends_on:
-      - frontend
-      - backend
+      frontend:
+        condition: service_completed_successfully
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    stop_grace_period: 15s
     networks: [vks-network]
 
   # Одноразовый экспортёр public/ из образа backend в volume backend_public.
@@ -186,10 +186,10 @@ services:
     restart: unless-stopped
     shm_size: 64mb
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-vks_2026_root}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD не задан! Укажите длинный уникальный пароль в .env}
       MYSQL_DATABASE: ${DB_DATABASE:-vks_schedule}
       MYSQL_USER: ${DB_USERNAME:-vks_user}
-      MYSQL_PASSWORD: ${DB_PASSWORD:-vks_2026}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD не задан! Укажите длинный уникальный пароль в .env}
     volumes:
       - type: bind
         source: ./docker/mysql/data
@@ -204,8 +204,14 @@ services:
       - --tmp-table-size=8M
       - --max-heap-table-size=16M
       - --innodb-log-buffer-size=8M
+      # Flush committed transactions to durable storage; safer after sudden power loss.
+      - --innodb-flush-log-at-trx-commit=1
+      - --sync-binlog=1
+      - --innodb-file-per-table=ON
+      - --max-allowed-packet=64M
+    stop_grace_period: 1m
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_ROOT_PASSWORD:-vks_2026_root}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD не задан! Укажите длинный уникальный пароль в .env}"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -218,41 +224,76 @@ services:
     image: redis:alpine
     container_name: vks-redis
     restart: unless-stopped
+    environment:
+      REDISCLI_AUTH: "${REDIS_PASSWORD:?REDIS_PASSWORD не задан! Укажите длинный уникальный пароль в .env}"
     command: >-
       redis-server --maxmemory 96mb --maxmemory-policy allkeys-lru
-      --requirepass ${REDIS_PASSWORD:-vks_2026_redis}
+      --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD не задан! Укажите длинный уникальный пароль в .env}
       --save "" --appendonly no --proto-max-bulk-len 1mb
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping 2>/dev/null | grep -q PONG"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    stop_grace_period: 10s
     networks: [vks-network]
 
-  # Laravel Queue Worker
+  # Laravel Queue Worker (migrations are run explicitly during deployment; workers never race migrations)
   queue:
     <<: *container-defaults
     build: *backend-build
     container_name: vks-queue
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+          cpus: "1.0"
     # queue:heartbeat пишет timestamp в общий volume storage каждые ~20 c —
     # по нему «Статус системы»/system:monitor честно видят, жив ли воркер
     # (упал queue:work или весь контейнер — файл перестаёт обновляться).
-    command: sh -c 'php artisan migrate --force || true; php artisan queue:heartbeat >/dev/null 2>&1 & exec php artisan queue:work --sleep=3 --tries=3 --max-time=3600'
+    command: sh -c 'php artisan queue:heartbeat >/dev/null 2>&1 & i=0; while [ "$i" -lt "${QUEUE_WORKERS:-2}" ]; do (while true; do php artisan queue:work database --queue=vks,default --sleep=1 --tries=3 --timeout=240 --max-time=3600; sleep 1; done) & i=$((i+1)); done; wait'
     volumes: *backend-volumes
-    environment: *backend-env
+    environment:
+      <<: *backend-env
+      QUEUE_WORKERS: "${QUEUE_WORKERS:-2}"
+      BCS_RUN_AS_WWW_DATA: "1"
     depends_on:
       mysql:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "ps -ef | grep -q '[q]ueue:work' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    stop_grace_period: 45s
+    init: true
     networks: [vks-network]
 
-  # Laravel Scheduler
+  # Laravel Scheduler (migrations are run explicitly during deployment)
   scheduler:
     <<: *container-defaults
     build: *backend-build
     container_name: vks-scheduler
     restart: unless-stopped
-    command: sh -c 'php artisan migrate --force || true; while true; do php artisan schedule:run --no-interaction & sleep 60; done'
+    command: sh -c 'while true; do php artisan schedule:run --no-interaction & sleep 60; done'
     volumes: *backend-volumes
-    environment: *backend-env
+    environment:
+      <<: *backend-env
+      BCS_RUN_AS_WWW_DATA: "1"
     depends_on:
       mysql:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "ps -ef | grep -q '[s]chedule:run' || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    stop_grace_period: 30s
+    init: true
     networks: [vks-network]
 
   # Опциональный Selenium-бот ВКС (по умолчанию НЕ запускается):
@@ -267,9 +308,11 @@ services:
     deploy:
       resources:
         limits:
-          memory: 768M
-          cpus: "1.0"
-    shm_size: 256mb
+          memory: 2048M
+          cpus: "2.0"
+    shm_size: 512mb
+    init: true
+    stop_grace_period: 45s
     logging:
       driver: json-file
       options:
@@ -279,11 +322,14 @@ services:
       BOT_HEADLESS: "1"
       BOT_PORT: "8090"
       BOT_TOKENS: "${BOT_TOKENS:-}"
+      VKSBOT_CONCURRENCY: "${VKSBOT_CONCURRENCY:-2}"
+      VKSBOT_QUEUE_LIMIT: "${VKSBOT_QUEUE_LIMIT:-20}"
       VKSBOT_ENGINE: "${VKSBOT_ENGINE:-playwright}"
-      # Таймауты Playwright (см. bot_pw.py): через NAT/SSL 45с не всегда хватает
-      VKSBOT_TIMEOUT: "${VKSBOT_TIMEOUT:-120}"
-      VKSBOT_GOTO_TIMEOUT_MS: "${VKSBOT_GOTO_TIMEOUT_MS:-90000}"
-      VKSBOT_GOTO_ATTEMPTS: "${VKSBOT_GOTO_ATTEMPTS:-3}"
+      # Оптимизированный Playwright: повторное использование Chromium,
+      # ожидание DOM вместо полной загрузки всех ресурсов.
+      VKSBOT_TIMEOUT: "${VKSBOT_TIMEOUT:-90}"
+      VKSBOT_GOTO_TIMEOUT_MS: "${VKSBOT_GOTO_TIMEOUT_MS:-45000}"
+      VKSBOT_GOTO_ATTEMPTS: "${VKSBOT_GOTO_ATTEMPTS:-2}"
       TZ: "${TZ:-Europe/Moscow}"
     # Healthcheck: мониторинг доступности бота (используется и bot:monitor,
     # и `docker compose ps` — статус unhealthy виден сразу).

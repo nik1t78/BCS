@@ -110,22 +110,30 @@
 в образе обращается к packagist за последними версиями и при нестабильной сети
 падает с `curl error 28 ... Connection timed out`.
 
+**Windows 10/11 (рекомендуемый первый запуск):** откройте PowerShell в корне распакованной папки проекта и выполните:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\START-BCS-WINDOWS.ps1
+```
+
+Скрипт создаёт `.env` только если его ещё нет, генерирует уникальные пароли и `APP_KEY`, проверяет Docker Compose, собирает контейнеры, публикует Laravel `public/`, применяет миграции и создаёт storage-ссылку. Существующий `.env` не перезаписывается. После первого запуска проверьте `SITE_IP` в `.env`: он должен соответствовать IP-адресу сервера.
+
+**Linux / ручной запуск:**
+
 ```bash
-cp .env.example .env      # задать DB_PASSWORD, DB_ROOT_PASSWORD, REDIS_PASSWORD; APP_KEY — по желанию
-# backend/.env создавать НЕ нужно: при первом `docker compose up` контейнер
-# сам создаст его из backend/.env.example и сгенерирует настоящий APP_KEY.
-# ВАЖНО: весь бэкенд (код + vendor composer) живёт ВНУТРИ docker-образа —
-# bind-mount ./backend в docker-compose.yml удалён. Правки кода на хосте
-# применяются после `docker compose up -d --build backend queue scheduler`.
+cp .env.example .env      # заполнить обязательные пароли и APP_KEY
+# APP_KEY, DB_PASSWORD, DB_ROOT_PASSWORD и REDIS_PASSWORD обязательны.
+# APP_KEY должен быть корректным ключом Laravel формата base64:... .
+docker compose config --quiet
 docker compose up -d --build
-# Статика backend/public/ для nginx извлекается из ОБРАЗА в volume
-# backend_public (bind с хоста больше не используется):
 docker compose run --rm --no-deps backend-assets
 docker compose exec backend php artisan migrate --force
-docker compose exec backend php artisan storage:link   # картинки/вложения
-docker compose exec backend php artisan db:seed --class=VksDatabaseSeeder --force
-docker compose exec backend php artisan optimize       # config/route/view cache
+docker compose exec backend php artisan storage:link --force
 ```
+
+Не запускайте сидер на рабочей базе без необходимости: `VksDatabaseSeeder` создаёт демонстрационные учётные записи со стандартными паролями и примеры конференций. Для чистой тестовой установки его можно запустить отдельно, после чего сразу сменить все пароли.
+
+ВАЖНО: весь бэкенд (код + vendor composer) живёт ВНУТРИ docker-образа — bind-mount `./backend` в `docker-compose.yml` удалён. Правки PHP-кода на хосте применяются после `docker compose up -d --build backend queue scheduler`.
 
 Приложение доступно на `http://localhost` и, так как Nginx слушает `0.0.0.0`,
 для пользователей локальной сети — на `http://<IP этой машины>/` без порта в адресе
@@ -192,10 +200,10 @@ php artisan migrate                    # применить миграции (в
 На будущее — не используйте `>>` и `Add-Content` для `.env`. Безопасные способы:
 
 ```powershell
-Add-Content -Path .env -Value 'VITE_VKS_AUTOBOT=1' -Encoding UTF8   # PS 7+
+Add-Content -Path .env -Value 'VKSBOT_EXPECTED=true' -Encoding UTF8   # PS 7+
 # либо через редактор (notepad++ / VS Code: сохранить как UTF-8 без BOM, LF)
 # либо одной командой:
-"VITE_VKS_AUTOBOT=1" | Out-File .env -Append -Encoding ascii        # только ASCII-значения!
+"VKSBOT_EXPECTED=true" | Out-File .env -Append -Encoding ascii        # только ASCII-значения!
 ```
 
 **2. `Лексема "&&" не является допустимым разделителем операторов` (PowerShell 5.1)**
@@ -289,51 +297,29 @@ docker compose up -d backend   # пересоздаст laravel.log от име�
 
 ## Оптимизация Docker: память и диск
 
-Все контейнеры ограничены по RAM/CPU прямо в `docker-compose.yml`
-(`deploy.resources.limits` + лимит логов json-file 3×10 МБ + `no-new-privileges`).
-Суммарный потолок ≈ 2.4 ГБ RAM; при нехватке контейнер будет остановлен (OOM),
-а не выжмет весь компьютер. Дополнительно:
+Контейнеры ограничены по RAM/CPU прямо в `docker-compose.yml` (`deploy.resources.limits`, лимит логов json-file 3×10 МБ и `no-new-privileges`). При включённом боте резервируйте около 2 ГБ дополнительной RAM для двух headless Chromium workers. Дополнительно:
 
 - **MySQL** ужат: `innodb-buffer-pool-size=64M`, `performance-schema=OFF`,
   `max-connections=80`, tmp/heap-таблицы 8–16 МБ, `shm_size: 64mb`;
-- **Redis**: жёсткий `--maxmemory 96mb --maxmemory-policy allkeys-lru`,
-  RDB/AOF отключены (`--save "" --appendonly no`) — redis используется только
-  как кэш/очередь, данные не теряются (источник истины — MySQL);
+- **Redis**: ограничен `--maxmemory 96mb --maxmemory-policy allkeys-lru`,
+  RDB/AOF отключены; очередь Laravel использует надёжный database-драйвер MySQL,
+  Redis остаётся необязательным сервисом;
 - **PHP-FPM**: динамический пул `pm.max_children=6`, memory_limit 128M —
   backend физически не разрастётся выше своего лимита;
 - **frontend-builder** одноразовый: собрал `dist` → смонтировал в volume → завершился,
   оперативку после сборки не держит;
-- **vks-bot** (Chromium) — до 768 МБ только на время создания ссылки. По
-  умолчанию НЕ запускается (compose-profile `bot`; включается командой
-  `docker compose --profile bot up -d vks-bot` + `VITE_VKS_AUTOBOT=1` при
-  сборке фронта). Без бота ссылка ВКС генерируется локально мгновенно в том
-  же формате платформы, поэтому контейнер с Chromium не тратит RAM впустую.
+- **vks-bot** (Chromium) — отдельный сервис с двумя независимыми worker-потоками
+  и двумя браузерными сессиями по умолчанию; ресурсы ограничены 2 ГБ RAM и 2 CPU.
+  Запускается профилем `bot`; браузерный JS не содержит BOT_TOKENS.
 
-#### Если браузер показывает «Selenium-бот не смог создать встречу»
+#### Автоматическое создание реальных комнат ВКС
 
-Такое предупреждение появляется только когда фронт собран с `VITE_VKS_AUTOBOT=1`,
-но запрос к боту не удался. Типовые причины и действия (на сервере, в папке проекта):
+1. В `.env` задайте `BOT_TOKENS` длинным случайным секретом, `VKSBOT_EXPECTED=true`, `VKSBOT_AUTO=true`, `QUEUE_CONNECTION=database`, `QUEUE_WORKERS=2`, `VKSBOT_CONCURRENCY=2`.
+2. Запустите сервисы: `docker compose --profile bot up -d --build vks-bot backend queue scheduler`.
+3. После изменения PHP-кода: `docker compose exec backend php artisan optimize:clear`.
+4. Проверяйте: `docker compose logs --tail=100 vks-bot queue`.
 
-```bash
-# 1) Контейнер бота не запущен (профиль "bot" по умолчанию выключен):
-docker compose --profile bot up -d vks-bot
-docker compose ps vks-bot          # статус должен быть healthy
-
-# 2) Ошибка 401 / "Bad or missing X-Bot-Token": секрет BOT_TOKENS в .env
-#    изменён, а фронт собран со старым значением — пересоберите фронт:
-docker compose build --no-cache frontend && docker compose up -d frontend nginx
-
-# 3) Бот падает внутри (Chromium/сайт недоступен) — смотрите логи:
-docker compose logs --tail=50 vks-bot
-
-# 4) Штатный режим без бота: VITE_VKS_AUTOBOT=0 в .env + пересборка фронта —
-#    ссылка генерируется локально, предупреждение показываться не будет.
-```
-
-Мониторинг `php artisan bot:monitor` (каждые 5 минут, алерт админу в MAX)
-включается флагом `VKSBOT_EXPECTED=true` — ставьте его только вместе с
-запущенным контейнером бота, иначе мониторинг будет сообщать о «сбое»
-опционального сервиса.
+Секрет `BOT_TOKENS` передаётся только между Laravel и сервисом бота. Он не включается в JS-бандл. Создание выполняется асинхронно; несколько разных конференций могут обрабатываться одновременно независимыми экземплярами Chromium. Повторная задача для одной встречи блокируется по уникальному ключу. При ошибке фиктивная ссылка не сохраняется: статус становится `failed`, а организатор может повторить создание из карточки встречи.
 
 ### Автоматическая чистка места на диске
 
@@ -419,3 +405,13 @@ docker compose exec backend php artisan optimize
 
 Проверка чистоты перед `up`: `docker compose config --quiet` — если команда
 молчит, compose-файл и `.env` в порядке (ни WARN, ни `\x00`).
+
+---
+
+## Автономный запуск и восстановление после отключения питания
+
+Инструкции и готовые скрипты находятся в `ops/`:
+- `ops/windows/README.md` — автозапуск Docker Desktop, Windows Task Scheduler, watchdog и копирование проверенных бэкапов на отдельный диск/NAS.
+- `ops/linux/README.md` — рекомендуемый режим Linux Server + systemd для полностью автоматического запуска без входа пользователя.
+
+Важно: при полном отключении питания компьютер физически не может работать. Для непрерывной работы нужен UPS; для автоматического старта после восстановления питания — BIOS/UEFI `Restore on AC Power Loss = Power On`. На Windows Docker Desktop обычно требует пользовательскую сессию; Linux Server + Docker Engine/systemd надёжнее для безоператорной эксплуатации.

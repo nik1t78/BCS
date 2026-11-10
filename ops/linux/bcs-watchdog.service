@@ -1,0 +1,10 @@
+[Unit]
+Description=BCS container health recovery check
+After=docker.service bcs.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/bcs
+Environment=BCS_PROJECT_DIR=/opt/bcs
+ExecStart=/opt/bcs/ops/linux/bcs-watchdog.sh

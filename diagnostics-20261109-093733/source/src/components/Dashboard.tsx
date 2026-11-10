@@ -1,0 +1,810 @@
+import React, { useState, useEffect } from "react";
+import { User, Meeting } from "../types";
+import { getMeetings, getUsersForDisplay, updateMeeting } from "../store-api";
+import { occursOn, withDate, MEETING_OCCURRENCES_LIMIT_DAYS } from "../utils/recurrence";
+import FreeRoomsWidget from "./FreeRoomsWidget";
+import OutlookCalendar, { OutlookView } from "./OutlookCalendar";
+import RoomBookingModal from "./RoomBookingModal";
+import UserPanel from "./UserPanel";
+import type { MeetingPrefill } from "./UserPanel";
+import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
+import { toDateKey, formatRuDate } from "../utils/dateKey";
+import { icsAPI, meetingsAPI } from "../api/client";
+import { syncServerTime, serverNowDate, serverTodayKey as serverTodayKeyTz, serverNowHm as serverNowHmTz, serverTodayKey as guessServerTodayKey } from "../api/serverTime";
+
+/** Часы главной страницы: «сейчас» по СЕРВЕРНОМУ времени (с offset из
+ *  /api/time / localStorage), а не по часам браузера. При сбитой дате/времени
+ *  в Windows локальные часы отстают на сутки — «Сегодня» в расписании и счётчик
+ *  до ближайшей встречи считались от «29», хотя сервер жил 30-м (жалоба:
+ *  «сегодня у меня 30 число, а он записывает 29»). */
+const nowForUi = (): Date => {
+  try {
+    return serverNowDate();
+  } catch {
+    return new Date();
+  }
+};
+
+interface DashboardProps {
+  user: User;
+  onNavigate: (page: string) => void;
+  /** Клик по свободному слоту в виджете «Свободные залы» → переход к созданию ВКС */
+  onBookSlot?: (roomName: string, startTime: string, endTime: string, date: string, link?: string) => void;
+}
+
+/** Диапазон дат видимых дней календаря (для разворачивания повторов) */
+function visibleRange(days: Date[]): { from: string; to: string } {
+  const keys = days.map(toDateKey).sort();
+  return { from: keys[0], to: keys[keys.length - 1] };
+}
+
+const addDaysLocal = (d: Date, n: number): Date => {
+  const r = new Date(d);
+  r.setDate(r.getDate() + n);
+  return r;
+};
+
+/** Секундный таймер изолирован от тяжёлой главной страницы.
+ *  Его тик не вызывает повторный рендер Dashboard, календаря и виджета залов. */
+const MeetingCountdown = React.memo(function MeetingCountdown({
+  date,
+  startTime,
+}: {
+  date: string;
+  startTime: string;
+}) {
+  const [value, setValue] = useState("");
+
+  useEffect(() => {
+    const update = () => {
+      const target = new Date(`${date}T${startTime}`);
+      const diff = target.getTime() - nowForUi().getTime();
+      if (diff <= 0) {
+        setValue("Начинается");
+        return;
+      }
+      const hours = Math.floor(diff / 3_600_000);
+      const minutes = Math.floor((diff % 3_600_000) / 60_000);
+      const seconds = Math.floor((diff % 60_000) / 1_000);
+      setValue(`${hours}ч ${minutes}м ${seconds}с`);
+    };
+
+    update();
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [date, startTime]);
+
+  return <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">{value}</p>;
+});
+
+export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardProps) {
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [currentTime, setCurrentTime] = useState(nowForUi());
+  // Outlook-вид расписания аудиторий на главной: день / неделя / месяц
+  const [calView, setCalView] = useState<OutlookView>("day");
+  const [calDate, setCalDate] = useState(nowForUi());
+  // В одно время может быть несколько конференций — храним все «следующие» (с тем же датой/временем старта)
+  const [nextMeetings, setNextMeetings] = useState<Meeting[]>([]);
+  // Экспорт «Мой календарь ВКС» в .ics
+  const [icsLoading, setIcsLoading] = useState(false);
+  // Модалка выбора зала (клик по пустому слоту календаря / кнопка «Выбрать зал»)
+  const [bookingOpen, setBookingOpen] = useState(false);
+  const [bookingAt, setBookingAt] = useState<{ date: string; startTime: string; endTime?: string; room?: string }>({
+    date: guessServerTodayKey(),
+    startTime: "09:00",
+  });
+  // Панель создания ВКС прямо на главной (после выбора зала)
+  // Панель создания ВКС открыта, когда есть предзаполнение (после выбора времени/зала)
+  const [createPrefill, setCreatePrefill] = useState<MeetingPrefill | null>(null);
+  const createOpen = createPrefill !== null;
+
+  // Единая точка: при любом предзаполнении форма ВКС открывается сразу.
+  // Поле ссылки оставляем ПУСТЫМ (autoLink=true) — живая комната на
+  // salutejazz.ru создаётся Selenium-ботом при сохранении встречи.
+  // Раньше ссылка генерировалась локально сразу, но такой коды комнаты НЕ
+  // существовали на платформе → «неправильный пароль» при входе.
+  const openCreatePanel = (p: MeetingPrefill) => {
+    setCreatePrefill({ ...p, autoLink: true, link: "" });
+  };
+
+  const handleDownloadIcs = async () => {
+    setIcsLoading(true);
+    try {
+      const blob = await icsAPI.download();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "vks-my-schedule.ics";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("ICS export error:", e);
+      alert("Не удалось сформировать файл .ics");
+    } finally {
+      setIcsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    let dataTimer: number | null = null;
+    let pollDelay = 300000;
+    const loadData = async () => {
+      try {
+        // Кеш в store-api: если встречи не менялись — один лёгкий запрос
+        // вместо полной постраничной выгрузки; список сотрудников тоже из кеша.
+        const [m, u] = await Promise.all([getMeetings(), getUsersForDisplay(user.role)]);
+        if (cancelled) return; // компонент мог размонтироваться за время запроса
+        setMeetings(m);
+        setUsers(u);
+        // Пока сервер создаёт реальную ссылку SaluteJazz, обновляем список
+        // раз в 10 секунд. В обычном режиме сохраняем редкий 5-минутный поллинг.
+        const nextDelay = m.some((meeting) => meeting.vksLinkStatus === "pending" || meeting.vksLinkStatus === "creating")
+          ? 10000
+          : 300000;
+        if (nextDelay !== pollDelay) {
+          pollDelay = nextDelay;
+          if (dataTimer !== null && !document.hidden) {
+            clearInterval(dataTimer);
+            dataTimer = window.setInterval(loadData, pollDelay);
+          }
+        }
+      } catch (error) {
+        console.error("Error loading dashboard:", error);
+      }
+    };
+    loadData();
+
+    // Данные календаря и статистики не требуют секундной точности.
+    // Обновляем родительскую страницу раз в минуту, а секундный countdown
+    // вынесен в отдельный memo-компонент ниже — иначе каждую секунду заново
+    // рендерились календарь, статистика, свободные залы и все карточки.
+    const timer = setInterval(() => setCurrentTime(nowForUi()), 60000);
+    // Фоновое обновление данных — ТОЛЬКО когда вкладка видна. Раньше поллинг
+    // работал и в фоновых вкладках: у пользователей открыто по несколько
+    // вкладок/страниц и каждая каждые 30 с тянула ВСЕ встречи со страницы 1
+    // до последней (per_page=200) — сервер «лысил» и ответы тормозили.
+    const startPolling = () => {
+      if (dataTimer !== null) return;
+      // 5 минут вместо 60 секунд: уведомления о новых/изменённых встречах
+      // приходят мгновенно через SSE + toast-канал, поэтому тяжёлый полный
+      // перезагрузочный запрос нужен редко. Это главная разгрузка сервера:
+      // раньше N вкладок × M пользователей били по /meetings+персоналу
+      // каждые 60 с, и на слабом хосте весь сайт начинал «лагать».
+      dataTimer = window.setInterval(loadData, pollDelay);
+    };
+    const stopPolling = () => {
+      if (dataTimer !== null) {
+        clearInterval(dataTimer);
+        dataTimer = null;
+      }
+    };
+    const onVisibility = () => (document.hidden ? stopPolling() : startPolling());
+    if (!document.hidden) startPolling();
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      stopPolling();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+
+  // API возвращает id числами, user.id — строка: сравниваем через Number
+  const hasAccessTo = (m: Meeting) =>
+    Number(m.organizerId) === Number(user.id) || (m.participants ?? []).some((p) => Number(p) === Number(user.id));
+
+  // На главной («Обзор») обычный пользователь видит ТОЛЬКО свои ВКС —
+  // организованные им или где он участник. Все остальные конференции —
+  // в разделе «Расписание». Админ/модератор видят всё.
+  const visibleMeetings =
+    user.role === "admin" || user.role === "moderator" ? meetings : meetings.filter((m) => hasAccessTo(m));
+
+  useEffect(() => {
+    const today = toDateKey(currentTime);
+    const now = currentTime.toTimeString().slice(0, 5);
+
+    // Разворачиваем повторы в реальные occurrences: раньше «Следующая
+    // конференция» брала хранимую дату серии (meeting.date), и перенесённая/
+    // повторяющаяся встреча показывалась датой основания («29.10»), хотя
+    // ближайшее вхождение было сегодня («30.10»).
+    type Occ = Meeting & { _occDate?: string };
+    const occurrences: Occ[] = [];
+    for (const m of visibleMeetings) {
+      if (m.status === "cancelled" || m.status === "completed") continue;
+      if (!m.recurring || m.recurring === "none") {
+        occurrences.push(m);
+        continue;
+      }
+      let pushedToday = false;
+      for (let i = 0; i <= MEETING_OCCURRENCES_LIMIT_DAYS; i++) {
+        const d = new Date(`${today}T00:00:00`);
+        d.setDate(d.getDate() + i);
+        if (!occursOn(m, d)) continue;
+        const occ = withDate(m, d) as Occ;
+        occ._occDate = toDateKey(d);
+        occurrences.push(occ);
+        if (i === 0) pushedToday = true;
+      }
+      // На случай, если серия уже за горизонтом развёртывания — не теряем встречу
+      if (!pushedToday && m.date >= today) occurrences.push(m);
+    }
+
+    const upcoming = occurrences
+      .filter((m) => {
+        const dateKey = m._occDate ?? m.date;
+        if (dateKey > today) return true;
+        if (dateKey === today && m.startTime > now) return true;
+        return false;
+      })
+      .sort((a, b) => {
+        const da = a._occDate ?? a.date;
+        const db = b._occDate ?? b.date;
+        return da !== db ? da.localeCompare(db) : a.startTime.localeCompare(b.startTime);
+      });
+
+    // Берём все конференции, совпадающие по дате и времени старта с ближайшей —
+    // в одно время может быть несколько конференций.
+    const first = upcoming[0] || null;
+    const firstDate = first ? first._occDate ?? first.date : "";
+    const simultaneous = first
+      ? upcoming.filter((m) => (m._occDate ?? m.date) === firstDate && m.startTime === first.startTime)
+      : [];
+    setNextMeetings(simultaneous);
+
+  }, [currentTime, visibleMeetings]);
+
+  const todayMeetings = (() => {
+    const tk = toDateKey(currentTime);
+    const res: Meeting[] = [];
+    for (const m of visibleMeetings) {
+      if (!m.recurring || m.recurring === "none") {
+        if (m.date === tk) res.push(m);
+        continue;
+      }
+      const d = new Date(`${tk}T00:00:00`);
+      if (occursOn(m, d)) res.push(withDate(m, d));
+    }
+    return res;
+  })();
+  const getUserName = (id: string) => users.find((u) => Number(u.id) === Number(id))?.name || "Неизвестный";
+
+  // Видимые дни текущей вкладки (день / неделя / месяц)
+  const calDays = (() => {
+    if (calView === "day") return [calDate];
+    if (calView === "month") return [];
+    const iso = (d: Date) => (d.getDay() + 6) % 7; // пн=0
+    const start = addDaysLocal(calDate, -iso(calDate));
+    const count = calView === "workweek" ? 5 : 7;
+    return Array.from({ length: count }, (_, i) => addDaysLocal(start, i));
+  })();
+
+  // Разворачиваем повторы occurrences'ами в видимом диапазоне
+  const expandedMeetings = (() => {
+    if (calView === "month") {
+      const from = toDateKey(new Date(calDate.getFullYear(), calDate.getMonth(), 1));
+      const to = toDateKey(new Date(calDate.getFullYear(), calDate.getMonth() + 1, 0));
+      return visibleMeetings.flatMap((m) => {
+        const res: Meeting[] = [];
+        const d = new Date(`${from}T00:00`);
+        while (toDateKey(d) <= to) {
+          if (occursOn(m, d)) res.push(withDate(m, d));
+          d.setDate(d.getDate() + 1);
+        }
+        return res;
+      });
+    }
+    const { from, to } = visibleRange(calDays);
+    return visibleMeetings.flatMap((m) => {
+      const res: Meeting[] = [];
+      const d = new Date(`${from}T00:00`);
+      while (toDateKey(d) <= to) {
+        if (occursOn(m, d)) res.push(withDate(m, d));
+        d.setDate(d.getDate() + 1);
+      }
+      return res;
+    });
+  })();
+
+  const isAdminOrMod = user.role === "admin" || user.role === "moderator";
+  const displayTitle = (m: Meeting) => (isAdminOrMod || hasAccessTo(m) ? m.title : "Конференция");
+  const blockSubtitle = (m: Meeting) => (isAdminOrMod || hasAccessTo(m) ? m.room || undefined : undefined);
+
+  // Клик по пустому слоту → открыть выбор зала с предзаполненными датой/временем
+  const handleCreateAt = (dateKey: string, startTime: string) => {
+    setBookingAt({ date: dateKey, startTime });
+    setBookingOpen(true);
+  };
+
+  // Подтверждение в модалке выбора зала → панель создания ВКС прямо на главной.
+  // Если задан родительский сценарий (переход в раздел «Мои конференции») —
+  // передаём ему готовую ссылку ВКС; иначе открываем панель здесь же.
+  const handleBookingConfirm = (roomName: string, dateKey: string, startTime: string, endTime: string) => {
+    setBookingOpen(false);
+    // Панель создания ВКС открывается прямо на главной — без перехода в другой
+    // раздел. После сохранения backend ставит создание комнаты в очередь.
+    openCreatePanel({ date: dateKey, startTime, endTime, room: roomName, autoLink: true });
+  };
+
+  // Быстрая кнопка «Выбрать зал» — ближайшее 15-минутное время сегодня.
+  // ВАЖНО: дата/время берутся из ХЕЛПЕРОВ серверного времени (а не из
+  // currentTime напрямую): toDateKey/currentTime.getHours() читают момент
+  // времени В ПОЯСЕ БРАУЗЕРА, поэтому при поясе устройства ≠ поясу сервера
+  // (командировка, VPS в UTC) предзаполнение уезжало на сутки назад —
+  // «ставлю 30, а модалка открывает 29». nowForUi уже учитывает offset из
+  // /api/time, но не таймзону; serverTodayKeyTz/serverNowHmTz — через Intl с
+  // таймзоной сервера, как и серверная валидация Laravel.
+  const openBookingNow = () => {
+    let todayK: string;
+    let nowHm: string;
+    try {
+      todayK = serverTodayKeyTz();
+      nowHm = serverNowHmTz();
+    } catch {
+      todayK = toDateKey(currentTime);
+      nowHm = currentTime.toTimeString().slice(0, 5);
+    }
+    const [h, m] = nowHm.split(":").map(Number);
+    const rounded = Math.ceil(((h || 0) * 60 + (m || 0)) / 15) * 15;
+    const clamped = Math.min(rounded, 23 * 60 + 45);
+    const fmt = (mins: number) =>
+      `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+    setBookingAt({ date: todayK, startTime: fmt(clamped) });
+    setBookingOpen(true);
+  };
+
+  // Перенос встречи drag&drop — только свои (или все для админа)
+  const canDragMeeting = (m: Meeting) => isAdminOrMod || hasAccessTo(m);
+  const handleRequestMove = async (m: Meeting, dateKey: string, startTime: string) => {
+    if (!window.confirm(`Перенести «${displayTitle(m)}» на ${dateKey} ${startTime}?`)) return;
+    const realId = String(m._occurrenceOf ?? m.id);
+    await updateMeeting(realId, { date: dateKey, startTime });
+    setMeetings((prev) => prev.map((x) => (String(x.id) === realId ? { ...x, date: dateKey, startTime } : x)));
+  };
+
+  // Клик по встрече → карточка как в «Расписании»: ссылка / копирование / отмена
+  const [detailMeeting, setDetailMeeting] = useState<Meeting | null>(null);
+  const copyLink = async (link: string) => {
+    try {
+      await navigator.clipboard.writeText(link);
+      alert("Ссылка скопирована");
+    } catch {
+      alert(link);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Welcome */}
+      <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-6 text-white">
+        <h2 className="text-2xl font-bold">Добро пожаловать, {user.name}!</h2>
+        <p className="text-blue-100 mt-1">
+          {currentTime.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+        </p>
+      </div>
+
+      {/* Свободные залы — в самом верху. Клик по слоту открывает форму ВКС
+          прямо на главной; реальная ссылка создаётся серверной очередью. */}
+      <FreeRoomsWidget
+        onPickSlot={(roomName, startTime, endTime, date) => {
+          openCreatePanel({ date, startTime, endTime, room: roomName, autoLink: true });
+        }}
+      />
+
+      {/* Stats — нули показываем прочерком, чтобы не мозолили глаза */}
+      <div className="grid grid-cols-2 md:grid-cols-4 3k:grid-cols-8 gap-4">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
+          <p className="text-sm text-gray-500 dark:text-gray-400">Сегодня</p>
+          <p
+            className={`text-2xl font-bold ${todayMeetings.length ? "text-gray-800 dark:text-gray-100" : "text-gray-300 dark:text-gray-600"}`}
+          >
+            {todayMeetings.length || "—"}
+          </p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
+          <p className="text-sm text-gray-500 dark:text-gray-400">Всего</p>
+          <p
+            className={`text-2xl font-bold ${visibleMeetings.length ? "text-gray-800 dark:text-gray-100" : "text-gray-300 dark:text-gray-600"}`}
+          >
+            {visibleMeetings.length || "—"}
+          </p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
+          <p className="text-sm text-gray-500 dark:text-gray-400">Организовано</p>
+          <p
+            className={`text-2xl font-bold ${visibleMeetings.filter((m) => Number(m.organizerId) === Number(user.id)).length ? "text-gray-800 dark:text-gray-100" : "text-gray-300 dark:text-gray-600"}`}
+          >
+            {visibleMeetings.filter((m) => Number(m.organizerId) === Number(user.id)).length || "—"}
+          </p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
+          <p className="text-sm text-gray-500 dark:text-gray-400">Высокий приоритет</p>
+          <p
+            className={`text-2xl font-bold ${visibleMeetings.filter((m) => m.priority === "high").length ? "text-gray-800 dark:text-gray-100" : "text-gray-300 dark:text-gray-600"}`}
+          >
+            {visibleMeetings.filter((m) => m.priority === "high").length || "—"}
+          </p>
+        </div>
+      </div>
+
+      {/* Next Meeting(s) — в одно время может быть несколько конференций */}
+      {nextMeetings.length > 0 &&
+        (() => {
+          const multiple = nextMeetings.length > 1;
+
+          return (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border-2 border-blue-200 dark:border-blue-800 p-6">
+              <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">
+                <i className="fas fa-arrow-right text-blue-500 mr-2"></i>
+                {multiple ? `Следующие конференции (${nextMeetings.length})` : "Следующая конференция"}
+              </h2>
+
+              <div className={multiple ? "space-y-6" : ""}>
+                {nextMeetings.map((nextMeeting, idx) => {
+                  const canSeeDetails = user.role === "admin" || user.role === "moderator" || hasAccessTo(nextMeeting);
+
+                  return (
+                    <div
+                      key={nextMeeting.id}
+                      className={
+                        multiple ? "pb-6 border-b border-gray-200 dark:border-gray-700 last:pb-0 last:border-b-0" : ""
+                      }
+                    >
+                      {multiple && (
+                        <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 mb-2">
+                          Конференция {idx + 1} из {nextMeetings.length}
+                        </p>
+                      )}
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 3k:grid-cols-5 gap-4 mb-4">
+                        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
+                          <p className="text-sm text-blue-600 dark:text-blue-400 font-medium">Название</p>
+                          <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">
+                            {canSeeDetails ? nextMeeting.title : "Конференция"}
+                          </p>
+                        </div>
+                        <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4">
+                          <p className="text-sm text-purple-600 dark:text-purple-400 font-medium">Дата и время</p>
+                          <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">
+                            {formatRuDate(nextMeeting.date)}
+                          </p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            {nextMeeting.startTime} - {nextMeeting.endTime}
+                          </p>
+                        </div>
+                        <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-4">
+                          <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">До начала</p>
+                          <MeetingCountdown date={nextMeeting.date} startTime={nextMeeting.startTime} />
+                        </div>
+                        <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4">
+                          <p className="text-sm text-orange-600 dark:text-orange-400 font-medium">Место</p>
+                          <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">
+                            {canSeeDetails ? nextMeeting.room || "Онлайн" : "Скрыто"}
+                          </p>
+                        </div>
+                      </div>
+
+                      {canSeeDetails && (
+                        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                              <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">Организатор</p>
+                              <p className="text-gray-800 dark:text-gray-100">{getUserName(nextMeeting.organizerId)}</p>
+                            </div>
+                            <div>
+                              <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">Участники</p>
+                              <p className="text-gray-800 dark:text-gray-100">{nextMeeting.participants.length} чел.</p>
+                            </div>
+                            <div>
+                              <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">Кабинет</p>
+                              <p className="text-gray-800 dark:text-gray-100 font-semibold">
+                                {nextMeeting.room ? `📍 ${nextMeeting.room}` : "🌐 Онлайн"}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {nextMeeting.link ? (
+                        <a
+                          href={buildJoinUrl(
+                            nextMeeting.link,
+                            nextMeeting.meetingPassword ?? extractPswFromAny(nextMeeting.link)
+                          )}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                        >
+                          <i className="fas fa-video mr-2"></i>
+                          Подключиться к конференции
+                        </a>
+                      ) : (
+                        <button
+                          disabled
+                          className="bg-gray-400 text-white px-6 py-3 rounded-lg font-medium cursor-not-allowed"
+                        >
+                          <i className="fas fa-video mr-2"></i>
+                          {nextMeeting.vksLinkStatus === "pending" || nextMeeting.vksLinkStatus === "creating"
+                            ? "Бот создаёт ссылку…"
+                            : nextMeeting.vksLinkStatus === "failed"
+                              ? "Не удалось создать ссылку — обратитесь к администратору"
+                              : "Ссылка пока не добавлена"}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
+      {/* Расписание аудиторий — как в Outlook: сетка времени, день/рабочая неделя/неделя/месяц.
+          Клик по пустому слоту → создание ВКС; клик по встрече → карточка со ссылкой «Войти». */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">
+            <i className="fas fa-calendar-day text-purple-500 mr-2"></i>
+            Расписание аудиторий
+          </h2>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={openBookingNow}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
+            >
+              <i className="fas fa-door-open mr-2"></i>Выбрать зал · Создать ВКС
+            </button>
+            <button
+              onClick={() => onNavigate?.("schedule")}
+              className="text-blue-600 dark:text-blue-400 text-sm font-medium hover:underline whitespace-nowrap"
+            >
+              Открыть полный календарь <i className="fas fa-arrow-right ml-1 text-xs"></i>
+            </button>
+          </div>
+        </div>
+
+        {/* Переключатель вида — как в Outlook */}
+        <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden mb-4 text-sm">
+          {(
+            [
+              ["day", "День"],
+              ["workweek", "Рабочая неделя"],
+              ["week", "Неделя"],
+              ["month", "Месяц"],
+            ] as [OutlookView, string][]
+          ).map(([v, label]) => (
+            <button
+              key={v}
+              onClick={() => setCalView(v)}
+              className={`px-3 py-1.5 transition-colors ${
+                calView === v
+                  ? "bg-blue-600 text-white font-medium"
+                  : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <OutlookCalendar
+          meetings={expandedMeetings}
+          view={calView}
+          selectedDate={calDate}
+          onSelectedDateChange={setCalDate}
+          onSelectMeeting={(m) => setDetailMeeting(m)}
+          onCreateAt={handleCreateAt}
+          canDragMeeting={canDragMeeting}
+          onRequestMove={handleRequestMove}
+          displayTitle={displayTitle}
+          blockSubtitle={blockSubtitle}
+        />
+      </div>
+
+      {/* Модалка выбора зала: Outlook-шкала дня 00:00–24:00, клик по свободному времени →
+          «Занять и создать ВКС» (переход в форму с автогенерацией ссылки) */}
+      <RoomBookingModal
+        open={bookingOpen}
+        date={bookingAt.date}
+        startTime={bookingAt.startTime}
+        endTime={bookingAt.endTime}
+        roomName={bookingAt.room}
+        onClose={() => setBookingOpen(false)}
+        onConfirm={handleBookingConfirm}
+      />
+
+      {/* Панель создания ВКС прямо поверх главной — без перехода в другой раздел.
+          ВАЖНО: закрытие по клику на тёмный фон (backdrop) НЕ сбрасывает prefill
+          мгновенно — иначе любой «скользнувший» клик мимо карточки закрывал окно
+          раньше, чем пользователь успевал что-либо выбрать. Закрытие происходит
+          только если mousedown тоже начался на backdrop (как в нативных диалогах). */}
+      {createOpen && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/50 flex items-start justify-center p-4 overflow-auto"
+          onMouseDown={(e) => {
+            (e.target as HTMLElement).setAttribute("data-backdown", "1");
+          }}
+          onClick={(e) => {
+            const t = e.target as HTMLElement;
+            if (t.getAttribute("data-backdown") === "1") setCreatePrefill(null);
+          }}
+        >
+          <div
+            className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl my-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 rounded-t-xl z-10">
+              <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">
+                <i className="fas fa-video text-blue-600 mr-2"></i>Создание ВКС
+              </h3>
+              <button
+                onClick={() => setCreatePrefill(null)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl leading-none"
+                aria-label="Закрыть"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-6">
+              <UserPanel
+                user={user}
+                onNavigate={onNavigate}
+                formOnly
+                initialPrefill={createPrefill}
+                onPrefillConsumed={() => setCreatePrefill(null)}
+                onClose={() => setCreatePrefill(null)}
+                onCreated={() => {
+                  setCreatePrefill(null);
+                  // обновим список встреч после создания
+                  getMeetings()
+                    .then(setMeetings)
+                    .catch(() => {});
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Карточка встречи (клик по блоку в календаре) */}
+      {detailMeeting &&
+        (() => {
+          const canSee = isAdminOrMod || hasAccessTo(detailMeeting);
+          return (
+            <div
+              className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+              onClick={() => setDetailMeeting(null)}
+            >
+              <div
+                className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full p-6"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100">
+                    {canSee ? detailMeeting.title : "Конференция"}
+                  </h3>
+                  <button
+                    onClick={() => setDetailMeeting(null)}
+                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none"
+                    aria-label="Закрыть"
+                  >
+                    ×
+                  </button>
+                </div>
+                <p className="text-gray-600 dark:text-gray-300 mb-1">
+                  <i className="far fa-clock mr-2 text-blue-500"></i>
+                  {formatRuDate(detailMeeting.date)} • {detailMeeting.startTime}–
+                  {detailMeeting.endTime}
+                </p>
+                <p className="text-gray-600 dark:text-gray-300 mb-1">
+                  <i className="fas fa-map-marker-alt mr-2 text-purple-500"></i>
+                  {canSee ? detailMeeting.room || "Онлайн" : "Место скрыто"}
+                </p>
+                {canSee && (
+                  <p className="text-gray-600 dark:text-gray-300 mb-3">
+                    <i className="fas fa-user mr-2 text-emerald-500"></i>
+                    Организатор: {getUserName(detailMeeting.organizerId)}
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-2 mt-4">
+                  {canSee && detailMeeting.link && (
+                    <>
+                      <a
+                        href={buildJoinUrl(
+                          detailMeeting.link,
+                          detailMeeting.meetingPassword ?? extractPswFromAny(detailMeeting.link)
+                        )}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                      >
+                        <i className="fas fa-video mr-2"></i>Войти в ВКС
+                      </a>
+                      <button
+                        onClick={() => copyLink(detailMeeting.link!)}
+                        className="border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-lg text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                      >
+                        <i className="fas fa-link mr-2"></i>Копировать ссылку
+                      </button>
+                    </>
+                  )}
+                  {canSee && !detailMeeting.link && detailMeeting.vksLinkStatus === "failed" &&
+                    (Number(detailMeeting.organizerId) === Number(user.id) || user.role === "admin" || user.role === "moderator") && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            await meetingsAPI.retryVksLink(String(detailMeeting._occurrenceOf ?? detailMeeting.id));
+                            alert("Создание ссылки ВКС повторно поставлено в очередь.");
+                          } catch (error: any) {
+                            alert(error?.message || "Не удалось поставить создание ссылки в очередь.");
+                          }
+                        }}
+                        className="bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-700 transition-colors"
+                      >
+                        <i className="fas fa-rotate-right mr-2"></i>Повторить создание ссылки
+                      </button>
+                    )}
+                  {canSee &&
+                    Number(detailMeeting.organizerId) === Number(user.id) &&
+                    detailMeeting.status !== "cancelled" && (
+                      <button
+                        onClick={async () => {
+                          if (!window.confirm("Отменить эту конференцию?")) return;
+                          await updateMeeting(String(detailMeeting._occurrenceOf ?? detailMeeting.id), {
+                            status: "cancelled",
+                          });
+                          setMeetings((prev) =>
+                            prev.map((x) =>
+                              String(x.id) === String(detailMeeting._occurrenceOf ?? detailMeeting.id)
+                                ? { ...x, status: "cancelled" as Meeting["status"] }
+                                : x
+                            )
+                          );
+                          setDetailMeeting(null);
+                        }}
+                        className="border border-red-300 text-red-600 px-4 py-2 rounded-lg text-sm hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+                      >
+                        <i className="fas fa-ban mr-2"></i>Отменить
+                      </button>
+                    )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+      {/* Быстрые действия: экспорт календаря (.ics) */}
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow p-4 flex flex-col justify-between">
+        <div>
+          <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-2">
+            <i className="fas fa-calendar-minus mr-2 text-blue-600" aria-hidden="true"></i>
+            Мой календарь ВКС
+          </h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Скачайте файл .ics со своими встречами (название, время, комната, описание) и добавьте его в Outlook,
+            Яндекс.Календарь или Google Calendar — расписание будет видно даже вне системы.
+          </p>
+        </div>
+        <button
+          onClick={handleDownloadIcs}
+          disabled={icsLoading}
+          className="mt-3 self-start bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition-colors disabled:opacity-50"
+        >
+          {icsLoading ? (
+            <>
+              <i className="fas fa-circle-notch fa-spin mr-1"></i> Формирование…
+            </>
+          ) : (
+            <>
+              <i className="fas fa-download mr-1"></i> Скачать .ics
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}

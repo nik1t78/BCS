@@ -314,13 +314,11 @@ class RoomController extends Controller
                 $day->toDateString(),
                 is_array($raw) && !empty($raw) ? $raw : null
             );
-            if ($hours === null) {
-                // Зал закрыт в эту дату (выходной/праздник): не показываем его
-                // в «Свободных залах» вообще — пустые окна только путают.
-                return null;
-            }
-            $dayStart = $hours['start'];
-            $dayEnd = $hours['end'];
+            // Закрытые на дату залы тоже возвращаем в ответе с hours=null:
+            // интерфейс покажет их как закрытые, а не сообщит ошибочно,
+            // что переговорные вообще не настроены.
+            $dayStart = $hours['start'] ?? '08:00';
+            $dayEnd = $hours['end'] ?? '20:00';
 
             $busy = $bookings
                 ->where('room', $room->name)
@@ -353,7 +351,7 @@ class RoomController extends Controller
                 'free' => $free,
                 'hours' => $hours,
             ];
-        })->filter()->values();
+        })->values();
 
         return $result;
     }
@@ -386,6 +384,7 @@ class RoomController extends Controller
         }
 
         $room = Room::create($validated);
+        \App\Support\MeetingCache::bump();
 
         return response()->json(['data' => $room], 201);
     }
@@ -411,9 +410,18 @@ class RoomController extends Controller
             $validated['schedule'] = is_null($validated['schedule']) ? null : Room::normalizeSchedule($validated['schedule']);
         }
 
-        $room->update($validated);
+        $oldName = $room->name;
+        \Illuminate\Support\Facades\DB::transaction(function () use ($room, $validated, $oldName) {
+            $room->update($validated);
+            // Встречи исторически хранят название зала строкой, а не room_id.
+            // При переименовании переносим ссылку в записях, иначе будущие
+            // брони старого названия перестанут учитываться в доступности.
+            if (isset($validated['name']) && $validated['name'] !== $oldName) {
+                Meeting::where('room', $oldName)->update(['room' => $validated['name']]);
+            }
+        });
 
-        // График зала влияет на окна «Свободных залов» — сбрасываем кэш доступности.
+        // График/название зала влияют на доступность — сбрасываем кэш.
         \App\Support\MeetingCache::bump();
 
         return response()->json(['data' => $room]);
@@ -422,6 +430,7 @@ class RoomController extends Controller
     public function destroy(Room $room)
     {
         $room->delete();
+        \App\Support\MeetingCache::bump();
 
         return response()->json(['message' => 'Комната удалена']);
     }

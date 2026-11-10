@@ -56,6 +56,9 @@
         </header>
         <div class="clock" id="clock">--:--:--</div>
         <div class="date" id="today"></div>
+        <div style="display:flex;justify-content:flex-end;margin:-1rem 0 1rem">
+            <a class="joinbtn" style="background:#334155;max-width:220px" href="{{ url('/tv/' . $roomId . '/all') }}?token={{ urlencode((string) request()->query('token', '')) }}">Все ВКС этого зала →</a>
+        </div>
         <ul class="list" id="upcoming"></ul>
         <div class="empty" id="empty" style="display:none">Свободно. Следующая встреча появится здесь автоматически.</div>
     @endisset
@@ -118,6 +121,7 @@
 
     function now() { return new Date(Date.now() + serverOffset); }
     function hhmm(iso) { var d = new Date(new Date(iso).getTime() - serverOffset); return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2); }
+    function dateLabel(value) { var raw = String(value || '').slice(0, 10); var p = raw.split('-'); if (p.length !== 3) return ''; var d = new Date(Number(p[0]), Number(p[1])-1, Number(p[2]), 12); return d.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }); }
 
     // Часы: локальное время + синхронизация с сервером при каждом поллинге
     setInterval(function () {
@@ -134,9 +138,12 @@
         rows.forEach(function (m) {
             var li = document.createElement('li');
             var row = document.createElement('div'); row.className = 'row';
-            var n = document.createElement('span'); n.textContent = m.title;
+            var left = document.createElement('div'); left.style.display = 'flex'; left.style.flexDirection = 'column'; left.style.gap = '.25rem';
+            var n = document.createElement('strong'); n.textContent = m.title;
+            var d = document.createElement('small'); d.style.color = '#94a3b8'; d.textContent = dateLabel(m.date || m.start);
+            left.appendChild(n); left.appendChild(d);
             var s = document.createElement('span'); s.className = 'time'; s.textContent = hhmm(m.start) + '–' + hhmm(m.end);
-            row.appendChild(n); row.appendChild(s); li.appendChild(row);
+            row.appendChild(left); row.appendChild(s); li.appendChild(row);
             // Кнопка «Войти в ВКС» под каждой встречей — доступна заранее,
             // не только в момент старта. join_url — «вечная» ссылка /api/m/{id}.
             if (m.join_url) {

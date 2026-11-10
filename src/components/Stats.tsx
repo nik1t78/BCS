@@ -190,7 +190,7 @@ export default function Stats({ user }: StatsProps) {
       return acc;
     }, {})
   )
-    .map(([label, count]) => ({ label, count }))
+    .map(([label, count]) => ({ label: String(label), count: Number(count) }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 7);
 
@@ -202,7 +202,7 @@ export default function Stats({ user }: StatsProps) {
       return acc;
     }, {})
   )
-    .map(([id, count]) => ({ label: userNameById.get(id) || `Пользователь #${id}`, count }))
+    .map(([id, count]) => ({ label: String(userNameById.get(id) || `Пользователь #${id}`), count: Number(count) }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 7);
 

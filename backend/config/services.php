@@ -30,6 +30,7 @@ return [
         'expected' => env('VKSBOT_EXPECTED', false),
         // true — автоматически ставить встречи без ссылки в очередь к боту
         'auto'     => filter_var(env('VKSBOT_AUTO', false), FILTER_VALIDATE_BOOLEAN),
+        'token'    => env('BOT_TOKENS', ''),
     ],
 
 ];

@@ -121,11 +121,38 @@ export function computeFreeSlots(
   }
   if (cursor < to) slots.push({ startMin: cursor, endMin: to, lengthMin: 0 } as FreeSlot);
 
-  return slots
-    .map((s) => ({
-      ...s,
-      lengthMin: s.endMin - s.startMin,
-      isPast: s.startMin < pastLimit,
-    }))
-    .filter((s) => s.lengthMin >= MIN_SLOT_MIN);
+  // Разделяем интервал, пересекающий текущее время, на прошедшую и
+  // будущую части. Раньше isPast выставлялся по startMin всего окна:
+  // если окно начиналось в 08:00, а сейчас 10:15, свободные 10:15–12:00
+  // ошибочно становились недоступны до конца окна.
+  const withPastSplit: FreeSlot[] = [];
+  for (const slot of slots) {
+    const lengthMin = slot.endMin - slot.startMin;
+    if (!opts.isToday || slot.startMin >= pastLimit) {
+      withPastSplit.push({ ...slot, lengthMin, isPast: false });
+      continue;
+    }
+    if (slot.endMin <= pastLimit) {
+      withPastSplit.push({ ...slot, lengthMin, isPast: true });
+      continue;
+    }
+    if (pastLimit > slot.startMin) {
+      withPastSplit.push({
+        startMin: slot.startMin,
+        endMin: pastLimit,
+        lengthMin: pastLimit - slot.startMin,
+        isPast: true,
+      });
+    }
+    if (slot.endMin > pastLimit) {
+      withPastSplit.push({
+        startMin: pastLimit,
+        endMin: slot.endMin,
+        lengthMin: slot.endMin - pastLimit,
+        isPast: false,
+      });
+    }
+  }
+
+  return withPastSplit.filter((s) => s.lengthMin >= MIN_SLOT_MIN);
 }

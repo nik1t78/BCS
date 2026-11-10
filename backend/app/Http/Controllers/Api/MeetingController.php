@@ -10,6 +10,7 @@ use App\Models\Notification;
 use App\Models\Room;
 use App\Support\MeetingCache;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class MeetingController extends Controller
 {
@@ -229,21 +230,19 @@ class MeetingController extends Controller
             $request->merge(['reminder_minutes' => $n]);
         }
 
-        // Дата: нормализуем к каноничному YYYY-MM-DD ДО валидации и записи.
-        // Колонка `date` приведена к формату Y-m-d, но Carbon::parse может
-        // стартовать с другой таймзоны: например ISO-строка «2026-10-31T21:00:00Z»
-        // при сервере Europe/Moscow (+03) даёт локальные сутки «01.11», а строка
-        // вида «2026-10-30T23:00:00+03:00» в UTC — «29.10». Пользователь выбирал
-        // 31-е, а записывалось 30-е. Берём ТОЛЬКО календарную часть принятой
-        // строки (то, что реально видно в поле формы), без пересчёта поясов.
-        $date = $request->input('date');
-        if (is_string($date)) {
-            $trimmed = trim($date);
+        // date и repeat_until — календарные даты SQL DATE, не timestamps.
+        // Берём календарные компоненты из строки без Carbon/UTC-конвертации.
+        foreach (['date', 'repeat_until'] as $dateField) {
+            $value = $request->input($dateField);
+            if (!is_string($value) || trim($value) === '') {
+                continue;
+            }
+
+            $trimmed = trim($value);
             if (preg_match('/^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$/', $trimmed, $m)) {
-                $request->merge(['date' => sprintf('%04d-%02d-%02d', $m[1], $m[2], $m[3])]);
+                $request->merge([$dateField => sprintf('%04d-%02d-%02d', $m[1], $m[2], $m[3])]);
             } elseif (preg_match('/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})(?:[T ].*)?$/', $trimmed, $m)) {
-                // DD.MM.YYYY / DD/MM/YYYY — тот же формат показывает UI
-                $request->merge(['date' => sprintf('%04d-%02d-%02d', $m[3], $m[2], $m[1])]);
+                $request->merge([$dateField => sprintf('%04d-%02d-%02d', $m[3], $m[2], $m[1])]);
             }
         }
     }
@@ -262,7 +261,7 @@ class MeetingController extends Controller
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'date' => 'required|date',
+            'date' => 'required|date_format:Y-m-d',
             // Формат времени принимаем и HH:mm, и HH:mm:ss — серверные колонки
             // TIME могут хранить значение с секундами ('14:30:00'), и при
             // редактировании встречи фронт отправляет их обратно как есть.
@@ -288,7 +287,7 @@ class MeetingController extends Controller
             'participant_emails' => 'nullable|array',
             'participant_emails.*' => 'email',
             'is_private' => 'boolean',
-            'repeat_until' => 'nullable|date',
+            'repeat_until' => 'nullable|date_format:Y-m-d',
             'tags' => 'nullable|array',
             'tags.*' => 'integer|exists:tags,id',
         ]);
@@ -415,7 +414,16 @@ class MeetingController extends Controller
         // улетало в голый 500 «Server Error» без объяснений. Превращаем такую
         // ошибку в 422 с конкретной причиной, понятной пользователю.
         try {
-            $meeting = Meeting::create($validated);
+            $meeting = $this->withRoomReservation(
+                $validated['room'] ?? null,
+                $validated['date'],
+                $validated['start_time'],
+                $validated['end_time'],
+                null,
+                fn () => Meeting::create($validated),
+            );
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (\Illuminate\Database\QueryException $e) {
             report($e);
             $friendly = self::friendlyDbError($e);
@@ -484,14 +492,22 @@ class MeetingController extends Controller
         // встреча сохраняется БЕЗ ссылки, а живую комнату бот создаёт
         // асинхронно в очереди (ретраи 30/60 с). Фронт при этом мгновенно
         // получает ответ и показывает локальную ссылку-заглушку.
-        // При QUEUE_CONNECTION=sync джоб выполнится сразу — поведение как
-        // раньше, только без ожидания в HTTP-запросе фронтенда.
+        // По умолчанию используется database queue: запрос создания ВКС
+        // завершается быстро, а браузерная сессия запускается worker-ом отдельно.
         try {
-            if (empty($validated['link']) && config('services.vks_bot.auto', false)) {
-                CreateVksLinkJob::dispatch($meeting->id);
+            if (empty($validated['link'])
+                && config('services.vks_bot.auto', false)
+                && config('services.vks_bot.expected', false)) {
+                $meeting->update(['vks_link_status' => 'pending']);
+                CreateVksLinkJob::dispatch($meeting->id)->onQueue('vks');
+                $meeting->refresh();
+            } else {
+                $meeting->update(['vks_link_status' => filled($meeting->link) ? 'created' : 'not_required']);
+                $meeting->refresh();
             }
         } catch (\Throwable $e) {
             report($e); // очередь недоступна — встреча всё равно создана
+            $meeting->update(['vks_link_status' => 'failed']);
         }
 
         // WebSocket-уведомление экранам ТВ зала о появлении новой встречи.
@@ -504,6 +520,32 @@ class MeetingController extends Controller
         }
 
         return response()->json($payload, 201);
+    }
+
+    /** Повторно поставить создание реальной ссылки SaluteJazz в очередь. */
+    public function retryVksLink(Request $request, Meeting $meeting)
+    {
+        $user = $request->user();
+        if ((int) $meeting->organizer_id !== (int) $user->id && !$user->isAdmin() && !$user->isModerator()) {
+            return response()->json(['message' => 'Недостаточно прав'], 403);
+        }
+        if (filled($meeting->link) && $meeting->vks_link_status === 'created') {
+            return response()->json(['message' => 'Ссылка уже создана', 'vks_link_status' => 'created'], 409);
+        }
+        if (!config('services.vks_bot.auto', false) || !config('services.vks_bot.expected', false)) {
+            return response()->json(['message' => 'Автоматическое создание ВКС не включено на сервере'], 503);
+        }
+
+        try {
+            $meeting->update(['vks_link_status' => 'pending']);
+            CreateVksLinkJob::dispatch($meeting->id)->onQueue('vks');
+            MeetingCache::bump(MeetingCache::roomIdsFromNames([$meeting->room]));
+        } catch (\Throwable $e) {
+            report($e);
+            $meeting->update(['vks_link_status' => 'failed']);
+            return response()->json(['message' => 'Не удалось поставить создание ссылки в очередь'], 503);
+        }
+        return response()->json(['message' => 'Создание ссылки поставлено в очередь', 'vks_link_status' => 'pending'], 202);
     }
 
     /**
@@ -538,7 +580,7 @@ class MeetingController extends Controller
         $validated = $request->validate([
             'title' => 'sometimes|string|max:255',
             'description' => 'nullable|string',
-            'date' => 'sometimes|date',
+            'date' => 'sometimes|date_format:Y-m-d',
             'start_time' => ['sometimes', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
             'end_time' => ['sometimes', 'regex:/^\d{2}:\d{2}(:\d{2})?$/', 'after:start_time'],
             'room' => 'nullable|string|max:255',
@@ -553,7 +595,7 @@ class MeetingController extends Controller
             'participant_emails' => 'nullable|array',
             'participant_emails.*' => 'email',
             'is_private' => 'boolean',
-            'repeat_until' => 'nullable|date',
+            'repeat_until' => 'nullable|date_format:Y-m-d',
             'tags' => 'nullable|array',
             'tags.*' => 'integer|exists:tags,id',
         ]);
@@ -571,7 +613,33 @@ class MeetingController extends Controller
 
         $fields = array_keys($validated);
         $oldValues = collect($meeting->only($fields))->toArray();
-        $meeting->update($validated);
+        $roomScheduleChanged = count(array_intersect(array_keys($validated), ['room', 'date', 'start_time', 'end_time'])) > 0;
+        if ($roomScheduleChanged) {
+            $roomForUpdate = array_key_exists('room', $validated) ? $validated['room'] : $meeting->room;
+            $dateForUpdate = $validated['date'] ?? $meeting->date?->toDateString();
+            $startForUpdate = $validated['start_time'] ?? substr((string) $meeting->start_time, 0, 5);
+            $endForUpdate = $validated['end_time'] ?? substr((string) $meeting->end_time, 0, 5);
+            $this->withRoomReservation($roomForUpdate, $dateForUpdate, $startForUpdate, $endForUpdate, (int) $meeting->id,
+                fn () => $meeting->update($validated));
+        } else {
+            $meeting->update($validated);
+        }
+
+        if (array_key_exists('link', $validated)) {
+            if (filled($meeting->link)) {
+                $meeting->update(['vks_link_status' => 'created']);
+            } elseif (config('services.vks_bot.auto', false) && config('services.vks_bot.expected', false)) {
+                try {
+                    $meeting->update(['vks_link_status' => 'pending']);
+                    CreateVksLinkJob::dispatch($meeting->id)->onQueue('vks');
+                } catch (\Throwable $e) {
+                    report($e);
+                    $meeting->update(['vks_link_status' => 'failed']);
+                }
+            } else {
+                $meeting->update(['vks_link_status' => 'not_required']);
+            }
+        }
 
         if ($tags !== null) {
             $meeting->tags()->sync($tags);
@@ -722,7 +790,7 @@ class MeetingController extends Controller
         }
 
         $validated = $request->validate([
-            'date' => 'required|date',
+            'date' => 'required|date_format:Y-m-d',
             'start_time' => 'required|date_format:H:i',
             'end_time' => 'sometimes|date_format:H:i',
             'notify' => 'sometimes|boolean',
@@ -761,15 +829,19 @@ class MeetingController extends Controller
         $oldDate = $meeting->date->toDateString();
         $oldStart = substr((string) $meeting->start_time, 0, 5);
 
-        $meeting->update([
-            // ВАЖНО: сохраняем НОРМАЛИЗОВАННУЮ дату ($newDate = toDateString()),
-            // а не сырую $validated['date']: если фронт прислал ISO-строку с
-            // таймзоной («2026-10-31T21:00:00Z»), Carbon::parse без явной зоны
-            // даёт другие сутки и встреча «уезжала» на 30-е.
-            'date' => $newDate,
-            'start_time' => $validated['start_time'],
-            'end_time' => $validated['end_time'] ?? $meeting->end_time,
-        ]);
+        $this->withRoomReservation(
+            $meeting->room,
+            $newDate,
+            $validated['start_time'],
+            $newEnd,
+            (int) $meeting->id,
+            fn () => $meeting->update([
+                // Сохраняем каноническую календарную дату без timezone-сдвига.
+                'date' => $newDate,
+                'start_time' => $validated['start_time'],
+                'end_time' => $validated['end_time'] ?? $meeting->end_time,
+            ]),
+        );
 
         if ($request->boolean('notify', true)) {
             $suffix = ($oldDate !== $meeting->date->toDateString())
@@ -845,6 +917,78 @@ class MeetingController extends Controller
             return ['title', 'Схема базы данных устарела' . ($col ? ": отсутствует колонка \u00ab{$col}\u00bb" : '') . '. Выполните на сервере: docker compose exec backend php artisan migrate --force'];
         }
         return null;
+    }
+
+    /**
+     * Атомарно резервирует временной интервал в физическом зале.
+     * Одинаковое время в РАЗНЫХ залах разрешено. Для одного зала MySQL
+     * advisory lock закрывает гонку двух одновременных POST-запросов.
+     * Онлайн-встречи (без физического зала) между собой не конфликтуют.
+     */
+    private function withRoomReservation(
+        ?string $roomName,
+        string $date,
+        string $startTime,
+        string $endTime,
+        ?int $excludeMeetingId,
+        callable $callback,
+    ): mixed {
+        $roomName = trim((string) $roomName);
+        if ($roomName === '' || in_array(mb_strtolower($roomName), ['онлайн', 'online', 'без зала'], true)) {
+            return DB::transaction($callback);
+        }
+
+        $lockName = 'bcs_room_' . substr(hash('sha256', mb_strtolower($roomName)), 0, 48);
+        $acquired = false;
+        try {
+            // Блокировку снимаем ПОСЛЕ commit/rollback транзакции. Если снять
+            // её внутри callback, второй запрос может проверить ещё не committed
+            // запись и создать дубль бронирования.
+            return DB::transaction(function () use ($roomName, $date, $startTime, $endTime, $excludeMeetingId, $callback, $lockName, &$acquired) {
+                $lock = DB::selectOne('SELECT GET_LOCK(?, 10) AS acquired', [$lockName]);
+                if ((int) ($lock->acquired ?? 0) !== 1) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'room' => ['Не удалось зарезервировать зал из-за параллельного запроса. Повторите попытку.'],
+                    ]);
+                }
+                $acquired = true;
+
+                $targetDay = \Carbon\CarbonImmutable::parse($date);
+                $conflicts = Meeting::query()
+                    ->where('room', $roomName)
+                    ->whereNotIn('status', ['cancelled', 'completed'])
+                    ->where(function ($query) use ($date, $targetDay) {
+                        $query->whereDate('date', $date)
+                            ->orWhere(function ($recurring) use ($date, $targetDay) {
+                                $recurring->where('recurring', '!=', 'none')
+                                    ->whereNotNull('recurring')
+                                    ->whereDate('date', '<=', $date)
+                                    ->whereDate('date', '>=', $targetDay->subDays(\App\Services\RecurrenceService::HORIZON_DAYS)->toDateString())
+                                    ->where(function ($until) use ($date) {
+                                        $until->whereNull('repeat_until')->orWhereDate('repeat_until', '>=', $date);
+                                    });
+                            });
+                    })
+                    ->get(['id', 'date', 'start_time', 'end_time', 'recurring', 'repeat_until', 'rrule'])
+                    ->filter(fn (Meeting $candidate) => $candidate->date->toDateString() === $date
+                        || \App\Services\RecurrenceService::occursOn($candidate, $targetDay))
+                    ->contains(fn (Meeting $candidate) => substr((string) $candidate->start_time, 0, 5) < $endTime
+                        && substr((string) $candidate->end_time, 0, 5) > $startTime
+                        && ($excludeMeetingId === null || (int) $candidate->id !== $excludeMeetingId));
+
+                if ($conflicts) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'room' => ['Этот зал уже занят в выбранное время. Выберите другой свободный интервал или помещение.'],
+                    ]);
+                }
+
+                return $callback();
+            });
+        } finally {
+            if ($acquired) {
+                DB::selectOne('SELECT RELEASE_LOCK(?) AS released', [$lockName]);
+            }
+        }
     }
 
     /**

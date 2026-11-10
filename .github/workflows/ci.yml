@@ -70,3 +70,16 @@ jobs:
 
       - name: Run tests
         run: composer test 2>/dev/null || php artisan test 2>/dev/null || echo "No tests yet — skipping"
+
+  bot:
+    name: VKS bot (Python syntax and entrypoint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile bot modules
+        run: python -m compileall -q vks-bot
+      - name: Validate backend entrypoint
+        run: sh -n backend/docker-entrypoint.sh

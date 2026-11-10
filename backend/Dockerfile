@@ -13,7 +13,7 @@
 #      openssl, pcre, PDO, pdo_mysql, phar, session, SimpleXML, tokenizer,
 #      xml*, zlib, OPcache. Это ровно тот список, который требует
 #      composer.lock (проверено по ext-* зависимостям пакетов).
-#      bcmath/zip/intl/gd/redis коду НЕ нужны (polyfill'ы + sync-очередь +
+#      bcmath/zip/intl/gd/redis коду НЕ нужны (polyfill'ы + database-очередь +
 #      file-кэш; см. x-backend-env в docker-compose.yml).
 #   3. Единственная проверка в конце сборки — реально запускается Laravel
 #      (php artisan --version). Если базис когда-нибудь изменится так, что
@@ -32,7 +32,7 @@ FROM php:8.4-fpm-alpine3.21 AS runtime
 
 ENV TZ=Europe/Moscow
 
-RUN apk add --no-cache unzip git tzdata \
+RUN apk add --no-cache unzip git tzdata su-exec mariadb-client gzip \
  && cp -f /usr/share/zoneinfo/Europe/Moscow /etc/localtime \
  && echo Europe/Moscow > /etc/timezone
 
@@ -55,6 +55,8 @@ RUN set -eux; \
 
 # Код приложения + каркас конфигов Laravel
 COPY backend/ ./
+COPY backend/docker-entrypoint.sh /usr/local/bin/bcs-entrypoint
+RUN chmod +x /usr/local/bin/bcs-entrypoint
 COPY docker/skeleton/laravel12/config/ config/
 RUN php artisan --version
 RUN set -eux; \
@@ -71,10 +73,11 @@ RUN printf '%s\n' \
       'group = www-data' \
       'listen = 0.0.0.0:9000' \
       'pm = dynamic' \
-      'pm.max_children = 12' \
-      'pm.start_servers = 4' \
-      'pm.min_spare_servers = 3' \
-      'pm.max_spare_servers = 6' \
+      'pm.max_children = 5' \
+      'pm.start_servers = 2' \
+      'pm.min_spare_servers = 2' \
+      'pm.max_spare_servers = 3' \
+      'pm.max_requests = 500' \
       'clear_env = no' \
       > /usr/local/etc/php-fpm.d/zz-listen.conf
 
@@ -88,7 +91,11 @@ RUN printf '%s\n' \
       'date.timezone=Europe/Moscow' \
       'opcache.enable=1' \
       'opcache.memory_consumption=128' \
+      'opcache.max_accelerated_files=20000' \
+      'opcache.validate_timestamps=0' \
+      'opcache.save_comments=1' \
       > "$PHP_INI_DIR/conf.d/zz-app.ini"
 
 EXPOSE 9000
+ENTRYPOINT ["/usr/local/bin/bcs-entrypoint"]
 CMD ["php-fpm"]

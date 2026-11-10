@@ -9,7 +9,7 @@ import UserPanel from "./UserPanel";
 import type { MeetingPrefill } from "./UserPanel";
 import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { toDateKey, formatRuDate } from "../utils/dateKey";
-import { icsAPI } from "../api/client";
+import { icsAPI, meetingsAPI } from "../api/client";
 import { syncServerTime, serverNowDate, serverTodayKey as serverTodayKeyTz, serverNowHm as serverNowHmTz, serverTodayKey as guessServerTodayKey } from "../api/serverTime";
 
 /** Часы главной страницы: «сейчас» по СЕРВЕРНОМУ времени (с offset из
@@ -44,6 +44,39 @@ const addDaysLocal = (d: Date, n: number): Date => {
   return r;
 };
 
+/** Секундный таймер изолирован от тяжёлой главной страницы.
+ *  Его тик не вызывает повторный рендер Dashboard, календаря и виджета залов. */
+const MeetingCountdown = React.memo(function MeetingCountdown({
+  date,
+  startTime,
+}: {
+  date: string;
+  startTime: string;
+}) {
+  const [value, setValue] = useState("");
+
+  useEffect(() => {
+    const update = () => {
+      const target = new Date(`${date}T${startTime}`);
+      const diff = target.getTime() - nowForUi().getTime();
+      if (diff <= 0) {
+        setValue("Начинается");
+        return;
+      }
+      const hours = Math.floor(diff / 3_600_000);
+      const minutes = Math.floor((diff % 3_600_000) / 60_000);
+      const seconds = Math.floor((diff % 60_000) / 1_000);
+      setValue(`${hours}ч ${minutes}м ${seconds}с`);
+    };
+
+    update();
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [date, startTime]);
+
+  return <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">{value}</p>;
+});
+
 export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -53,7 +86,6 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
   const [calDate, setCalDate] = useState(nowForUi());
   // В одно время может быть несколько конференций — храним все «следующие» (с тем же датой/временем старта)
   const [nextMeetings, setNextMeetings] = useState<Meeting[]>([]);
-  const [countdown, setCountdown] = useState("");
   // Экспорт «Мой календарь ВКС» в .ics
   const [icsLoading, setIcsLoading] = useState(false);
   // Модалка выбора зала (клик по пустому слоту календаря / кнопка «Выбрать зал»)
@@ -98,6 +130,8 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
 
   useEffect(() => {
     let cancelled = false;
+    let dataTimer: number | null = null;
+    let pollDelay = 300000;
     const loadData = async () => {
       try {
         // Кеш в store-api: если встречи не менялись — один лёгкий запрос
@@ -106,13 +140,29 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
         if (cancelled) return; // компонент мог размонтироваться за время запроса
         setMeetings(m);
         setUsers(u);
+        // Пока сервер создаёт реальную ссылку SaluteJazz, обновляем список
+        // раз в 10 секунд. В обычном режиме сохраняем редкий 5-минутный поллинг.
+        const nextDelay = m.some((meeting) => meeting.vksLinkStatus === "pending" || meeting.vksLinkStatus === "creating")
+          ? 10000
+          : 300000;
+        if (nextDelay !== pollDelay) {
+          pollDelay = nextDelay;
+          if (dataTimer !== null && !document.hidden) {
+            clearInterval(dataTimer);
+            dataTimer = window.setInterval(loadData, pollDelay);
+          }
+        }
       } catch (error) {
         console.error("Error loading dashboard:", error);
       }
     };
     loadData();
 
-    const timer = setInterval(() => setCurrentTime(nowForUi()), 1000);
+    // Данные календаря и статистики не требуют секундной точности.
+    // Обновляем родительскую страницу раз в минуту, а секундный countdown
+    // вынесен в отдельный memo-компонент ниже — иначе каждую секунду заново
+    // рендерились календарь, статистика, свободные залы и все карточки.
+    const timer = setInterval(() => setCurrentTime(nowForUi()), 60000);
     // Фоновое обновление данных — ТОЛЬКО когда вкладка видна. Раньше поллинг
     // работал и в фоновых вкладках: у пользователей открыто по несколько
     // вкладок/страниц и каждая каждые 30 с тянула ВСЕ встречи со страницы 1
@@ -124,7 +174,7 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
       // перезагрузочный запрос нужен редко. Это главная разгрузка сервера:
       // раньше N вкладок × M пользователей били по /meetings+персоналу
       // каждые 60 с, и на слабом хосте весь сайт начинал «лагать».
-      dataTimer = window.setInterval(loadData, 300000);
+      dataTimer = window.setInterval(loadData, pollDelay);
     };
     const stopPolling = () => {
       if (dataTimer !== null) {
@@ -132,7 +182,6 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
         dataTimer = null;
       }
     };
-    let dataTimer: number | null = null;
     const onVisibility = () => (document.hidden ? stopPolling() : startPolling());
     if (!document.hidden) startPolling();
     document.addEventListener("visibilitychange", onVisibility);
@@ -207,16 +256,6 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
       : [];
     setNextMeetings(simultaneous);
 
-    if (first) {
-      const targetDate = new Date(`${firstDate}T${first.startTime}`);
-      const diff = targetDate.getTime() - currentTime.getTime();
-      if (diff > 0) {
-        const hours = Math.floor(diff / (1000 * 60 * 60));
-        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-        setCountdown(`${hours}ч ${minutes}м ${seconds}с`);
-      }
-    }
   }, [currentTime, visibleMeetings]);
 
   const todayMeetings = (() => {
@@ -287,7 +326,7 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
   const handleBookingConfirm = (roomName: string, dateKey: string, startTime: string, endTime: string) => {
     setBookingOpen(false);
     // Панель создания ВКС открывается прямо на главной — без перехода в другой
-    // раздел. autoLink: ссылка salutejazz.ru будет создана ботом при сохранении.
+    // раздел. После сохранения backend ставит создание комнаты в очередь.
     openCreatePanel({ date: dateKey, startTime, endTime, room: roomName, autoLink: true });
   };
 
@@ -348,9 +387,8 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
         </p>
       </div>
 
-      {/* Свободные залы — в самом верху, сразу под приветствием.
-          Клик по свободному времени → панель создания ВКС прямо на главной,
-          ссылка salutejazz.ru генерируется автоматически. */}
+      {/* Свободные залы — в самом верху. Клик по слоту открывает форму ВКС
+          прямо на главной; реальная ссылка создаётся серверной очередью. */}
       <FreeRoomsWidget
         onPickSlot={(roomName, startTime, endTime, date) => {
           openCreatePanel({ date, startTime, endTime, room: roomName, autoLink: true });
@@ -440,7 +478,7 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
                         </div>
                         <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-4">
                           <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">До начала</p>
-                          <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mt-1">{countdown}</p>
+                          <MeetingCountdown date={nextMeeting.date} startTime={nextMeeting.startTime} />
                         </div>
                         <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4">
                           <p className="text-sm text-orange-600 dark:text-orange-400 font-medium">Место</p>
@@ -490,7 +528,11 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
                           className="bg-gray-400 text-white px-6 py-3 rounded-lg font-medium cursor-not-allowed"
                         >
                           <i className="fas fa-video mr-2"></i>
-                          Ссылка не указана
+                          {nextMeeting.vksLinkStatus === "pending" || nextMeeting.vksLinkStatus === "creating"
+                            ? "Бот создаёт ссылку…"
+                            : nextMeeting.vksLinkStatus === "failed"
+                              ? "Не удалось создать ссылку — обратитесь к администратору"
+                              : "Ссылка пока не добавлена"}
                         </button>
                       )}
                     </div>
@@ -690,6 +732,22 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
                       </button>
                     </>
                   )}
+                  {canSee && !detailMeeting.link && detailMeeting.vksLinkStatus === "failed" &&
+                    (Number(detailMeeting.organizerId) === Number(user.id) || user.role === "admin" || user.role === "moderator") && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            await meetingsAPI.retryVksLink(String(detailMeeting._occurrenceOf ?? detailMeeting.id));
+                            alert("Создание ссылки ВКС повторно поставлено в очередь.");
+                          } catch (error: any) {
+                            alert(error?.message || "Не удалось поставить создание ссылки в очередь.");
+                          }
+                        }}
+                        className="bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-700 transition-colors"
+                      >
+                        <i className="fas fa-rotate-right mr-2"></i>Повторить создание ссылки
+                      </button>
+                    )}
                   {canSee &&
                     Number(detailMeeting.organizerId) === Number(user.id) &&
                     detailMeeting.status !== "cancelled" && (

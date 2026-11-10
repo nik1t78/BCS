@@ -15,22 +15,26 @@
         link и её комната отвечает (HEAD-запрос), ссылка возвращается как есть
         (reused:true); иначе создаётся новая через бота.
         -> {"ok": true, "link": "https://salutejazz.ru/calls/xxx?psw=YYY", ...}
-        При сбое бота — ok:false + локально сгенерированная ссылка в field "fallback_link".
+        При сбое возвращается ok:false без фиктивной ссылки.
 Доступ ограничен списком токенов из переменной окружения BOT_TOKENS
 ("секрет1,секрет2") — запросы без заголовка "X-Bot-Token" отклоняются (401).
 """
 from datetime import datetime, timedelta, timezone
 
+import asyncio
+from concurrent.futures import Future
+from queue import Queue, Full
+import threading
+import secrets
 import logging
 import os
-import random
 import re
-import string
 
 import urllib.request
 import urllib.error
 
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [vks-bot-server] %(message)s")
@@ -45,18 +49,91 @@ else:
     ENGINE = "playwright"
     log.info("Движок VKS-бота: Playwright (bot_pw.py)")
 
-# fallback_local_link не зависит от движка — своя копия, чтобы Playwright-режим
-# не требовал установленный selenium (импорт bot.py тянет за собой его).
-def fallback_local_link() -> str:
-    """Локальная генерация ссылки в эталонном формате (если бот недоступен)."""
-    rnd = "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
-    psw = "".join(random.choices(string.ascii_uppercase + string.digits, k=16))
-    return f"https://salutejazz.ru/calls/{rnd}?psw={psw}"
-
 app = FastAPI(title=f"VKS Bot ({ENGINE})", version="1.1")
-bot = _BotImpl(headless=os.getenv("BOT_HEADLESS", "1") != "0")
-
+# Playwright Sync API привязан к потоку. Поэтому каждый worker создаёт
+# собственный экземпляр бота/Chromium в своём потоке и переиспользует его.
+# Так несколько конференций создаются одновременно без совместного доступа
+# к одной странице/контексту браузера.
+BOT_CONCURRENCY = max(1, min(int(os.getenv("VKSBOT_CONCURRENCY", "2")), 4))
+BOT_QUEUE_LIMIT = max(1, int(os.getenv("VKSBOT_QUEUE_LIMIT", "20")))
 ALLOWED_TOKENS = {t.strip() for t in os.getenv("BOT_TOKENS", "").split(",") if t.strip()}
+
+
+class BotWorkerPool:
+    def __init__(self, size: int, queue_limit: int):
+        self.size = size
+        self.jobs: Queue = Queue(maxsize=queue_limit)
+        self.threads: list[threading.Thread] = []
+        self.active = 0
+        self._active_lock = threading.Lock()
+        self.started = False
+
+    def start(self):
+        if self.started:
+            return
+        self.started = True
+        for index in range(self.size):
+            thread = threading.Thread(target=self._worker, args=(index + 1,),
+                                      name=f"vks-bot-worker-{index + 1}", daemon=True)
+            thread.start()
+            self.threads.append(thread)
+        log.info("Пул бота запущен: workers=%s queue_limit=%s", self.size, self.jobs.maxsize)
+
+    def _worker(self, worker_id: int):
+        worker_bot = _BotImpl(headless=os.getenv("BOT_HEADLESS", "1") != "0")
+        log.info("Bot worker %s готов", worker_id)
+        try:
+            while True:
+                item = self.jobs.get()
+                if item is None:
+                    self.jobs.task_done()
+                    break
+                fn, args, future = item
+                if future.set_running_or_notify_cancel():
+                    with self._active_lock:
+                        self.active += 1
+                    started = __import__("time").monotonic()
+                    try:
+                        future.set_result(fn(worker_bot, *args))
+                    except BaseException as exc:
+                        future.set_exception(exc)
+                    finally:
+                        elapsed = (__import__("time").monotonic() - started) * 1000
+                        with self._active_lock:
+                            self.active -= 1
+                        log.info("Bot worker %s завершил задачу за %.0f мс", worker_id, elapsed)
+                self.jobs.task_done()
+        finally:
+            close = getattr(worker_bot, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    log.exception("Ошибка закрытия браузера worker %s", worker_id)
+            log.info("Bot worker %s остановлен", worker_id)
+
+    def submit(self, fn, *args) -> Future:
+        if not self.started:
+            self.start()
+        future = Future()
+        try:
+            self.jobs.put_nowait((fn, args, future))
+        except Full:
+            raise HTTPException(status_code=503, detail="Очередь создания ВКС заполнена. Повторите попытку через минуту.")
+        return future
+
+    def shutdown(self):
+        if not self.started:
+            return
+        for _ in self.threads:
+            self.jobs.put(None)
+        for thread in self.threads:
+            thread.join(timeout=30)
+        self.threads.clear()
+        self.started = False
+
+
+worker_pool = BotWorkerPool(BOT_CONCURRENCY, BOT_QUEUE_LIMIT)
 
 
 class CreateReq(BaseModel):
@@ -88,8 +165,10 @@ def _normalize_date(raw: str | None) -> str | None:
 
 
 def _check_token(token: str | None):
-    # Если токены не настроены — открыто только для localhost-деплоя; на проде задайте BOT_TOKENS
-    if ALLOWED_TOKENS and token not in ALLOWED_TOKENS:
+    # Fail closed: пустой BOT_TOKENS — ошибка конфигурации, а не публичный доступ.
+    if not ALLOWED_TOKENS:
+        raise HTTPException(status_code=503, detail="BOT_TOKENS is not configured")
+    if not token or not any(secrets.compare_digest(token, allowed) for allowed in ALLOWED_TOKENS):
         raise HTTPException(status_code=401, detail="Bad or missing X-Bot-Token")
 
 
@@ -117,7 +196,30 @@ def _room_alive(link: str, timeout: float = 6.0) -> bool:
 
 @app.get("/health")
 def health():
-    return {"ok": True, "service": f"vks-{ENGINE}-bot"}
+    if not ALLOWED_TOKENS:
+        return JSONResponse(
+            status_code=503,
+            content={"ok": False, "service": f"vks-{ENGINE}-bot", "error": "BOT_TOKENS is not configured"},
+        )
+    with worker_pool._active_lock:
+        active = worker_pool.active
+    return {"ok": True, "service": f"vks-{ENGINE}-bot",
+            "workers": BOT_CONCURRENCY, "active": active,
+            "queued": worker_pool.jobs.qsize()}
+
+
+@app.on_event("startup")
+async def startup_bot():
+    if not ALLOWED_TOKENS:
+        log.error("BOT_TOKENS не настроен: browser workers не запускаются")
+        return
+    worker_pool.start()
+
+
+@app.on_event("shutdown")
+async def shutdown_bot():
+    """Закрыть каждый Chromium в том же потоке, где он был создан."""
+    await asyncio.to_thread(worker_pool.shutdown)
 
 
 # Тот же ответ на "/" — чтобы работала проверка без префикса /vks-bot
@@ -134,10 +236,10 @@ def health_prefixed():
     return health()
 
 
-def _do_create(title: str, name: str, date: str | None = None) -> dict:
-    """Единая логика создания: вызов бота + fallback-ссылка при сбое.
+def _do_create(bot_instance, title: str, name: str, date: str | None = None) -> dict:
+    """Единая логика создания: реальная комната или явная ошибка.
 
-    date («ДД.ММ.ГГГГ» или ISO) — передаётся боту и пишется в название
+    date («ДД.ММ.ГГГГ» или ISO) — передаётся боту как выбранная дата
     комнаты; если не передана — берём СЕГОДНЯШНЮЮ дату по Москве (+03:00),
     а не локальные часы контейнера: при жизни бота в UTC вечерний запрос
     (после 21:00 MSK) давал «вчера» — встреча записывалась на 28 число
@@ -153,10 +255,12 @@ def _do_create(title: str, name: str, date: str | None = None) -> dict:
     # «сегодня»), а пользователь просил убрать дату из отображаемого
     # заголовка. Дата возвращается в поле «date» ответа — её видно во фронтенде.
     log.info("Запрос на создание ВКС: title=%r name=%r date=%r", title, name, d)
-    result = bot.create_call(title, name, date=d)
+    result = bot_instance.create_call(title, name, date=d)
     if not result.get("ok"):
-        result["fallback_link"] = fallback_local_link()
-        result["fallback_note"] = "Бот не смог создать встречу — используйте fallback-ссылку (формат платформы)."
+        # Не генерируем фиктивную ссылку: случайный URL не соответствует
+        # реально созданной комнате SaluteJazz и вводит пользователя в заблуждение.
+        result.pop("fallback_link", None)
+        result["fallback_note"] = "Комната SaluteJazz не создана. Повторите попытку после устранения ошибки бота."
     # Дата встречи в явном виде — и в успешном, и в fallback-ответе, чтобы
     # клиент (Laravel/фронт) видел, каким числом записана комната.
     result.setdefault("date", d)
@@ -164,34 +268,37 @@ def _do_create(title: str, name: str, date: str | None = None) -> dict:
 
 
 @app.post("/create")
-def create(req: CreateReq, x_bot_token: str | None = Header(default=None)):
+async def create(req: CreateReq, x_bot_token: str | None = Header(default=None)):
     _check_token(x_bot_token)
-    return _do_create(req.title, req.name, req.date)
+    future = worker_pool.submit(_do_create, req.title, req.name, req.date)
+    return await asyncio.wrap_future(future)
 
 
 # Псевдоним /create под именем /create-link — фронтенд (vksBot.ts) и
 # документация называют эндпоинт «создать ссылку».
 @app.post("/create-link")
-def create_link(req: CreateReq, x_bot_token: str | None = Header(default=None)):
+async def create_link(req: CreateReq, x_bot_token: str | None = Header(default=None)):
     _check_token(x_bot_token)
-    return _do_create(req.title, req.name, req.date)
+    future = worker_pool.submit(_do_create, req.title, req.name, req.date)
+    return await asyncio.wrap_future(future)
 
 
-@app.post("/check-and-create")
-def check_and_create(req: CheckAndCreateReq,
-                     x_bot_token: str | None = Header(default=None)):
-    """Проверить существующую ссылку и создать новую только при её отсутствии.
-
-    Тело: {title, name, link?}. Если link жив (комната отвечает) — возвращаем
-    его как есть с reused=true (дубли не плодим). Иначе создаём через бота.
-    """
-    _check_token(x_bot_token)
+def _check_and_create_sync(bot_instance, req: CheckAndCreateReq) -> dict:
     if req.link and _room_alive(req.link):
         log.info("Ссылка %r жива — переиспользуем без создания новой", req.link)
         return {"ok": True, "reused": True, "link": req.link}
-    result = _do_create(req.title, req.name, req.date)
+    result = _do_create(bot_instance, req.title, req.name, req.date)
     result.setdefault("reused", False)
     return result
+
+
+@app.post("/check-and-create")
+async def check_and_create(req: CheckAndCreateReq,
+                           x_bot_token: str | None = Header(default=None)):
+    """Переиспользовать живую ссылку или создать новую в выделенном потоке."""
+    _check_token(x_bot_token)
+    future = worker_pool.submit(_check_and_create_sync, req)
+    return await asyncio.wrap_future(future)
 
 
 if __name__ == "__main__":

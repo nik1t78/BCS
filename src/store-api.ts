@@ -144,6 +144,29 @@ export function mapMeeting(raw: any): Meeting {
   return out as Meeting;
 }
 
+/**
+ * Нормализует календарную дату без преобразования часового пояса.
+ * Для Date используем локальные компоненты (не toISOString()), а строки
+ * YYYY-MM-DD сохраняем по календарной части как выбрал пользователь.
+ */
+function normalizeCalendarDate(value: unknown): unknown {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  const ru = trimmed.match(/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})$/);
+  if (ru) return `${ru[3]}-${String(Number(ru[2])).padStart(2, '0')}-${String(Number(ru[1])).padStart(2, '0')}`;
+  return value;
+}
+
 export function meetingToApi(data: any): any {
   const out: any = {};
   for (const k of Object.keys(data ?? {})) {
@@ -152,6 +175,12 @@ export function meetingToApi(data: any): any {
   }
   if (data.startTime) out.start_time = data.startTime;
   if (data.endTime) out.end_time = data.endTime;
+  // date/repeat_until — календарные дни, не моменты времени. Не допускаем
+  // отправку Date.toISOString(), которая может сдвинуть дату на сутки.
+  if (data.date !== undefined && data.date !== null) out.date = normalizeCalendarDate(data.date);
+  if (data.repeatUntil !== undefined && data.repeatUntil !== null) {
+    out.repeat_until = normalizeCalendarDate(data.repeatUntil);
+  }
   // Фикс «на компе 02.11, а встреча создаётся на 01.11»: вместе с датой
   // отправляем «сегодня по часам компьютера пользователя» (echo_client_today).
   // Если присланная дата ушла в прошлое относительно серверных часов, но
