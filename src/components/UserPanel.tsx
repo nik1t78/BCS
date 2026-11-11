@@ -42,6 +42,51 @@ import {
 import { isLateTime, LATE_CREATE_LIMIT_HM } from "../utils/freeSlots";
 import { formatRuDate, addMinToHm, toDateKey, snapHmTo30 } from "../utils/dateKey";
 
+/** Поделиться готовым приглашением: системное меню телефона/ПК или копирование. */
+async function shareMeetingInvite(meeting: Meeting): Promise<void> {
+  const joinUrl = meeting.link
+    ? buildJoinUrl(meeting.link, meeting.meetingPassword ?? extractPswFromAny(meeting.link))
+    : "";
+  const lines = [
+    `Приглашение на ВКС: ${meeting.title}`,
+    `Дата: ${formatRuDate(meeting.date)}`,
+    `Время: ${meeting.startTime}–${meeting.endTime}`,
+    meeting.room ? `Зал: ${meeting.room}` : "",
+    joinUrl ? `Ссылка для подключения: ${joinUrl}` : "Ссылка на подключение пока формируется организатором.",
+  ].filter(Boolean);
+  const text = lines.join("\n");
+
+  if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+    try {
+      await navigator.share({ title: `ВКС: ${meeting.title}`, text, url: joinUrl || undefined });
+      return;
+    } catch (error) {
+      // Отмена системного окна пользователем не должна запускать копирование.
+      if (error instanceof DOMException && error.name === "AbortError") return;
+    }
+  }
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const field = document.createElement("textarea");
+      field.value = text;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      const copied = document.execCommand("copy");
+      field.remove();
+      if (!copied) throw new Error("copy failed");
+    }
+    window.alert("Приглашение скопировано. Его можно отправить участникам.");
+  } catch {
+    window.alert("Не удалось скопировать приглашение. Откройте конференцию и скопируйте ссылку вручную.");
+  }
+}
+
 /** «Сегодня» по локальному времени устройства — НЕ через toISOString()
  *  (UTC может сдвигать дату на день назад/вперёд → виджет показывал
  *  «вчерашнюю» дату, а линия текущего времени расходилась с реальностью). */
@@ -2513,6 +2558,15 @@ export default function UserPanel({
                           )}
                         </div>
                         <div className="flex items-center gap-2">
+                          {/* Новое: отправка приглашения через системное меню телефона/ПК или копирование текста. */}
+                          <button
+                            onClick={() => void shareMeetingInvite(meeting)}
+                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-gray-700 rounded"
+                            title="Поделиться приглашением: отправить или скопировать"
+                            aria-label={`Поделиться приглашением: ${meeting.title}`}
+                          >
+                            <i className="fas fa-share-alt"></i>
+                          </button>
                           {/* Экспорт встречи в календарь (.ics — Outlook / Google Calendar) */}
                           <button
                             onClick={() => exportMeetingToIcs(meeting)}
