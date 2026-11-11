@@ -240,6 +240,7 @@ services:
     networks: [vks-network]
 
   # Laravel Queue Worker (migrations are run explicitly during deployment; workers never race migrations)
+   # Laravel Queue Worker
   queue:
     <<: *container-defaults
     build: *backend-build
@@ -250,10 +251,12 @@ services:
         limits:
           memory: 768M
           cpus: "1.0"
-    # queue:heartbeat пишет timestamp в общий volume storage каждые ~20 c —
-    # по нему «Статус системы»/system:monitor честно видят, жив ли воркер
-    # (упал queue:work или весь контейнер — файл перестаёт обновляться).
-    command: sh -c 'php artisan queue:heartbeat >/dev/null 2>&1 & i=0; while [ "$i" -lt "${QUEUE_WORKERS:-2}" ]; do (while true; do php artisan queue:work database --queue=vks,default --sleep=1 --tries=3 --timeout=240 --max-time=3600; sleep 1; done) & i=$((i+1)); done; wait'
+    command: >
+      sh -c '
+      php artisan queue:heartbeat >/dev/null 2>&1 & 
+      (while true; do php artisan queue:work database --queue=vks,default --sleep=1 --tries=3 --timeout=240 --max-time=3600; sleep 1; done) & 
+      (while true; do php artisan queue:work database --queue=vks,default --sleep=1 --tries=3 --timeout=240 --max-time=3600; sleep 1; done) & 
+      wait'
     volumes: *backend-volumes
     environment:
       <<: *backend-env
@@ -271,7 +274,6 @@ services:
     stop_grace_period: 45s
     init: true
     networks: [vks-network]
-
   # Laravel Scheduler (migrations are run explicitly during deployment)
   scheduler:
     <<: *container-defaults
@@ -304,6 +306,8 @@ services:
       context: ./vks-bot
       dockerfile: Dockerfile
     container_name: vks-bot
+    ports:
+      - "8090:8090"   
     restart: unless-stopped
     deploy:
       resources:

@@ -25,25 +25,28 @@ class Room extends Model
         'schedule' => 'array',
     ];
 
-    /** Ключи дней недели в порядке mon..sun */
+    protected $appends = ['isActive'];
+
     public const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
     /**
-     * График зала по умолчанию: пн–пт 08:00–20:00, сб/вс выходной.
-     * Используется, когда у зала не задан персональный schedule.
+     * САМЫЙ БЕЗОПАСНЫЙ СПОСОБ: используем getAttribute, 
+     * который никогда не вызывает Undefined property
      */
+    public function getIsActiveAttribute(): bool
+    {
+        return (bool) ($this->getAttribute('is_active') ?? true);
+    }
+
     public static function defaultSchedule(): array
     {
         $days = [];
         foreach (self::DAY_KEYS as $d) {
-            $days[$d] = in_array($d, ['sat', 'sun'], true)
-                ? null
-                : ['start' => '08:00', 'end' => '20:00'];
+            $days[$d] = in_array($d, ['sat', 'sun'], true) ? null : ['start' => '08:00', 'end' => '20:00'];
         }
         return ['days' => $days, 'closed' => []];
     }
 
-    /** Нормализация пользовательского графика: доливает отсутствующие дни из дефолта. */
     public static function normalizeSchedule(?array $raw): array
     {
         $def = self::defaultSchedule();
@@ -66,19 +69,11 @@ class Room extends Model
         return ['days' => $days, 'closed' => array_values(array_unique($closed))];
     }
 
-    /** Эффективный график зала (персональный или дефолт). */
     public function effectiveSchedule(): array
     {
         return self::normalizeSchedule($this->schedule);
     }
 
-    /**
-     * Рабочие часы зала на дату с явной передачей графика (null → дефолт).
-     * Отдельный метод нужен вызывающему коду, когда атрибут schedule может
-     * быть пустым массивом «не задано» (миграция залила [] у старых залов):
-     * normalizeSchedule([]) вернул бы дни со start=null и дальнейший парсинг
-     * даты падал с fatal error. Здесь пустое значение трактуется как дефолт.
-     */
     public function hoursForDateNormalized(string $dateKey, ?array $rawSchedule = null): ?array
     {
         $sch = self::normalizeSchedule(
@@ -87,10 +82,9 @@ class Room extends Model
         if (in_array($dateKey, $sch['closed'], true)) {
             return null;
         }
-        $idx = (int) \Carbon\CarbonImmutable::parse($dateKey)->dayOfWeekIso - 1; // 0=mon..6=sun
+        $idx = (int) \Carbon\CarbonImmutable::parse($dateKey)->dayOfWeekIso - 1;
         $key = self::DAY_KEYS[max(0, min(6, $idx))];
         $h = $sch['days'][$key] ?? null;
-        // Дополнительная защита: день без корректных HH:MM считаем закрытым.
         if (!is_array($h) || !preg_match('/^\d{2}:\d{2}$/', (string) ($h['start'] ?? ''))
             || !preg_match('/^\d{2}:\d{2}$/', (string) ($h['end'] ?? ''))) {
             return null;
@@ -98,23 +92,16 @@ class Room extends Model
         return $h;
     }
 
-    /**
-     * Рабочие часы зала на дату: ['start'=>'HH:MM','end'=>'HH:MM'] либо null (закрыт).
-     */
     public function hoursForDate(string $dateKey): ?array
     {
         $sch = $this->effectiveSchedule();
         if (in_array($dateKey, $sch['closed'], true)) {
             return null;
         }
-        $idx = (int) \Carbon\CarbonImmutable::parse($dateKey)->dayOfWeekIso - 1; // 0=mon..6=sun
+        $idx = (int) \Carbon\CarbonImmutable::parse($dateKey)->dayOfWeekIso - 1;
         $key = self::DAY_KEYS[max(0, min(6, $idx))];
         return $sch['days'][$key] ?? null;
     }
 
-    /**
-     * Скрыть токен экрана по умолчанию: он попадает в ответ /rooms только
-     * администраторам (см. RoomController::index) и нужен лишь для URL телевизора.
-     */
     protected $hidden = ['tv_token'];
 }
