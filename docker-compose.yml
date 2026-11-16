@@ -253,7 +253,7 @@ services:
     # queue:heartbeat пишет timestamp в общий volume storage каждые ~20 c —
     # по нему «Статус системы»/system:monitor честно видят, жив ли воркер
     # (упал queue:work или весь контейнер — файл перестаёт обновляться).
-    command: sh -c 'php artisan queue:heartbeat >/dev/null 2>&1 & i=0; while [ "$i" -lt "${QUEUE_WORKERS:-2}" ]; do (while true; do php artisan queue:work database --queue=vks,default --sleep=1 --tries=3 --timeout=240 --max-time=3600; sleep 1; done) & i=$((i+1)); done; wait'
+    command: sh -c 'php artisan queue:heartbeat >/dev/null 2>&1 & i=0; while [ "$$i" -lt "${QUEUE_WORKERS:-2}" ]; do (while true; do php artisan queue:work database --queue=vks,default --sleep=1 --tries=3 --timeout=240 --max-time=3600; sleep 1; done) & i=$$((i+1)); done; wait'
     volumes: *backend-volumes
     environment:
       <<: *backend-env
