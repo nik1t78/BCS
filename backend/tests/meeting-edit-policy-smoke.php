@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
-use App\\Support\\MeetingEditPolicy;
+use App\Support\\MeetingEditPolicy;
 
 function assertMeetingEditPolicy(array $expected, array $actual, string $label): void
 {
