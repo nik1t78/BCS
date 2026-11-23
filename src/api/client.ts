@@ -416,9 +416,9 @@ export const rsvpAPI = {
 // NOTIFICATIONS API
 export const notificationsAPI = {
   /**
-   * Realtime-канал уведомлений (Server-Sent Events). Возвращает EventSource,
-   * если браузер его поддерживает и пользователь авторизован; иначе null —
-   * вызывающий код остаётся на поллинге. Событие "notification": {id, message, type}.
+   * Realtime-канал уведомлений (Server-Sent Events). Асинхронно получает
+   * короткоживущий билет и создаёт EventSource; при отсутствии поддержки
+   * браузера или авторизации возвращает null. Событие "notification": {id, message, type}.
    */
   stream: async (): Promise<EventSource | null> => {
     if (typeof EventSource === "undefined" || !getToken()) return null;
