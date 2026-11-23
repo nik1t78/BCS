@@ -434,10 +434,12 @@ export const notificationsAPI = {
     return apiRequest(`/notifications${queryString}`);
   },
 
-  markAsRead: (id: string) =>
-    apiRequest(`/notifications/${id}/read`, {
+  markAsRead: (id: string, params?: { all?: boolean }) => {
+    const queryString = params ? "?" + new URLSearchParams(params as any).toString() : "";
+    return apiRequest(`/notifications/${id}/read${queryString}`, {
       method: "PUT",
-    }),
+    });
+  },
 
   markAllAsRead: (params?: { all?: boolean }) => {
     const queryString = params ? "?" + new URLSearchParams(params as any).toString() : "";
