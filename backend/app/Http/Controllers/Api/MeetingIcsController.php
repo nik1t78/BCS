@@ -36,6 +36,16 @@ class MeetingIcsController extends Controller
     }
 
     /**
+     * Проверить, существует ли активная ссылка подписки (сам секрет не возвращается).
+     */
+    public function feedStatus(Request $request)
+    {
+        return response()->json([
+            'active' => (bool) $request->user()->settings?->calendar_token_hash,
+        ]);
+    }
+
+    /**
      * Немедленно отозвать ссылку подписки.
      */
     public function revokeFeed(Request $request)
