@@ -89,6 +89,7 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
   // Экспорт «Мой календарь ВКС» в .ics
   const [icsLoading, setIcsLoading] = useState(false);
   const [icsFeedUrl, setIcsFeedUrl] = useState("");
+  const [icsFeedActive, setIcsFeedActive] = useState(false);
   const [icsFeedLoading, setIcsFeedLoading] = useState(false);
   const [icsFeedRevoking, setIcsFeedRevoking] = useState(false);
   // Модалка выбора зала (клик по пустому слоту календаря / кнопка «Выбрать зал»)
@@ -137,6 +138,7 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
       const result = await icsAPI.rotateFeed();
       if (!result?.url) throw new Error("Сервер не вернул ссылку календаря");
       setIcsFeedUrl(result.url);
+      setIcsFeedActive(true);
     } catch (e) {
       console.error("ICS subscription error:", e);
       alert("Не удалось создать ссылку подписки на календарь");
@@ -161,6 +163,7 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
     try {
       await icsAPI.revokeFeed();
       setIcsFeedUrl("");
+      setIcsFeedActive(false);
     } catch (e) {
       console.error("ICS subscription revoke error:", e);
       alert("Не удалось отключить ссылку календаря");
@@ -168,6 +171,18 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
       setIcsFeedRevoking(false);
     }
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    icsAPI.status()
+      .then((result) => {
+        if (!cancelled) setIcsFeedActive(Boolean(result?.active));
+      })
+      .catch((error) => console.error("Calendar feed status error:", error));
+    return () => {
+      cancelled = true;
+    };
+  }, [user.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -846,22 +861,30 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
             {icsFeedLoading ? "Создание…" : <><i className="fas fa-link mr-1"></i> {icsFeedUrl ? "Обновить ссылку" : "Создать ссылку подписки"}</>}
           </button>
         </div>
-        {icsFeedUrl && (
+        {icsFeedActive && (
           <div className="mt-3 rounded-lg border border-indigo-200 dark:border-indigo-800 p-3 space-y-2">
             <p className="text-xs text-gray-600 dark:text-gray-300">
               Секретная ссылка даёт доступ только на чтение к вашему календарю. Не публикуйте её: любой, у кого есть ссылка, сможет просматривать доступные вам встречи.
             </p>
-            <input
-              aria-label="Секретная ссылка подписки на календарь"
-              readOnly
-              value={icsFeedUrl}
-              onFocus={(event) => event.currentTarget.select()}
-              className="w-full text-xs rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-200 px-2 py-2"
-            />
+            {icsFeedUrl ? (
+              <>
+                <input
+                  aria-label="Секретная ссылка подписки на календарь"
+                  readOnly
+                  value={icsFeedUrl}
+                  onFocus={(event) => event.currentTarget.select()}
+                  className="w-full text-xs rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-200 px-2 py-2"
+                />
+                <button onClick={handleCopyIcsFeed} className="px-3 py-1.5 rounded bg-gray-100 dark:bg-gray-700 text-sm text-gray-700 dark:text-gray-200">
+                  <i className="fas fa-copy mr-1"></i>Скопировать
+                </button>
+              </>
+            ) : (
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Подписка активна, но адрес не сохранён на этом экране. Создайте новую ссылку, чтобы получить адрес; предыдущая ссылка перестанет работать.
+              </p>
+            )}
             <div className="flex flex-wrap gap-2">
-              <button onClick={handleCopyIcsFeed} className="px-3 py-1.5 rounded bg-gray-100 dark:bg-gray-700 text-sm text-gray-700 dark:text-gray-200">
-                <i className="fas fa-copy mr-1"></i>Скопировать
-              </button>
               <button onClick={handleRevokeIcsFeed} disabled={icsFeedRevoking} className="px-3 py-1.5 rounded border border-red-300 text-red-600 text-sm disabled:opacity-50">
                 {icsFeedRevoking ? "Отключение…" : "Отключить ссылку"}
               </button>
