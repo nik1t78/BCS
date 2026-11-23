@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, laravel, 'vks/**']
   pull_request:
 
 jobs:
@@ -69,7 +69,13 @@ jobs:
           php artisan key:generate --ansi 2>/dev/null || true
 
       - name: Run tests
-        run: composer test 2>/dev/null || php artisan test 2>/dev/null || echo "No tests yet — skipping"
+        shell: bash
+        run: |
+          if find tests -type f -name '*Test.php' -print -quit | grep -q .; then
+            php artisan test --no-interaction
+          else
+            echo "No backend test files found; backend test step is explicitly skipped."
+          fi
 
   bot:
     name: VKS bot (Python syntax and entrypoint)
