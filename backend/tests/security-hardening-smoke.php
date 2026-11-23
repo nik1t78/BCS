@@ -23,7 +23,8 @@ $publicMeeting = new Meeting(['is_private' => false]);
 $privateMeeting = new Meeting(['is_private' => true]);
 
 assertSecurityHardening(true, PublicMeetingLinkPolicy::canRedirect($publicMeeting), 'public meeting keeps permanent join link');
-assertSecurityHardening(false, PublicMeetingLinkPolicy::canRedirect($privateMeeting), 'private meeting cannot be exposed by permanent public link');
+assertSecurityHardening(false, PublicMeetingLinkPolicy::canRedirect($privateMeeting), 'private meeting rejects unsigned public link');
+assertSecurityHardening(true, PublicMeetingLinkPolicy::canRedirect($privateMeeting, true), 'private meeting accepts signed permanent QR link');
 
 $now = CarbonImmutable::parse('2026-11-23 12:00:00');
 assertSecurityHardening(false, RefreshTokenPolicy::isExpired('2026-12-23 12:00:00', '2026-11-23 12:00:00', 30, $now), 'valid explicit expiry is accepted');
