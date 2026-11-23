@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Meeting, User, RsvpData, RsvpResponse } from "../types";
 import { getMeetingRsvp, respondRsvp } from "../store-api";
+import { rsvpAPI } from "../api/client";
 
 const OPTIONS: { value: RsvpResponse; label: string; icon: string; activeCls: string }[] = [
   { value: "yes", label: "Приду", icon: "fa-check", activeCls: "bg-green-600 text-white border-green-600" },
@@ -22,6 +23,8 @@ export default function MeetingRsvp({ meeting, user }: Props) {
   const [data, setData] = useState<RsvpData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
 
   const isOrganizer = Number(meeting.organizerId) === Number(user.id);
   const isParticipant = (meeting.participants ?? []).some((p) => Number(p) === Number(user.id));
@@ -47,6 +50,28 @@ export default function MeetingRsvp({ meeting, user }: Props) {
     const ok = await respondRsvp(meeting.id, response);
     setSaving(false);
     if (ok) setData(await getMeetingRsvp(meeting.id));
+  };
+
+
+  const handleExport = async () => {
+    setExporting(true);
+    setExportError("");
+    try {
+      const blob = await rsvpAPI.exportCsv(meeting.id);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `meeting-${meeting.id}-rsvp.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("RSVP export failed:", error);
+      setExportError("Не удалось выгрузить список. Проверьте права доступа и повторите попытку.");
+    } finally {
+      setExporting(false);
+    }
   };
 
   if (loading) {
