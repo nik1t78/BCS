@@ -97,6 +97,9 @@ jobs:
       - name: Run queue heartbeat policy regression smoke tests
         run: php tests/queue-heartbeat-policy-smoke.php
 
+      - name: Run failed job summary redaction smoke tests
+        run: php tests/failed-job-policy-smoke.php
+
       - name: Run Laravel test suite
         shell: bash
         run: |
