@@ -103,7 +103,8 @@ class AttachmentController extends Controller
         $expectedPrefix = 'attachments/' . $meeting->id . '/';
         if (
             !Str::startsWith((string) $attachment->file_path, $expectedPrefix)
-            || Str::contains((string) $attachment->file_path, ['..', '\\\\'])
+            || Str::contains((string) $attachment->file_path, '..')
+            || str_contains((string) $attachment->file_path, chr(92))
         ) {
             return response()->json(['message' => 'Файл не найден'], 404);
         }
