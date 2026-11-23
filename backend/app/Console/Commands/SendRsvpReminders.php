@@ -45,7 +45,7 @@ class SendRsvpReminders extends Command
             /** @var Meeting $meeting */
             $meeting = $occurrence['meeting'];
             $startAt = Carbon::parse($occurrence['date'] . ' ' . $meeting->start_time);
-            $secondsUntilStart = $now->diffInSeconds($startAt, false);
+            $secondsUntilStart = $startAt->getTimestamp() - $now->getTimestamp();
 
             foreach ($offsets as $offset) {
                 if (!RsvpReminderPolicy::isDue($secondsUntilStart, $offset)) {
