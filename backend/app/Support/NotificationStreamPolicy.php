@@ -1,6 +1,6 @@
 <?php
 
-namespace App\\Support;
+namespace App\Support;
 
 /**
  * Решает, нужно ли повторять SSE-подключение после служебного события.
