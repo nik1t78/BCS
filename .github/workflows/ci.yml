@@ -94,6 +94,9 @@ jobs:
       - name: Run meeting reminder timing regression smoke tests
         run: php tests/meeting-reminder-policy-smoke.php
 
+      - name: Run queue heartbeat policy regression smoke tests
+        run: php tests/queue-heartbeat-policy-smoke.php
+
       - name: Run Laravel test suite
         shell: bash
         run: |
