@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
-use App\\Support\\RsvpReminderPolicy;
+use App\Support\RsvpReminderPolicy;
 
 $checks = [
     'default offsets are parsed and sorted' => RsvpReminderPolicy::parseOffsets('60,1440,60') === [1440, 60],
