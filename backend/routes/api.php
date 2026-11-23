@@ -122,7 +122,7 @@ Route::middleware('throttle:600,60')->get('/tv/{room}/next', function (\Illumina
 // страница ожидания /m/{id} опрашивает статус каждую секунду с нескольких
 // экранов одного NAT-IP и мгновенно упиралась в лимит («Too Many Attempts»).
 // 600,60 = 600 запросов в минуту — запас на все открытые страницы ожидания.
-Route::middleware('throttle:600,60')->get('/m/{meeting}', function (\App\Models\Meeting $meeting) {
+Route::middleware('throttle:600,60')->get('/m/{meeting}', function (\Illuminate\Http\Request $request, \App\Models\Meeting $meeting) {
     if (!\App\Support\PublicMeetingLinkPolicy::canRedirect($meeting, $request->hasValidSignature())) {
         return response('Not Found', 404)->header('Cache-Control', 'no-store');
     }
