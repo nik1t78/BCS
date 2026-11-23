@@ -12,7 +12,8 @@ import Notifications, {
   subscribeToNotifications,
 } from "./components/Notifications";
 undefined
-import GlobalSearch from "./components/GlobalSearch";
+// Глобальный поиск нужен только по запросу пользователя; не включаем его код в первый экран.
+const GlobalSearch = lazy(() => import("./components/GlobalSearch"));
 import ThemeToggle from "./components/ThemeToggle";
 import ResetData from "./components/ResetData";
 import type { MeetingPrefill } from "./components/UserPanel";
@@ -252,7 +253,7 @@ function App() {
             </h2>
           </div>
           <div className="flex items-center gap-3">
-            <GlobalSearch user={user} />
+            <Suspense fallback={null}><GlobalSearch user={user} /></Suspense>
             <ThemeToggle />
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center overflow-hidden">
