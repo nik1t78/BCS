@@ -26,7 +26,7 @@ QUEUE_HEARTBEAT_MAX_AGE=180
 Затем примените переменные окружения:
 
 ```powershell
-docker compose up -d --force-recreate backend queue scheduler
+docker compose up -d --build --force-recreate backend queue scheduler
 ```
 
 Проверить вручную:
