@@ -48,7 +48,15 @@ class MeetingSlotSuggestionController extends Controller
             return response()->json(['message' => 'В списке есть неактивные участники.'], 422);
         }
 
-        $roomsQuery = Room::query()->where('is_active', true)->orderBy('name');
+        $roomsQuery = Room::query()
+            ->where('is_active', true)
+            // Не предлагаем зал, который физически меньше выбранной группы.
+            // Залы со старой записью без capacity остаются доступными.
+            ->where(function ($query) use ($participantIds) {
+                $query->whereNull('capacity')
+                    ->orWhere('capacity', '>=', count($participantIds));
+            })
+            ->orderBy('name');
         if (!empty($validated['room_id'])) {
             $roomsQuery->whereKey($validated['room_id']);
         }
@@ -105,7 +113,12 @@ class MeetingSlotSuggestionController extends Controller
                 // На текущую дату не предлагаем интервалы, которые уже прошли.
                 $dayStart = $hours['start'];
                 if ($dateKey === now()->toDateString()) {
-                    $currentTime = now()->format('H:i');
+                    $clock = now();
+                    $currentTime = $clock->format('H:i');
+                    // Не предлагаем слот, если текущая минута уже началась.
+                    if ((int) $clock->format('s') > 0) {
+                        $currentTime = $clock->addMinute()->format('H:i');
+                    }
                     if ($currentTime > $dayStart) $dayStart = $currentTime;
                 }
 
