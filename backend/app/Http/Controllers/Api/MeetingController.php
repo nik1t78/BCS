@@ -858,7 +858,7 @@ class MeetingController extends Controller
                         'type' => 'info',
                         'read' => false,
                     ]);
-                } catch (\\Throwable $e) {
+                } catch (\Throwable $e) {
                     report($e); // перенос уже сохранён — сбой уведомления не должен возвращать ложный 500
                 }
             }
@@ -868,7 +868,7 @@ class MeetingController extends Controller
             AuditLog::log($request, 'meeting_rescheduled', $meeting,
                 ['date' => $oldDate, 'start_time' => $oldStart],
                 ['date' => $meeting->date->toDateString(), 'start_time' => $validated['start_time']]);
-        } catch (\\Throwable $e) {
+        } catch (\Throwable $e) {
             report($e); // аудит не должен отменять уже выполненный перенос
         }
 
