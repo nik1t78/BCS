@@ -212,7 +212,9 @@ export function NotificationToasts({ toasts, onDismiss }: { toasts: ToastItem[];
   const iconFor = (type: string) =>
     type === "starting"
       ? "🔴"
-      : type === "reminder"
+      : type === "rsvp_reminder"
+        ? "📝"
+        : type === "reminder"
         ? "⏰"
         : type === "warning"
           ? "⚠️"
@@ -335,6 +337,8 @@ export default function Notifications({ user }: NotificationsProps) {
     switch (type) {
       case "reminder":
         return { icon: "fa-bell", color: "text-yellow-500", bg: "bg-yellow-50 dark:bg-yellow-900/20" };
+      case "rsvp_reminder":
+        return { icon: "fa-clipboard-check", color: "text-indigo-500", bg: "bg-indigo-50 dark:bg-indigo-900/20" };
       case "starting":
         return { icon: "fa-video", color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-900/20" };
       case "info":
