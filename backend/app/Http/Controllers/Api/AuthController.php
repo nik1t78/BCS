@@ -126,7 +126,7 @@ class AuthController extends Controller
         try {
             defer(function () {
                 try {
-                    $cutoff = now()->subDays(30);
+                    $cutoff = now()->subDays(max(30, (int) config('vks.refresh_token_ttl_days', 30)));
                     \DB::table('personal_access_tokens')
                         ->where(function ($q) use ($cutoff) {
                             $q->whereNotNull('expires_at')->where('expires_at', '<', $cutoff)
