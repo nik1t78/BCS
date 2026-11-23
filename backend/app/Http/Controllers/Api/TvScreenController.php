@@ -60,40 +60,14 @@ class TvScreenController extends Controller
                 // Одна «битая» запись (например, пустое start_time или невалидный rrule)
                 // не должна ронять весь экран ТВ с 500 — пропускаем её.
                 try {
-                    $baseDate = $m->date->toDateString();
-                    $startHm = substr((string) $m->start_time, 0, 5);
-                    $endRaw = substr((string) $m->end_time, 0, 5);
-                    if ($startHm === '' || $endRaw === '') return null;
-
-                    $occurrenceDate = $baseDate;
-                    if ($m->recurring && $m->recurring !== 'none') {
-                        $occurrenceDate = null;
-                        // Ищем ближайшее событие начиная с сегодняшнего дня:
-                        // старые серии продолжают отображаться, а прошедшее
-                        // сегодня событие не вытесняет следующее.
-                        for ($offset = 0; $offset <= 7; $offset++) {
-                            $candidate = $now->copy()->startOfDay()->addDays($offset);
-                            if (!\App\Services\RecurrenceService::occursOn($m, $candidate)) {
-                                continue;
-                            }
-                            $candidateStart = \Carbon\CarbonImmutable::parse($candidate->toDateString() . ' ' . $startHm);
-                            $candidateEnd = \Carbon\CarbonImmutable::parse($candidate->toDateString() . ' ' . $endRaw);
-                            if ($candidateEnd->lessThan($candidateStart)) {
-                                $candidateEnd = $candidateEnd->addDay();
-                            }
-                            if ($candidateEnd->greaterThan($now)) {
-                                $occurrenceDate = $candidate->toDateString();
-                                break;
-                            }
-                        }
-                        if ($occurrenceDate === null) return null;
-                    }
-
-                    $start = \Carbon\CarbonImmutable::parse($occurrenceDate . ' ' . $startHm);
-                    $end = \Carbon\CarbonImmutable::parse($occurrenceDate . ' ' . $endRaw);
-                    if ($end->lessThan($start)) {
-                        $end = $end->addDay(); // встреча через полночь
-                    }
+                    $occurrence = TvScreenPolicy::nextOccurrence(
+                        $m,
+                        CarbonImmutable::parse($now),
+                        7
+                    );
+                    if ($occurrence === null) return null;
+                    $start = $occurrence['start'];
+                    $end = $occurrence['end'];
                     return [
                         'id' => $m->id,
                         'title' => $m->title,
