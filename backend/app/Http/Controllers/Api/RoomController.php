@@ -437,7 +437,7 @@ class RoomController extends Controller
         // Встречи хранят название комнаты строкой, поэтому удаление комнаты
         // с историей бронирований оставит записи без справочной связи.
         $hasMeetings = Meeting::query()->where('room', $room->name)->exists();
-        if ($hasMeetings) {
+        if (!\\App\\Support\\RoomLifecyclePolicy::canDelete($hasMeetings)) {
             return response()->json([
                 'message' => 'Нельзя удалить переговорную: с ней связаны существующие или прошедшие встречи. Отключите её (is_active=false), чтобы сохранить историю бронирований.',
                 'code' => 'ROOM_HAS_MEETINGS',
