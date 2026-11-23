@@ -849,20 +849,28 @@ class MeetingController extends Controller
                 : " время было: {$oldStart}";
             $targets = array_unique(array_merge([$meeting->organizer_id], $meeting->participants ?? []));
             foreach ($targets as $userId) {
-                if ($userId === $user->id) continue;
-                Notification::create([
-                    'user_id' => $userId,
-                    'meeting_id' => $meeting->id,
-                    'message' => "📅 Конференция \"{$meeting->title}\" перенесена на {$meeting->date->format('d.m.Y')} {$validated['start_time']},{$suffix}",
-                    'type' => 'info',
-                    'read' => false,
-                ]);
+                if ((int) $userId === (int) $user->id) continue;
+                try {
+                    Notification::create([
+                        'user_id' => $userId,
+                        'meeting_id' => $meeting->id,
+                        'message' => "📅 Конференция \"{$meeting->title}\" перенесена на {$meeting->date->format('d.m.Y')} {$validated['start_time']},{$suffix}",
+                        'type' => 'info',
+                        'read' => false,
+                    ]);
+                } catch (\\Throwable $e) {
+                    report($e); // перенос уже сохранён — сбой уведомления не должен возвращать ложный 500
+                }
             }
         }
 
-        AuditLog::log($request, 'meeting_rescheduled', $meeting,
-            ['date' => $oldDate, 'start_time' => $oldStart],
-            ['date' => $meeting->date->toDateString(), 'start_time' => $validated['start_time']]);
+        try {
+            AuditLog::log($request, 'meeting_rescheduled', $meeting,
+                ['date' => $oldDate, 'start_time' => $oldStart],
+                ['date' => $meeting->date->toDateString(), 'start_time' => $validated['start_time']]);
+        } catch (\\Throwable $e) {
+            report($e); // аудит не должен отменять уже выполненный перенос
+        }
 
         // Инвалидация кэша доступности залов (перенос меняет занятость обеих дат).
         MeetingCache::bump(array_filter([\App\Support\MeetingCache::roomIdsFromNames([$oldRoomName ?? null, $meeting->room ?? null])]));

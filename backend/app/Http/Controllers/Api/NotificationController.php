@@ -17,7 +17,7 @@ class NotificationController extends Controller
     {
         $user = $request->user();
 
-        $showAll = $request->boolean('all') && $user->role === 'admin';
+        $showAll = NotificationAccess::canManageAll($user->role, $request->boolean('all'));
 
         $query = $showAll ? Notification::query() : Notification::where('user_id', $user->id);
 

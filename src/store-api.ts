@@ -162,7 +162,7 @@ function normalizeCalendarDate(value: unknown): unknown {
   const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
 
-  const ru = trimmed.match(/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})$/);
+  const ru = trimmed.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
   if (ru) return `${ru[3]}-${String(Number(ru[2])).padStart(2, '0')}-${String(Number(ru[1])).padStart(2, '0')}`;
   return value;
 }
@@ -994,9 +994,9 @@ export async function getNotifications(params?: {
   }
 }
 
-export async function markNotificationRead(id: string): Promise<boolean> {
+export async function markNotificationRead(id: string, params?: { all?: boolean }): Promise<boolean> {
   try {
-    await notificationsAPI.markAsRead(id);
+    await notificationsAPI.markAsRead(id, params);
     return true;
   } catch (error) {
     console.error("Mark notification read error:", error);
