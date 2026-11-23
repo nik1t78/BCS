@@ -621,7 +621,7 @@ class MeetingController extends Controller
         $effectiveStart = substr((string) ($validated['start_time'] ?? $meeting->start_time), 0, 5);
         $effectiveEnd = substr((string) ($validated['end_time'] ?? $meeting->end_time), 0, 5);
         if ($effectiveEnd <= $effectiveStart) {
-            throw \Illuminate\\Validation\\ValidationException::withMessages([
+            throw \Illuminate\Validation\ValidationException::withMessages([
                 'end_time' => ['Время окончания должно быть позже времени начала.'],
             ]);
         }
