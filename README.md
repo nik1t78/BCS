@@ -96,6 +96,7 @@
   все конференции, аудит-лог с экспортом CSV, статистика и тепловая карта загрузки,
   активные сессии (User-Agent/IP) с завершением.
 - **Эксплуатация очереди**: статус queue worker, список failed jobs, безопасный повтор отдельной задачи и удаление записи об ошибке; см. `docs/QUEUE-OPERATIONS.md`.
+- **Мониторинг сервисов**: отдельная проверка MySQL, Redis, Nginx и queue worker; настройка описана в `docs/REDIS-MONITORING-PHASE39.md`.
 - **Безопасность**: роли admin/moderator/user, rate limiting, refresh-токены Sanctum,
   logout со всех устройств.
 - **UX**: тёмная тема (prefers-color-scheme + сохранение), глобальный поиск Ctrl+K,
