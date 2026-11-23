@@ -239,7 +239,7 @@ export default function Stats({ user }: StatsProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 print-area">
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-6 text-white flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold flex items-center gap-2">
@@ -256,6 +256,13 @@ export default function Stats({ user }: StatsProps) {
         >
           <i className={`fas ${exporting ? "fa-spinner fa-spin" : "fa-file-excel"} mr-2`}></i>
           {exporting ? "Формируем отчёт..." : "Скачать отчёт Excel"}
+        </button>
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="px-4 py-2 rounded-lg bg-white/15 hover:bg-white/25 text-white font-medium border border-white/30"
+        >
+          <i className="fas fa-file-pdf mr-2"></i>Печать / сохранить PDF
         </button>
       </div>
 
