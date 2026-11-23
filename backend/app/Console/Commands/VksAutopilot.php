@@ -145,21 +145,35 @@ class VksAutopilot extends Command
 
             // Не ставить в очередь повторно задачу, которая ещё не выполнена.
             $lockKey = 'vks_queued_' . $meeting->id;
-            if (cache()->has($lockKey)) {
-                continue;
-            }
             if ($noLinkQueued >= $batchSize) {
                 break;
             }
 
             try {
-                CreateVksLinkJob::dispatch($meeting->id)->onQueue('vks');
-                // Блокировку ставим только после успешного dispatch: при отказе
-                // БД/Redis задача должна быть доступна для следующего цикла.
+                if (cache()->has($lockKey)) {
+                    continue;
+                }
+                // Сначала ставим dedupe-lock, чтобы два параллельных цикла
+                // не отправили одну встречу одновременно.
                 cache()->put($lockKey, 1, now()->addMinutes(15));
+            } catch (\Throwable $e) {
+                report($e);
+                $this->warn("Не удалось установить блокировку встречи {$meeting->id}: {$e->getMessage()}");
+                continue;
+            }
+
+            try {
+                CreateVksLinkJob::dispatch($meeting->id)->onQueue('vks');
                 $noLinkQueued++;
                 $queued++;
             } catch (\Throwable $e) {
+                // Если dispatch не удался, снимаем lock — следующий цикл
+                // сможет повторить постановку задачи.
+                try {
+                    cache()->forget($lockKey);
+                } catch (\Throwable $cacheError) {
+                    report($cacheError);
+                }
                 report($e);
                 $this->warn("Не удалось поставить встречу {$meeting->id} в очередь: {$e->getMessage()}");
             }
