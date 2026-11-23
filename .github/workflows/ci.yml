@@ -34,6 +34,9 @@ jobs:
       - name: Type-check
         run: npx tsc --noEmit
 
+      - name: Frontend performance code-splitting smoke checks
+        run: node scripts/frontend-performance-smoke.mjs
+
       - name: Build
         run: npm run build
 

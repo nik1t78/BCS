@@ -4,7 +4,7 @@ import { getMeetings, getUsersForDisplay, updateMeeting } from "../store-api";
 import { occursOn, withDate, MEETING_OCCURRENCES_LIMIT_DAYS } from "../utils/recurrence";
 import FreeRoomsWidget from "./FreeRoomsWidget";
 import OutlookCalendar, { OutlookView } from "./OutlookCalendar";
-import RoomBookingModal from "./RoomBookingModal";
+
 import type { MeetingPrefill } from "./UserPanel";
 import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { toDateKey, formatRuDate } from "../utils/dateKey";
@@ -12,6 +12,7 @@ import { icsAPI, meetingsAPI } from "../api/client";
 import { syncServerTime, serverNowDate, serverTodayKey as serverTodayKeyTz, serverNowHm as serverNowHmTz, serverTodayKey as guessServerTodayKey } from "../api/serverTime";
 
 const UserPanel = lazy(() => import("./UserPanel"));
+const RoomBookingModal = lazy(() => import("./RoomBookingModal"));
 
 /** Часы главной страницы: «сейчас» по СЕРВЕРНОМУ времени (с offset из
  *  /api/time / localStorage), а не по часам браузера. При сбитой дате/времени
@@ -664,15 +665,26 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
 
       {/* Модалка выбора зала: Outlook-шкала дня 00:00–24:00, клик по свободному времени →
           «Занять и создать ВКС» (переход в форму с автогенерацией ссылки) */}
-      <RoomBookingModal
-        open={bookingOpen}
-        date={bookingAt.date}
-        startTime={bookingAt.startTime}
-        endTime={bookingAt.endTime}
-        roomName={bookingAt.room}
-        onClose={() => setBookingOpen(false)}
-        onConfirm={handleBookingConfirm}
-      />
+      {bookingOpen && (
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/30" role="status">
+              <i className="fas fa-circle-notch fa-spin mr-2" aria-hidden="true"></i>
+              Загрузка…
+            </div>
+          }
+        >
+          <RoomBookingModal
+            open={bookingOpen}
+            date={bookingAt.date}
+            startTime={bookingAt.startTime}
+            endTime={bookingAt.endTime}
+            roomName={bookingAt.room}
+            onClose={() => setBookingOpen(false)}
+            onConfirm={handleBookingConfirm}
+          />
+        </Suspense>
+      )}
 
       {/* Панель создания ВКС прямо поверх главной — без перехода в другой раздел.
           ВАЖНО: закрытие по клику на тёмный фон (backdrop) НЕ сбрасывает prefill
