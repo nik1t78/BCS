@@ -135,9 +135,9 @@ class MonitorSystem extends Command
         $url = rtrim((string) env('SYSTEM_MONITOR_BASE_URL', 'http://nginx'), '/') . '/';
         try {
             $response = Http::timeout(5)->get($url);
-            // nginx отдаёт index.html SPA — любой HTTP-ответ (2xx/3xx) = жив;
-            // 5xx от nginx — уже авария.
-            if ($response->status() >= 500) {
+            // nginx должен отдавать SPA или штатный redirect (2xx/3xx).
+            // 4xx означает неверный маршрут/конфигурацию, 5xx — сбой сервера.
+            if ($response->status() >= 400) {
                 return [false, 'HTTP ' . $response->status()];
             }
             return [true, null];
