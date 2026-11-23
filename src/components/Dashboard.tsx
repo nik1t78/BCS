@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, lazy, Suspense } from "react";
 import { User, Meeting } from "../types";
 import { getMeetings, getUsersForDisplay, updateMeeting } from "../store-api";
 import { occursOn, withDate, MEETING_OCCURRENCES_LIMIT_DAYS } from "../utils/recurrence";
 import FreeRoomsWidget from "./FreeRoomsWidget";
 import OutlookCalendar, { OutlookView } from "./OutlookCalendar";
 import RoomBookingModal from "./RoomBookingModal";
-import UserPanel from "./UserPanel";
+const UserPanel = lazy(() => import("./UserPanel"));
 import type { MeetingPrefill } from "./UserPanel";
 import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { toDateKey, formatRuDate } from "../utils/dateKey";
@@ -706,21 +706,30 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
               </button>
             </div>
             <div className="p-6">
-              <UserPanel
-                user={user}
-                onNavigate={onNavigate}
-                formOnly
-                initialPrefill={createPrefill}
-                onPrefillConsumed={() => setCreatePrefill(null)}
-                onClose={() => setCreatePrefill(null)}
-                onCreated={() => {
-                  setCreatePrefill(null);
-                  // обновим список встреч после создания
-                  getMeetings()
-                    .then(setMeetings)
-                    .catch(() => {});
-                }}
-              />
+              <Suspense
+                fallback={
+                  <div className="flex items-center justify-center py-12 text-gray-400" role="status">
+                    <i className="fas fa-circle-notch fa-spin mr-2" aria-hidden="true"></i>
+                    Загрузка формы…
+                  </div>
+                }
+              >
+                <UserPanel
+                  user={user}
+                  onNavigate={onNavigate}
+                  formOnly
+                  initialPrefill={createPrefill}
+                  onPrefillConsumed={() => setCreatePrefill(null)}
+                  onClose={() => setCreatePrefill(null)}
+                  onCreated={() => {
+                    setCreatePrefill(null);
+                    // обновим список встреч после создания
+                    getMeetings()
+                      .then(setMeetings)
+                      .catch(() => {});
+                  }}
+                />
+              </Suspense>
             </div>
           </div>
         </div>
