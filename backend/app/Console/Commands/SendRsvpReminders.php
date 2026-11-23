@@ -11,6 +11,7 @@ use App\Support\RsvpReminderPolicy;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 
 class SendRsvpReminders extends Command
 {
@@ -97,28 +98,39 @@ class SendRsvpReminders extends Command
 
             $message = "🔔 {$prefix} в конференции «{$meeting->title}» ({$dateLabel} в {$timeLabel}). Напоминание за {$offset} мин.";
 
-            // Дата occurrence и текст сообщения участвуют в ключе дедупликации:
-            // один участник получает не более одного одинакового напоминания
-            // для каждой даты серии и каждого настроенного интервала.
-            $exists = Notification::query()
-                ->where('user_id', $user->id)
-                ->where('meeting_id', $meeting->id)
-                ->where('type', 'rsvp_reminder')
-                ->where('message', $message)
-                ->exists();
+            // Короткая распределённая блокировка закрывает гонку между несколькими
+            // scheduler-процессами: проверка и создание уведомления выполняются
+            // только одним процессом для пользователя, встречи, occurrence и интервала.
+            $lockKey = 'rsvp-reminder:' . hash('sha256', $user->id . '|' . $meeting->id . '|' . $message);
+            $lock = Cache::lock($lockKey, 60);
 
-            if ($exists) {
+            if (!$lock->get()) {
                 continue;
             }
 
-            Notification::create([
-                'user_id' => $user->id,
-                'meeting_id' => $meeting->id,
-                'message' => $message,
-                'type' => 'rsvp_reminder',
-                'read' => false,
-            ]);
-            $sent++;
+            try {
+                $exists = Notification::query()
+                    ->where('user_id', $user->id)
+                    ->where('meeting_id', $meeting->id)
+                    ->where('type', 'rsvp_reminder')
+                    ->where('message', $message)
+                    ->exists();
+
+                if ($exists) {
+                    continue;
+                }
+
+                Notification::create([
+                    'user_id' => $user->id,
+                    'meeting_id' => $meeting->id,
+                    'message' => $message,
+                    'type' => 'rsvp_reminder',
+                    'read' => false,
+                ]);
+                $sent++;
+            } finally {
+                $lock->release();
+            }
         }
 
         return $sent;
