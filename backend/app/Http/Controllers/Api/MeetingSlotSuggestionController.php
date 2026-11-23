@@ -102,6 +102,13 @@ class MeetingSlotSuggestionController extends Controller
                 );
                 if (!$hours || ($hours['end'] ?? '') <= ($hours['start'] ?? '')) continue;
 
+                // На текущую дату не предлагаем интервалы, которые уже прошли.
+                $dayStart = $hours['start'];
+                if ($dateKey === now()->toDateString()) {
+                    $currentTime = now()->format('H:i');
+                    if ($currentTime > $dayStart) $dayStart = $currentTime;
+                }
+
                 $busy = [];
                 foreach ($dayMeetings as $meeting) {
                     $start = substr((string) $meeting->start_time, 0, 5);
@@ -119,7 +126,7 @@ class MeetingSlotSuggestionController extends Controller
 
                 $slots = MeetingSlotSuggestionPolicy::suggest(
                     $busy,
-                    $hours['start'],
+                    $dayStart,
                     $hours['end'],
                     (int) $validated['duration'],
                     30,
