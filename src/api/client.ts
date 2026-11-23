@@ -856,6 +856,7 @@ export const bulkParticipantsAPI = {
 // Экспорт расписания в iCalendar (.ics)
 export const icsAPI = {
   download: () => downloadBlob("/schedule.ics"),
+  status: () => apiRequest("/calendar-feed/status"),
   rotateFeed: () => apiRequest("/calendar-feed/rotate", { method: "POST" }),
   revokeFeed: () => apiRequest("/calendar-feed", { method: "DELETE" }),
 };
