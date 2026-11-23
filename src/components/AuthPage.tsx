@@ -57,8 +57,8 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
       setError("Заполните все обязательные поля");
       return;
     }
-    if (password.length < 6) {
-      setError("Пароль должен быть не менее 6 символов");
+    if (password.length < 12) {
+      setError("Пароль должен быть не менее 12 символов");
       return;
     }
     // Проверка ФИО: только буквы, пробелы и дефисы (кириллица/латиница), минимум два слова
@@ -112,30 +112,14 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
         </div>
 
         <div className="bg-white rounded-2xl shadow-2xl p-8">
-          <div className="flex mb-6 bg-gray-100 rounded-lg p-1">
-            <button
-              onClick={() => {
-                setMode("login");
-                setError("");
-              }}
-              className={`flex-1 py-2.5 text-sm font-medium rounded-md transition-all ${
-                mode === "login" ? "bg-white shadow text-blue-600" : "text-gray-500"
-              }`}
-            >
-              Вход
-            </button>
-            <button
-              onClick={() => {
-                setMode("register");
-                setError("");
-              }}
-              className={`flex-1 py-2.5 text-sm font-medium rounded-md transition-all ${
-                mode === "register" ? "bg-white shadow text-blue-600" : "text-gray-500"
-              }`}
-            >
-              Регистрация
-            </button>
+          <div className="mb-6 bg-gray-100 rounded-lg p-1">
+            <div className="py-2.5 text-center text-sm font-medium rounded-md bg-white shadow text-blue-600">
+              Вход в систему
+            </div>
           </div>
+          <p className="mb-4 text-center text-sm text-gray-500">
+            Учётные записи сотрудников создаёт администратор организации.
+          </p>
 
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
