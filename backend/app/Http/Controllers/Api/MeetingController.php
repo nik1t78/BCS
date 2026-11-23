@@ -9,6 +9,7 @@ use App\Models\Meeting;
 use App\Models\Notification;
 use App\Models\Room;
 use App\Support\MeetingCache;
+use App\Support\MeetingEditPolicy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -582,7 +583,7 @@ class MeetingController extends Controller
             'description' => 'nullable|string',
             'date' => 'sometimes|date_format:Y-m-d',
             'start_time' => ['sometimes', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
-            'end_time' => ['sometimes', 'regex:/^\d{2}:\d{2}(:\d{2})?$/', 'after:start_time'],
+            'end_time' => ['sometimes', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
             'room' => 'nullable|string|max:255',
             'link' => 'nullable|url|max:500',
             'status' => 'sometimes|in:scheduled,in-progress,completed,cancelled',
@@ -600,12 +601,56 @@ class MeetingController extends Controller
             'tags.*' => 'integer|exists:tags,id',
         ]);
 
+        $isPrivilegedEditor = (int) $meeting->organizer_id === (int) $user->id
+            || $user->isAdmin()
+            || $user->isModerator();
+
+        $validated = MeetingEditPolicy::filterFields($validated, $isPrivilegedEditor);
+        if (!$isPrivilegedEditor && $validated === []) {
+            return response()->json(['message' => 'Участник может изменять только название и время встречи'], 403);
+        }
+
         if (array_key_exists('room', $validated)) {
             $this->validateRoomAccess($request, $validated['room']);
         }
 
         $tags = $validated['tags'] ?? null;
         unset($validated['tags']);
+
+        $effectiveDate = $validated['date'] ?? $meeting->date?->toDateString();
+        $effectiveStart = substr((string) ($validated['start_time'] ?? $meeting->start_time), 0, 5);
+        $effectiveEnd = substr((string) ($validated['end_time'] ?? $meeting->end_time), 0, 5);
+        $scheduleChanged = ($effectiveDate !== $meeting->date?->toDateString())
+            || ($effectiveStart !== substr((string) $meeting->start_time, 0, 5))
+            || ($effectiveEnd !== substr((string) $meeting->end_time, 0, 5));
+
+        if ($scheduleChanged) {
+            if ($effectiveEnd <= $effectiveStart) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                        'end_time' => ['Время окончания должно быть позже времени начала.'],
+                ]);
+            }
+
+            $people = array_unique(array_merge(
+                [(int) $meeting->organizer_id],
+                array_map('intval', $meeting->participants ?? []),
+            ));
+
+            foreach ($people as $personId) {
+                if (ScheduleConflictController::userHasConflict(
+                    $personId,
+                    $effectiveDate,
+                    $effectiveStart,
+                    $effectiveEnd,
+                    (int) $meeting->id,
+                )) {
+                    return response()->json([
+                        'message' => 'На выбранном времени у участника уже есть другая встреча.',
+                        'conflict_user_id' => $personId,
+                    ], 409);
+                }
+            }
+        }
 
         if (array_key_exists('recurring', $validated) && $validated['recurring'] === 'none') {
             $validated['repeat_until'] = null;
@@ -792,12 +837,20 @@ class MeetingController extends Controller
         $validated = $request->validate([
             'date' => 'required|date_format:Y-m-d',
             'start_time' => 'required|date_format:H:i',
-            'end_time' => 'sometimes|date_format:H:i',
+            'end_time' => 'sometimes|date_format:H:i|after:start_time',
             'notify' => 'sometimes|boolean',
             'force' => 'sometimes|boolean',
         ]);
 
+        $newStart = $validated['start_time'];
         $newEnd = substr($validated['end_time'] ?? $meeting->end_time, 0, 5);
+        // При переносе без явно переданного end_time сохраняем старое окончание,
+        // но не допускаем интервал нулевой/отрицательной длительности.
+        if ($newEnd <= $newStart) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'end_time' => ['Время окончания должно быть позже времени начала. Укажите новое окончание встречи.'],
+            ]);
+        }
         // Канон YYYY-MM-DD без Carbon::parse: берём календарную часть строки как есть.
         // Carbon::parse для «2026-11-03» даёт полночь Europe/Moscow, а приведение
         // к UTC (сохранение/сравнение) сдвигает сутки назад — выбрал 03.11,
@@ -858,7 +911,7 @@ class MeetingController extends Controller
                         'type' => 'info',
                         'read' => false,
                     ]);
-                } catch (\\Throwable $e) {
+                } catch (\Throwable $e) {
                     report($e); // перенос уже сохранён — сбой уведомления не должен возвращать ложный 500
                 }
             }
@@ -868,7 +921,7 @@ class MeetingController extends Controller
             AuditLog::log($request, 'meeting_rescheduled', $meeting,
                 ['date' => $oldDate, 'start_time' => $oldStart],
                 ['date' => $meeting->date->toDateString(), 'start_time' => $validated['start_time']]);
-        } catch (\\Throwable $e) {
+        } catch (\Throwable $e) {
             report($e); // аудит не должен отменять уже выполненный перенос
         }
 
@@ -1016,18 +1069,27 @@ class MeetingController extends Controller
         if ($roomName === null || trim($roomName) === '') {
             return;
         }
+
         $user = $request->user();
+        $room = Room::where('name', $roomName)->first();
+
+        // Неактивная комната остаётся в истории и справочнике, но её нельзя
+        // назначать новым встречам или выбирать при переносе существующей.
+        if ($room && !\App\Support\RoomLifecyclePolicy::canBook((bool) $room->is_active)) {
+            abort(422, 'Эта переговорная отключена и недоступна для новых бронирований');
+        }
+
         if ($user->isAdmin() || $user->isModerator()) {
             return;
         }
-        $room = Room::where('name', $roomName)->first();
-        // Свободный текст в поле room (не из справочника) разрешаем как раньше
+
+        // Свободный текст в поле room (не из справочника) разрешаем как раньше.
         if (!$room || !$room->department_id) {
             return;
         }
+
         // Сопоставление: department_id комнаты может храниться как числовой id
-        // или совпадать с названием отдела пользователя. Таблицы departments в
-        // схеме нет — сверяем напрямую значения (число↔число, строка↔строка).
+        // или совпадать с названием отдела пользователя.
         $userDept = trim((string) ($user->department ?? ''));
         $roomDept = trim((string) $room->department_id);
         $matches = $userDept !== ''

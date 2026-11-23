@@ -306,8 +306,12 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
       {/* Детальная карточка ВКС: описание, комната, время; редактирование названия/времени */}
       {selectedMeeting &&
         (() => {
-          const canSee = isAdminLike || hasAccessTo(selectedMeeting);
-          const canEdit = canSee && selectedMeeting.status !== "cancelled" && selectedMeeting.status !== "completed";
+          // Публичную встречу можно просматривать, но редактировать её могут
+          // только организатор, участник или администратор/модератор.
+          const canSee = selectedMeeting.isPrivate !== true || isAdminLike || hasAccessTo(selectedMeeting);
+          const canEdit = (isAdminLike || hasAccessTo(selectedMeeting))
+            && selectedMeeting.status !== "cancelled"
+            && selectedMeeting.status !== "completed";
           return (
             <div
               className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"

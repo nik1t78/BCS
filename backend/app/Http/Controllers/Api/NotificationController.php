@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Notification;
-use App\Models\User;
+use App\Support\NotificationAccess;
 use Illuminate\Http\Request;
 
 class NotificationController extends Controller
@@ -32,9 +32,12 @@ class NotificationController extends Controller
         // Сортировка по id (автоинкремент) — надёжнее created_at: у уведомлений,
         // созданных в одну транзакцию/секунду, created_at одинаковый и порядок
         // «новых» плывёт, из-за чего фронт пропускал свежие уведомления.
+        // Не даём клиенту запросить неограниченное число уведомлений за один ответ.
+        $perPage = min(max($request->integer('per_page', $showAll ? 100 : 50), 1), 100);
+
         $notifications = $query->with(['meeting', 'user:id,name'])
             ->orderByDesc('id')
-            ->paginate($request->get('per_page', $showAll ? 100 : 50));
+            ->paginate($perPage);
 
         return response()->json($notifications);
     }
@@ -46,8 +49,9 @@ class NotificationController extends Controller
     {
         $user = $request->user();
 
-        // Администратор может отмечать прочитанными уведомления любого пользователя (режим «Все уведомления»)
-        $query = $user->role === 'admin' ? Notification::query() : Notification::where('user_id', $user->id);
+        // Изменение чужого уведомления разрешено только в явном режиме all=1 администратору.
+        $showAll = NotificationAccess::canManageAll($user->role, $request->boolean('all'));
+        $query = $showAll ? Notification::query() : Notification::where('user_id', $user->id);
 
         $notification = $query->findOrFail($id);
 
@@ -64,7 +68,7 @@ class NotificationController extends Controller
     public function markAllAsRead(Request $request)
     {
         $user = $request->user();
-        $showAll = $request->boolean('all') && $user->role === 'admin';
+        $showAll = NotificationAccess::canManageAll($user->role, $request->boolean('all'));
 
         $query = $showAll ? Notification::query() : Notification::where('user_id', $user->id);
 

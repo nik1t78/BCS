@@ -82,6 +82,12 @@ jobs:
       - name: Run notification access regression smoke tests
         run: php tests/notification-access-smoke.php
 
+      - name: Run meeting edit policy regression smoke tests
+        run: php tests/meeting-edit-policy-smoke.php
+
+      - name: Run room lifecycle regression smoke tests
+        run: php tests/room-lifecycle-smoke.php
+
       - name: Run Laravel test suite
         shell: bash
         run: |

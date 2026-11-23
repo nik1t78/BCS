@@ -241,10 +241,33 @@ export default function RoomsManager({ isAdmin, userDepartment }: RoomsManagerPr
     }
   };
 
+  const toggleActive = async (room: Room) => {
+    const nextActive = !room.isActive;
+    const prompt = nextActive
+      ? `Включить переговорную «${room.name}» для новых бронирований?`
+      : `Отключить переговорную «${room.name}» от новых бронирований? Существующие встречи и история сохранятся.`;
+    if (!confirm(prompt)) return;
+    try {
+      await roomsAPI.update(room.id, { is_active: nextActive });
+      setError("");
+      await load();
+    } catch (e: any) {
+      setError(e?.message || "Не удалось изменить статус переговорной");
+    }
+  };
+
   const remove = async (id: string) => {
-    if (!confirm("Удалить комнату из справочника?")) return;
-    await roomsAPI.remove(id);
-    load();
+    if (!confirm("Удалить комнату из справочника? Если с ней связаны встречи, система сохранит комнату и историю бронирований.")) return;
+    try {
+      await roomsAPI.remove(id);
+      setError("");
+      await load();
+    } catch (e: any) {
+      setError(
+        e?.message ||
+          "Не удалось удалить переговорную. Если с ней связаны встречи, сначала отключите её от новых бронирований, сохранив историю."
+      );
+    }
   };
 
   return (
@@ -375,8 +398,19 @@ export default function RoomsManager({ isAdmin, userDepartment }: RoomsManagerPr
                 {isAdmin && r.tvToken && (
                   <TvScreenLinkButton roomName={r.name} token={r.tvToken} />
                 )}
+                {!r.isActive && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                    Отключена
+                  </span>
+                )}
                 {isAdmin && (
                   <span className="flex gap-2 ml-2">
+                    <button
+                      className={`text-xs hover:underline ${r.isActive ? "text-amber-600" : "text-green-600"}`}
+                      onClick={() => toggleActive(r)}
+                    >
+                      {r.isActive ? "Отключить" : "Включить"}
+                    </button>
                     <button
                       className="text-xs text-blue-600 hover:underline"
                       onClick={() => {
