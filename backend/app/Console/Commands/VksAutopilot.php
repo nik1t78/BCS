@@ -122,15 +122,32 @@ class VksAutopilot extends Command
                 ->whereTime('start_time', '<=', $horizon->format('H:i:s'));
         }
 
-        foreach ($noLinkQuery->cursor()->unique() as $meeting) {
+        // Ограничиваем объём одной итерации: при массовом импорте встреч
+        // автопилот не должен одномоментно заполнить очередь тысячами задач.
+        $batchSize = max(1, min(200, (int) env('VKSBOT_AUTOPILOT_BATCH', 50)));
+
+        foreach ($noLinkQuery
+            ->orderBy('date')
+            ->orderBy('start_time')
+            ->limit($batchSize)
+            ->cursor()
+            ->unique() as $meeting) {
             // Не ставить в очередь повторно задачу, которая ещё не выполнена.
             $lockKey = 'vks_queued_' . $meeting->id;
             if (cache()->has($lockKey)) {
                 continue;
             }
-            cache()->put($lockKey, 1, now()->addMinutes(15));
-            CreateVksLinkJob::dispatch($meeting->id)->onQueue('vks');
-            $queued++;
+
+            try {
+                CreateVksLinkJob::dispatch($meeting->id)->onQueue('vks');
+                // Блокировку ставим только после успешного dispatch: при отказе
+                // БД/Redis задача должна быть доступна для следующего цикла.
+                cache()->put($lockKey, 1, now()->addMinutes(15));
+                $queued++;
+            } catch (\Throwable $e) {
+                report($e);
+                $this->warn("Не удалось поставить встречу {$meeting->id} в очередь: {$e->getMessage()}");
+            }
         }
 
         $this->info("vks:autopilot — проверено {$checked}, поставлено в очередь {$queued}");
