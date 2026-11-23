@@ -196,49 +196,61 @@ class UserController extends Controller
             return response()->json(['message' => 'Нельзя удалить свой аккаунт'], 422);
         }
 
+        try {
         $result = DB::transaction(function () use ($id, $request) {
-            $user = User::query()->whereKey($id)->lockForUpdate()->firstOrFail();
-            $activeAdmins = User::query()
-                ->where('role', 'admin')
-                ->where('is_active', true)
-                ->lockForUpdate()
-                ->get(['id']);
+                $user = User::query()->whereKey($id)->lockForUpdate()->firstOrFail();
+                $activeAdmins = User::query()
+                    ->where('role', 'admin')
+                    ->where('is_active', true)
+                    ->lockForUpdate()
+                    ->get(['id']);
+    
+                $hasMeetingHistory = Meeting::withTrashed()
+                    ->where(function ($query) use ($user) {
+                        $query->where('organizer_id', $user->id)
+                            ->orWhereJsonContains('participants', (int) $user->id);
+                    })
+                    ->exists();
+    
+                if (!\App\Support\UserAdministrationPolicy::canDelete($hasMeetingHistory)) {
+                    return ['error' => 'У пользователя есть встречи или история участия. Не удаляйте аккаунт: отключите его, чтобы сохранить историю.', 'status' => 409];
+                }
+    
+                if (!\App\Support\UserAdministrationPolicy::canRemoveActiveAdmin(
+                    $user->role,
+                    (bool) $user->is_active,
+                    $activeAdmins->count()
+                )) {
+                    return ['error' => 'Нельзя удалить последнего активного администратора системы.', 'status' => 409];
+                }
+    
+                DB::table('personal_access_tokens')
+                    ->where('tokenable_type', get_class($user))
+                    ->where('tokenable_id', $user->id)
+                    ->delete();
+    
+                if (Schema::hasColumn('audit_logs', 'user_id')) {
+                    DB::table('audit_logs')
+                        ->where('user_id', $user->id)
+                        ->update(['user_id' => null]);
+                }
+    
+                $deleted = ['name' => $user->name, 'login' => $user->login];
+                $user->delete();
+    
+                return ['error' => null, 'deleted' => $deleted];
+            });
+        } catch (QueryException $e) {
+            \\Log::error('User delete failed due to related records', [
+                'target_user_id' => $id,
+                'sql_state' => $e->getCode(),
+                'message' => $e->getMessage(),
+            ]);
 
-            $hasMeetingHistory = Meeting::withTrashed()
-                ->where(function ($query) use ($user) {
-                    $query->where('organizer_id', $user->id)
-                        ->orWhereJsonContains('participants', (int) $user->id);
-                })
-                ->exists();
-
-            if (!\App\Support\UserAdministrationPolicy::canDelete($hasMeetingHistory)) {
-                return ['error' => 'У пользователя есть встречи или история участия. Не удаляйте аккаунт: отключите его, чтобы сохранить историю.', 'status' => 409];
-            }
-
-            if (!\App\Support\UserAdministrationPolicy::canRemoveActiveAdmin(
-                $user->role,
-                (bool) $user->is_active,
-                $activeAdmins->count()
-            )) {
-                return ['error' => 'Нельзя удалить последнего активного администратора системы.', 'status' => 409];
-            }
-
-            DB::table('personal_access_tokens')
-                ->where('tokenable_type', get_class($user))
-                ->where('tokenable_id', $user->id)
-                ->delete();
-
-            if (Schema::hasColumn('audit_logs', 'user_id')) {
-                DB::table('audit_logs')
-                    ->where('user_id', $user->id)
-                    ->update(['user_id' => null]);
-            }
-
-            $deleted = ['name' => $user->name, 'login' => $user->login];
-            $user->delete();
-
-            return ['error' => null, 'deleted' => $deleted];
-        });
+            return response()->json([
+                'message' => 'Не удалось удалить пользователя из-за связанных данных. Аккаунт и история сохранены; отключите пользователя вместо удаления.',
+            ], 409);
+        }
 
         if ($result['error'] !== null) {
             return response()->json(['message' => $result['error']], $result['status']);
