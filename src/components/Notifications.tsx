@@ -215,12 +215,12 @@ export function NotificationToasts({ toasts, onDismiss }: { toasts: ToastItem[];
       : type === "rsvp_reminder"
         ? "📝"
         : type === "reminder"
-        ? "⏰"
-        : type === "warning"
-          ? "⚠️"
-          : type === "user-added"
-            ? "👤"
-            : "📅";
+          ? "⏰"
+          : type === "warning"
+            ? "⚠️"
+            : type === "user-added"
+              ? "👤"
+              : "📅";
 
   return (
     <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 max-w-sm w-[calc(100vw-2rem)] sm:w-80 pointer-events-none">
