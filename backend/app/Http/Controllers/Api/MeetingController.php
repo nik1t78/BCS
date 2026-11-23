@@ -1069,18 +1069,27 @@ class MeetingController extends Controller
         if ($roomName === null || trim($roomName) === '') {
             return;
         }
+
         $user = $request->user();
+        $room = Room::where('name', $roomName)->first();
+
+        // Неактивная комната остаётся в истории и справочнике, но её нельзя
+        // назначать новым встречам или выбирать при переносе существующей.
+        if ($room && !\App\Support\RoomLifecyclePolicy::canBook((bool) $room->is_active)) {
+            abort(422, 'Эта переговорная отключена и недоступна для новых бронирований');
+        }
+
         if ($user->isAdmin() || $user->isModerator()) {
             return;
         }
-        $room = Room::where('name', $roomName)->first();
-        // Свободный текст в поле room (не из справочника) разрешаем как раньше
+
+        // Свободный текст в поле room (не из справочника) разрешаем как раньше.
         if (!$room || !$room->department_id) {
             return;
         }
+
         // Сопоставление: department_id комнаты может храниться как числовой id
-        // или совпадать с названием отдела пользователя. Таблицы departments в
-        // схеме нет — сверяем напрямую значения (число↔число, строка↔строка).
+        // или совпадать с названием отдела пользователя.
         $userDept = trim((string) ($user->department ?? ''));
         $roomDept = trim((string) $room->department_id);
         $matches = $userDept !== ''
