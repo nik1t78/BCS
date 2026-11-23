@@ -604,17 +604,9 @@ class MeetingController extends Controller
             || $user->isAdmin()
             || $user->isModerator();
 
-        if (!$isPrivilegedEditor) {
-            // Участник может менять только название и слот. Даже если клиент
-            // отправил всю модель целиком, нельзя менять комнату, ссылку,
-            // состав участников, приватность, статус, повторы или теги.
-            $validated = array_intersect_key($validated, array_flip([
-                'title', 'date', 'start_time', 'end_time',
-            ]));
-
-            if ($validated === []) {
-                return response()->json(['message' => 'Участник может изменять только название и время встречи'], 403);
-            }
+        $validated = MeetingEditPolicy::filterFields($validated, $isPrivilegedEditor);
+        if (!$isPrivilegedEditor && $validated === []) {
+            return response()->json(['message' => 'Участник может изменять только название и время встречи'], 403);
         }
 
         if (array_key_exists('room', $validated)) {
