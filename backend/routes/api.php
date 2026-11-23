@@ -251,6 +251,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
     // Экспорт расписания в iCalendar (.ics): скачать или подписаться ссылкой
     Route::get('/schedule.ics', [\App\Http\Controllers\Api\MeetingIcsController::class, 'index']);
+    Route::get('/calendar-feed/status', [\\App\\Http\\Controllers\\Api\\MeetingIcsController::class, 'feedStatus']);
     Route::post('/calendar-feed/rotate', [\App\Http\Controllers\Api\MeetingIcsController::class, 'rotateFeed']);
     Route::delete('/calendar-feed', [\App\Http\Controllers\Api\MeetingIcsController::class, 'revokeFeed']);
 
