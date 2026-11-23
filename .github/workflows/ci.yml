@@ -20,6 +20,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Audit npm dependencies
+        run: npm audit --audit-level=high
+
       - name: Lint (ESLint)
         run: npm run lint
 
@@ -59,6 +62,9 @@ jobs:
       - name: Install dependencies
         run: composer install --prefer-dist --no-progress --no-interaction
 
+      - name: Audit Composer dependencies
+        run: composer audit --locked --no-interaction
+
       - name: Verify composer.lock is in sync with composer.json
         # Лок-файл обязателен: без него docker-build идёт на packagist за
         # «latest» и падает по таймауту сети (curl error 28).
@@ -78,6 +84,9 @@ jobs:
 
       - name: Verify smart meeting slot suggestion route
         run: php artisan route:list --path=meetings/suggest-slots
+
+      - name: Run security hardening smoke tests
+        run: php tests/security-hardening-smoke.php
 
       - name: Run calendar regression smoke tests
         run: php tests/calendar-smoke.php
