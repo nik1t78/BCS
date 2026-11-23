@@ -6,7 +6,7 @@ interface AuthPageProps {
 }
 
 export default function AuthPage({ onLogin }: AuthPageProps) {
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const mode = "login";
   const [loginValue, setLoginValue] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
