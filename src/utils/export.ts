@@ -141,3 +141,80 @@ export async function exportToExcel(meetings: Meeting[], username: string): Prom
     `vks-raspisanie-${username}.xlsx`
   );
 }
+
+
+export interface AnalyticsReportData {
+  generatedAt: string;
+  totals: { total: number; scheduled: number; inProgress: number; completed: number; cancelled: number; thisWeek: number; highPriority: number; organized: number; participating: number };
+  daily: { label: string; value: number }[];
+  weekly: { label: string; value: number }[];
+  rooms: { label: string; count: number }[];
+  organizers: { label: string; count: number }[];
+}
+
+/** Экспорт сводного отчёта по аналитике в отдельную книгу Excel. */
+export async function exportAnalyticsReport(data: AnalyticsReportData, username: string): Promise<void> {
+  const ExcelJS = (await import("exceljs")).default;
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "ВКС Расписание";
+  workbook.created = new Date(data.generatedAt);
+
+  const overview = workbook.addWorksheet("Показатели");
+  overview.columns = [
+    { header: "Показатель", key: "label", width: 32 },
+    { header: "Значение", key: "value", width: 18 },
+  ];
+  overview.addRows([
+    { label: "Всего конференций", value: data.totals.total },
+    { label: "Запланированные", value: data.totals.scheduled },
+    { label: "В процессе", value: data.totals.inProgress },
+    { label: "Завершённые", value: data.totals.completed },
+    { label: "Отменённые", value: data.totals.cancelled },
+    { label: "На этой неделе", value: data.totals.thisWeek },
+    { label: "Высокий приоритет", value: data.totals.highPriority },
+    { label: "Организовано мной", value: data.totals.organized },
+    { label: "Участвую в", value: data.totals.participating },
+    { label: "Сформирован", value: data.generatedAt },
+  ]);
+
+  const dynamics = workbook.addWorksheet("Динамика");
+  dynamics.columns = [
+    { header: "Период", key: "period", width: 24 },
+    { header: "Тип периода", key: "type", width: 18 },
+    { header: "Количество конференций", key: "count", width: 28 },
+  ];
+  data.daily.forEach((item) => dynamics.addRow({ period: item.label, type: "День", count: item.value }));
+  data.weekly.forEach((item) => dynamics.addRow({ period: item.label, type: "Неделя", count: item.value }));
+
+  const rooms = workbook.addWorksheet("Залы");
+  rooms.columns = [
+    { header: "Переговорная", key: "label", width: 36 },
+    { header: "Количество конференций", key: "count", width: 28 },
+  ];
+  data.rooms.forEach((item) => rooms.addRow(item));
+
+  const organizers = workbook.addWorksheet("Организаторы");
+  organizers.columns = [
+    { header: "Организатор", key: "label", width: 36 },
+    { header: "Количество конференций", key: "count", width: 28 },
+  ];
+  data.organizers.forEach((item) => organizers.addRow(item));
+
+  workbook.worksheets.forEach((sheet) => {
+    const header = sheet.getRow(1);
+    header.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2563EB" } };
+    header.alignment = { vertical: "middle", horizontal: "center" };
+    sheet.views = [{ state: "frozen", ySplit: 1 }];
+    sheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: 1, column: sheet.columnCount },
+    };
+  });
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  saveBlob(
+    new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+    `vks-analytics-${username}.xlsx`
+  );
+}
