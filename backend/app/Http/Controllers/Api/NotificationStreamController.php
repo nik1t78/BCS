@@ -64,7 +64,7 @@ class NotificationStreamController extends Controller
             return $this->unavailableResponse('user_lookup_failed');
         }
 
-        if (!$user || (isset($user->is_active) && !$user->is_active)) {
+        if (!$user) {
             return $this->unavailableResponse('unauthenticated');
         }
 
