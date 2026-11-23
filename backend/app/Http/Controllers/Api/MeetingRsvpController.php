@@ -7,6 +7,8 @@ use App\Models\AuditLog;
 use App\Models\Meeting;
 use App\Models\MeetingRsvp;
 use App\Models\Notification;
+use App\Models\User;
+use App\Support\CsvCell;
 use Illuminate\Http\Request;
 
 class MeetingRsvpController extends Controller
@@ -86,7 +88,7 @@ class MeetingRsvpController extends Controller
             $output = fopen('php://output', 'w');
             fwrite($output, "\xEF\xBB\xBF");
 
-            fputcsv($output, ['Участник', 'Логин', 'Ответ', 'Дата ответа'], ';', '"', '\\\\');
+            fputcsv($output, ['Участник', 'Логин', 'Ответ', 'Дата ответа'], ';', '"', '');
 
             foreach ($participants as $participant) {
                 $rsvp = $rsvps->get($participant->id);
@@ -97,7 +99,7 @@ class MeetingRsvpController extends Controller
                     CsvCell::safe($participant->login),
                     $response ? ($labels[$response] ?? 'Неизвестно') : 'Не ответил',
                     $rsvp?->responded_at?->format('d.m.Y H:i') ?? '',
-                ], ';', '"', '\\\\');
+                ], ';', '"', '');
             }
 
             fclose($output);
