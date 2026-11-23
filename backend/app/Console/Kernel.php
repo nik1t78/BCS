@@ -81,12 +81,6 @@ class Kernel extends ConsoleKernel
                 ->chunkById(1000, fn ($rows) => $rows->each->delete());
         })->dailyAt('03:30')->name('bot-logs-prune');
 
-        // Ротация журнала посещаемости ТВ: строки, чей последний сигнал старше
-        // 60 дней, удаляются (живые экраны продлевают last_seen поллингом).
-        $schedule->call(function () {
-            \App\Models\TvViewLog::where('last_seen_at', '<', now()->subDays(60))->limit(5000)->delete();
-        })->dailyAt('03:40')->name('tv-view-logs-prune');
-
         // Мониторинг ВКС-бота: каждые 5 минут проверяем /health и алертим
         // админу в MAX при сбое/восстановлении (см. VKSBOT_EXPECTED=true).
         $schedule->command('bot:monitor')
@@ -157,28 +151,9 @@ class Kernel extends ConsoleKernel
             \App\Models\TvViewLog::where('last_seen_at', '<', now()->subDays(30))->delete();
         })->dailyAt('03:15')->name('tv-view-logs-prune');
 
-        // Страховка от ложного «Воркер очереди: Нет heartbeat» в админке
-        // (Windows/Docker Desktop): контейнер vks-queue жив (docker compose ps
-        // это подтверждает), но sidecar queue:heartbeat не смог создать каталог
-        // storage/app/heartbeat на bind-mount — файл heartbeat никогда не
-        // появлялся, UI показывал мёртвый воркер, а ВКС-журнал выглядел
-        // «не создающим ссылки». Раз в минуту проверяем: если heartbeat-файл
-        // молчит дольше порога, а сам планировщик работает, пишем маркер в
-        // кэш (cache-store=file — общий volume backend_storage виден всем
-        // php-контейнерам). SystemStatusController/MonitorSystem учитывают
-        // этот кэш как fallback. Это НЕ оживляет реально упавший воркер —
-        // оно лишь честно отражает состояние контейнера, которое scheduler
-        // видит косвенно; для точной диагностики добавлен лог в queue:heartbeat.
-        $schedule->call(function () {
-            $hb = \App\Console\Commands\MonitorSystem::queueHeartbeatTs();
-            $max = max(60, (int) env('QUEUE_HEARTBEAT_MAX_AGE', 180));
-            if ($hb === null || (now()->getTimestamp() - $hb) > $max) {
-                cache()->put(
-                    \App\Console\Commands\MonitorSystem::QUEUE_HEARTBEAT_KEY,
-                    time(),
-                    now()->addMinutes(3)
-                );
-            }
-        })->everyMinute()->name('queue-heartbeat-fallback');
+        // Важно: heartbeat очереди пишет ТОЛЬКО процесс queue:heartbeat,
+        // который перед записью проверяет наличие реального php artisan queue:work.
+        // Планировщик не должен обновлять этот timestamp: иначе scheduler продолжит
+        // отмечать worker «живым» даже после остановки контейнера queue.
     }
 }
