@@ -68,6 +68,13 @@ jobs:
           cp .env.example .env 2>/dev/null || true
           php artisan key:generate --ansi 2>/dev/null || true
 
+      - name: Validate PHP syntax
+        run: |
+          find app routes database -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Boot Laravel and verify calendar routes
+        run: php artisan route:list --path=calendar-feed
+
       - name: Run tests
         shell: bash
         run: |
