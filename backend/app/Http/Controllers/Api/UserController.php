@@ -223,14 +223,14 @@ class UserController extends Controller
                     })
                     ->exists();
 
-                if (!\\App\\Support\\UserAdministrationPolicy::canDelete($hasMeetingHistory)) {
+                if (!\App\\Support\\UserAdministrationPolicy::canDelete($hasMeetingHistory)) {
                     return [
                         'error' => 'У пользователя есть встречи или история участия. Не удаляйте аккаунт: отключите его, чтобы сохранить историю.',
                         'status' => 409,
                     ];
                 }
 
-                if (!\\App\\Support\\UserAdministrationPolicy::canRemoveActiveAdmin(
+                if (!\App\\Support\\UserAdministrationPolicy::canRemoveActiveAdmin(
                     $user->role,
                     (bool) $user->is_active,
                     $activeAdmins->count()
@@ -258,7 +258,7 @@ class UserController extends Controller
                 return ['error' => null, 'deleted' => $deleted];
             });
         } catch (QueryException $e) {
-            \\Log::error('User delete failed due to related records', [
+            \Log::error('User delete failed due to related records', [
                 'target_user_id' => $id,
                 'sql_state' => $e->getCode(),
                 'message' => $e->getMessage(),
