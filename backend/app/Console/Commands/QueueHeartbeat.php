@@ -24,6 +24,28 @@ class QueueHeartbeat extends Command
 
     protected $description = 'Каждые несколько секунд писать heartbeat воркера очереди в файл (для system:monitor)';
 
+    /**
+     * Ищет процесс PHP с argv "artisan queue:work" в /proc.
+     * Не засчитывает shell-команду-обёртку или сам sidecar heartbeat.
+     */
+    private function hasQueueWorkerProcess(): bool
+    {
+        foreach (glob('/proc/[0-9]*/cmdline') ?: [] as $path) {
+            $pid = (int) basename(dirname($path));
+            if ($pid === getmypid()) {
+                continue;
+            }
+
+            $commandLine = @file_get_contents($path);
+            if ($commandLine !== false
+                && \\App\\Support\\QueueHeartbeatPolicy::isQueueWorkerCommandLine($commandLine)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function handle(): int
     {
         $file = MonitorSystem::queueHeartbeatFile();
@@ -63,6 +85,7 @@ class QueueHeartbeat extends Command
                     \Illuminate\Support\Facades\Log::info('queue:heartbeat live', [
                         'file' => $file,
                         'writable' => $ok,
+                        'worker_detected' => $workerAlive,
                         'ts' => time(),
                     ]);
                 } catch (\Throwable $e) {
