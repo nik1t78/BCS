@@ -46,18 +46,40 @@ class MonitorSystem extends Command
         return storage_path('app/heartbeat/queue_worker_heartbeat');
     }
 
-    /** Прочитать timestamp heartbeat (файл приоритетнее кэша). */
-    public static function queueHeartbeatTs()
+    /**
+     * Прочитать heartbeat из файла и кэша.
+     * На Windows/WSL2 bind-mount файл может отставать от cache fallback,
+     * поэтому используем самый свежий валидный timestamp.
+     */
+    public static function queueHeartbeatTs(): ?int
     {
+        $fileTs = null;
         $file = self::queueHeartbeatFile();
         if (is_file($file)) {
-            $v = @file_get_contents($file);
-            if (is_numeric(trim((string) $v))) {
-                return (int) trim($v);
+            $value = @file_get_contents($file);
+            if (is_numeric(trim((string) $value))) {
+                $fileTs = (int) trim($value);
             }
         }
-        $cached = cache()->get(self::QUEUE_HEARTBEAT_KEY);
-        return is_numeric($cached) ? (int) $cached : null;
+
+        $cacheTs = null;
+        try {
+            $cached = cache()->get(self::QUEUE_HEARTBEAT_KEY);
+            if (is_numeric($cached)) {
+                $cacheTs = (int) $cached;
+            }
+        } catch (\Throwable $e) {
+            // Файловый heartbeat остаётся доступен при отказе кэша.
+        }
+
+        if ($fileTs === null) {
+            return $cacheTs;
+        }
+        if ($cacheTs === null) {
+            return $fileTs;
+        }
+
+        return max($fileTs, $cacheTs);
     }
 
     private const STATE_PREFIX = 'sysmon_down_';
