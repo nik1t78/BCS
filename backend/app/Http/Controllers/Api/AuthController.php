@@ -23,7 +23,7 @@ class AuthController extends Controller
         $request->validate([
             'name' => ['required', 'string', 'max:255', 'regex:/^[А-Яа-яЁёA-Za-z]+(?:[ -][А-Яа-яЁёA-Za-z]+)+$/u'],
             'login' => 'required|string|max:255|unique:users',
-            // Пароль: минимум 6 символов, обязательно буква и цифра (совпадает с фронтендом).
+            // Пароль: минимум 12 символов, обязательно буква и цифра.
             'password' => ['required', 'string', 'min:12', 'regex:/[A-Za-zА-Яа-яЁё]/u', 'regex:/[0-9]/'],
             'phone' => 'nullable|string|max:20',
             'department' => 'required|string|max:255',
