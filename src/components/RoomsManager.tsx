@@ -242,9 +242,17 @@ export default function RoomsManager({ isAdmin, userDepartment }: RoomsManagerPr
   };
 
   const remove = async (id: string) => {
-    if (!confirm("Удалить комнату из справочника?")) return;
-    await roomsAPI.remove(id);
-    load();
+    if (!confirm("Удалить комнату из справочника? Если с ней связаны встречи, система сохранит комнату и историю бронирований.")) return;
+    try {
+      await roomsAPI.remove(id);
+      setError("");
+      await load();
+    } catch (e: any) {
+      setError(
+        e?.message ||
+          "Не удалось удалить переговорную. Если с ней связаны встречи, сначала отключите её от новых бронирований, сохранив историю."
+      );
+    }
   };
 
   return (
