@@ -600,6 +600,23 @@ class MeetingController extends Controller
             'tags.*' => 'integer|exists:tags,id',
         ]);
 
+        $isPrivilegedEditor = (int) $meeting->organizer_id === (int) $user->id
+            || $user->isAdmin()
+            || $user->isModerator();
+
+        if (!$isPrivilegedEditor) {
+            // Участник может менять только название и слот. Даже если клиент
+            // отправил всю модель целиком, нельзя менять комнату, ссылку,
+            // состав участников, приватность, статус, повторы или теги.
+            $validated = array_intersect_key($validated, array_flip([
+                'title', 'date', 'start_time', 'end_time',
+            ]));
+
+            if ($validated === []) {
+                return response()->json(['message' => 'Участник может изменять только название и время встречи'], 403);
+            }
+        }
+
         if (array_key_exists('room', $validated)) {
             $this->validateRoomAccess($request, $validated['room']);
         }
