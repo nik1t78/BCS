@@ -94,6 +94,9 @@ jobs:
       - name: Run RSVP reminder policy regression smoke tests
         run: php tests/rsvp-reminder-policy-smoke.php
 
+      - name: Run meeting slot suggestion policy smoke tests
+        run: php tests/meeting-slot-suggestion-policy-smoke.php
+
       - name: Run meeting edit policy regression smoke tests
         run: php tests/meeting-edit-policy-smoke.php
 
