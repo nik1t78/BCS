@@ -114,7 +114,7 @@ class MeetingIcsController extends Controller
                 'SUMMARY:' . $this->esc($m->title),
                 'DESCRIPTION:' . $this->esc(trim(($m->description ?? '') . ' | Комната: ' . ($m->room ?: 'Онлайн'))),
                 'LOCATION:' . $this->esc($m->room ?: 'Онлайн'),
-                ($m->is_recurring && $m->rrule ? 'RRULE:' . $m->rrule : null),
+                ($m->rrule ? 'RRULE:' . $m->rrule : null),
                 'STATUS:' . ($m->status === 'cancelled' ? 'CANCELLED' : 'CONFIRMED'),
                 'END:VEVENT',
             ]);
