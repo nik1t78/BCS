@@ -87,6 +87,9 @@ jobs:
       - name: Verify smart meeting slot suggestion route
         run: php artisan route:list --path=meetings/suggest-slots
 
+      - name: Verify permanent meeting link route
+        run: php artisan route:list --name=meetings.permanent-link
+
       - name: Run security hardening smoke tests
         run: php tests/security-hardening-smoke.php
 
@@ -159,3 +162,14 @@ jobs:
         run: python -m compileall -q vks-bot
       - name: Validate backend entrypoint
         run: sh -n backend/docker-entrypoint.sh
+
+  nginx:
+    name: Nginx configuration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Nginx configuration
+        run: |
+          docker run --rm \\
+            -v "$PWD/docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro" \\
+            nginx:stable-alpine nginx -t
