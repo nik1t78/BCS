@@ -163,6 +163,10 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/meetings/rooms-availability', [\App\Http\Controllers\Api\RoomController::class, 'allAvailability'])
         ->whereNumber('meeting')->name('meetings.rooms-availability');
 
+    // Поиск общих свободных интервалов для участников и активных переговорных.
+    Route::post('/meetings/suggest-slots', [\\App\\Http\\Controllers\\Api\\MeetingSlotSuggestionController::class, 'index'])
+        ->middleware('throttle:10,1');
+
     // Meetings
     Route::post('/meetings/{meeting}/retry-vks-link', [MeetingController::class, 'retryVksLink']);
     Route::apiResource('meetings', MeetingController::class);
