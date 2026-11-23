@@ -21,6 +21,12 @@ class Kernel extends ConsoleKernel
                  ->withoutOverlapping()
                  ->runInBackground();
 
+        // Напоминания тем, кто не ответил на RSVP или выбрал «Под вопросом».
+        // Интервалы задаются в RSVP_REMINDER_MINUTES (по умолчанию за сутки и за час).
+        $schedule->command('meetings:send-rsvp-reminders')
+                 ->everyMinute()
+                 ->withoutOverlapping(2);
+
         // Автозавершение прошедших конференций (scheduled/in-progress -> completed).
         // Раньше стоял hourly(): встреча на 02.11 с окончанием, например, в 11:00
         // могла ЧАС висеть в статусе scheduled после окончания и молча пропадать

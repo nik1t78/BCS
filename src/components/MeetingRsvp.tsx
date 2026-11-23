@@ -27,6 +27,7 @@ export default function MeetingRsvp({ meeting, user }: Props) {
   const [exportError, setExportError] = useState("");
 
   const isOrganizer = Number(meeting.organizerId) === Number(user.id);
+  const canExport = isOrganizer || user.role === "admin";
   const isParticipant = (meeting.participants ?? []).some((p) => Number(p) === Number(user.id));
   const canRespond = !isOrganizer && isParticipant && meeting.status !== "cancelled" && meeting.status !== "completed";
 
@@ -65,7 +66,7 @@ export default function MeetingRsvp({ meeting, user }: Props) {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      window.URL.revokeObjectURL(url);
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
     } catch (error) {
       console.error("RSVP export failed:", error);
       setExportError("Не удалось выгрузить список. Проверьте права доступа и повторите попытку.");

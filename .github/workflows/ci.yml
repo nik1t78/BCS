@@ -91,6 +91,9 @@ jobs:
       - name: Run CSV formula injection regression smoke tests
         run: php tests/csv-cell-smoke.php
 
+      - name: Run RSVP reminder policy regression smoke tests
+        run: php tests/rsvp-reminder-policy-smoke.php
+
       - name: Run meeting edit policy regression smoke tests
         run: php tests/meeting-edit-policy-smoke.php
 
