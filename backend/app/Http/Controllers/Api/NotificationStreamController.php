@@ -1,14 +1,14 @@
 <?php
 
-namespace App\\Http\\Controllers\\Api;
+namespace App\Http\Controllers\Api;
 
-use App\\Http\\Controllers\\Controller;
-use App\\Models\\User;
-use App\\Support\\NotificationStreamTicket;
-use Illuminate\\Http\\Request;
-use Illuminate\\Support\\Facades\\Log;
-use Illuminate\\Support\\Facades\\Redis;
-use Symfony\\Component\\HttpFoundation\\StreamedResponse;
+use App\Http\Controllers\Controller;
+use App\Models\User;
+use App\Support\NotificationStreamTicket;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Redis;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Персональный realtime-канал уведомлений через Server-Sent Events.
@@ -29,7 +29,7 @@ class NotificationStreamController extends Controller
 
         try {
             $ticket = NotificationStreamTicket::issue((int) $user->id);
-        } catch (\\Throwable $e) {
+        } catch (\Throwable $e) {
             report($e);
 
             return response()->json(['message' => 'Realtime временно недоступен'], 503);
@@ -48,7 +48,7 @@ class NotificationStreamController extends Controller
 
         try {
             $userId = NotificationStreamTicket::consume($ticket);
-        } catch (\\Throwable $e) {
+        } catch (\Throwable $e) {
             report($e);
         }
 
@@ -58,7 +58,7 @@ class NotificationStreamController extends Controller
 
         try {
             $user = User::query()->find($userId);
-        } catch (\\Throwable $e) {
+        } catch (\Throwable $e) {
             report($e);
 
             return $this->unavailableResponse('user_lookup_failed');
@@ -68,31 +68,31 @@ class NotificationStreamController extends Controller
             return $this->unavailableResponse('unauthenticated');
         }
 
-        $channel = \\App\\Services\\RealtimeNotifier::CHANNEL_PREFIX . (int) $user->id;
+        $channel = \App\Services\RealtimeNotifier::CHANNEL_PREFIX . (int) $user->id;
 
         // Проверяем Redis до отправки SSE-заголовков: после старта потока
         // HTTP-ошибку корректно вернуть уже нельзя.
-        if (!\\App\\Services\\RealtimeNotifier::isEnabled()) {
+        if (!\App\Services\RealtimeNotifier::isEnabled()) {
             return $this->unavailableResponse('redis_disabled');
         }
 
         try {
             Redis::connection()->ping();
-        } catch (\\Throwable $e) {
+        } catch (\Throwable $e) {
             report($e);
 
             return $this->unavailableResponse('redis_unavailable');
         }
 
         return new StreamedResponse(function () use ($channel, $request) {
-            echo "retry: 5000\\n\\n";
+            echo "retry: 5000\n\n";
             @ob_flush();
             flush();
 
             $redis = Redis::connection();
             $redis->subscribe([$channel], function ($message) use ($request) {
                 if ($request->closed()) {
-                    throw new \\RuntimeException('client closed');
+                    throw new \RuntimeException('client closed');
                 }
 
                 try {
@@ -100,11 +100,11 @@ class NotificationStreamController extends Controller
                     $event = is_array($decoded) ? ($decoded['event'] ?? 'notification') : 'notification';
                     $data = is_array($decoded) ? ($decoded['data'] ?? $decoded) : $message;
 
-                    echo 'event: ' . $event . "\\n";
-                    echo 'data: ' . json_encode($data, JSON_UNESCAPED_UNICODE) . "\\n\\n";
+                    echo 'event: ' . $event . "\n";
+                    echo 'data: ' . json_encode($data, JSON_UNESCAPED_UNICODE) . "\n\n";
                     @ob_flush();
                     flush();
-                } catch (\\Throwable $e) {
+                } catch (\Throwable $e) {
                     // Одно некорректное сообщение не должно обрывать весь поток.
                 }
             });
@@ -119,8 +119,8 @@ class NotificationStreamController extends Controller
     private function unavailableResponse(string $reason): StreamedResponse
     {
         return new StreamedResponse(function () use ($reason) {
-            echo "event: unavailable\\n";
-            echo 'data: ' . json_encode(['reason' => $reason]) . "\\n\\n";
+            echo "event: unavailable\n";
+            echo 'data: ' . json_encode(['reason' => $reason]) . "\n\n";
             @ob_flush();
             flush();
         }, 200, [
