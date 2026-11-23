@@ -286,7 +286,7 @@ export default function Notifications({ user }: NotificationsProps) {
   };
 
   const handleMarkRead = async (id: string) => {
-    await markNotificationRead(id);
+    await markNotificationRead(id, isAdmin && showAllUsers ? { all: true } : undefined);
     loadNotifications();
   };
 
