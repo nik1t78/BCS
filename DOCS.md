@@ -34,7 +34,7 @@
 | Слой           | Технологии                                                                         |
 | -------------- | ---------------------------------------------------------------------------------- |
 | Frontend       | React 18 + TypeScript, Vite 6, Tailwind CSS 4, dnd-kit, Recharts, Framer Motion    |
-| Backend        | PHP 8.2 / Laravel, Sanctum (Bearer-токены + refresh), MySQL 8, Redis (queue/cache) |
+| Backend        | PHP 8.4 / Laravel, Sanctum (Bearer-токены + refresh), MySQL 8, Redis (queue/cache) |
 | Инфраструктура | Docker Compose: nginx, php-fpm, mysql, redis, queue-worker, scheduler              |
 | Качество       | ESLint + Prettier, `tsc --noEmit`, GitHub Actions CI                               |
 
@@ -115,7 +115,7 @@ Nginx слушает порт **80** на `0.0.0.0` — сайт доступе�
 | **Docker Desktop** (Windows/macOS) или docker + compose (Linux) | 20.10+ | запуск контейнеров — **обязательно** | [docker.com](https://www.docker.com/products/docker-desktop/) |
 | Git | 2.30+ | клонирование проекта | [git-scm.com](https://git-scm.com/downloads) |
 | Node.js | 20+ | только для разработки фронтенда | [nodejs.org](https://nodejs.org/) |
-| Composer / PHP | 2.5+ / 8.2+ | только для разработки бэкенда без Docker | [getcomposer.org](https://getcomposer.org/download/) |
+| Composer / PHP | 2.5+ / 8.4+ | только для разработки бэкенда без Docker | [getcomposer.org](https://getcomposer.org/download/) |
 
 Для запуска через Docker отдельные PHP/Composer/Node на машине **не нужны** — всё внутри контейнеров.
 

@@ -78,7 +78,7 @@ class RoomController extends Controller
 
         $busy = $bookings->map(fn ($m) => [
             'meeting_id' => $m->id,
-            'title' => $m->title,
+            'title' => 'Занято', // не раскрываем названия/темы встреч через публичный виджет занятости
             'start' => substr((string) $m->start_time, 0, 5),
             'end' => substr((string) $m->end_time, 0, 5),
         ])->values();
@@ -329,7 +329,7 @@ class RoomController extends Controller
                 ->where('room', $room->name)
                 ->map(fn ($m) => [
                     'meeting_id' => $m->id,
-                    'title' => $m->title,
+                    'title' => 'Занято', // не раскрываем названия/темы встреч через публичный виджет занятости
                     'start' => substr((string) $m->start_time, 0, 5),
                     'end' => substr((string) $m->end_time, 0, 5),
                 ])->values();
