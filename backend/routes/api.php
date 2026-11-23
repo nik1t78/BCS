@@ -123,8 +123,12 @@ Route::middleware('throttle:600,60')->get('/tv/{room}/next', function (\Illumina
 // экранов одного NAT-IP и мгновенно упиралась в лимит («Too Many Attempts»).
 // 600,60 = 600 запросов в минуту — запас на все открытые страницы ожидания.
 Route::middleware('throttle:600,60')->get('/m/{meeting}', function (\App\Models\Meeting $meeting) {
+    if (!\App\Support\PublicMeetingLinkPolicy::canRedirect($meeting)) {
+        return response('Not Found', 404)->header('Cache-Control', 'no-store');
+    }
     if (!$meeting->link) {
-        return response()->view('vks-waiting', ['meeting' => $meeting]);
+        return response()->view('vks-waiting', ['meeting' => $meeting])
+            ->header('Cache-Control', 'no-store');
     }
     // no-store: страница-редирект не должна кэшироваться браузером ТВ —
     // иначе после пересоздания комнаты QR/SSE-ссылка ещё долго ведёт на старую.
@@ -213,7 +217,8 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // Attachments
     Route::get('/meetings/{meetingId}/attachments', [AttachmentController::class, 'index']);
     Route::post('/meetings/{meetingId}/attachments', [AttachmentController::class, 'store']);
-    Route::delete('/attachments/{id}', [AttachmentController::class, 'destroy']);
+    Route::get('/attachments/{id}/download', [AttachmentController::class, 'download'])->whereNumber('id');
+    Route::delete('/attachments/{id}', [AttachmentController::class, 'destroy'])->whereNumber('id');
 
     // Meeting History
     Route::get('/meetings/{meetingId}/history', [MeetingHistoryController::class, 'index']);
