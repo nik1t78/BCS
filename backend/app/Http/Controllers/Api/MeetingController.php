@@ -792,12 +792,20 @@ class MeetingController extends Controller
         $validated = $request->validate([
             'date' => 'required|date_format:Y-m-d',
             'start_time' => 'required|date_format:H:i',
-            'end_time' => 'sometimes|date_format:H:i',
+            'end_time' => 'sometimes|date_format:H:i|after:start_time',
             'notify' => 'sometimes|boolean',
             'force' => 'sometimes|boolean',
         ]);
 
+        $newStart = $validated['start_time'];
         $newEnd = substr($validated['end_time'] ?? $meeting->end_time, 0, 5);
+        // При переносе без явно переданного end_time сохраняем старое окончание,
+        // но не допускаем интервал нулевой/отрицательной длительности.
+        if ($newEnd <= $newStart) {
+            throw \\Illuminate\\Validation\\ValidationException::withMessages([
+                'end_time' => ['Время окончания должно быть позже времени начала. Укажите новое окончание встречи.'],
+            ]);
+        }
         // Канон YYYY-MM-DD без Carbon::parse: берём календарную часть строки как есть.
         // Carbon::parse для «2026-11-03» даёт полночь Europe/Moscow, а приведение
         // к UTC (сохранение/сравнение) сдвигает сутки назад — выбрал 03.11,
