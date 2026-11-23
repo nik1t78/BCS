@@ -45,6 +45,69 @@ class MeetingRsvpController extends Controller
         ]);
     }
 
+
+    /**
+     * CSV-экспорт ответов и участников без ответа.
+     * Доступен только организатору встречи и администратору.
+     */
+    public function export(Request $request, Meeting $meeting)
+    {
+        $user = $request->user();
+
+        if ((int) $meeting->organizer_id !== (int) $user->id && !$user->isAdmin()) {
+            return response()->json(['message' => 'Экспорт доступен только организатору или администратору'], 403);
+        }
+
+        $participantIds = array_values(array_unique(array_filter(
+            array_map('intval', $meeting->participants ?? []),
+            fn ($id) => $id > 0
+        )));
+
+        $participants = User::query()
+            ->whereIn('id', $participantIds)
+            ->orderBy('name')
+            ->get(['id', 'name', 'login']);
+
+        $rsvps = $meeting->rsvps()->get()->keyBy('user_id');
+        $labels = [
+            'yes' => 'Придёт',
+            'no' => 'Не придёт',
+            'maybe' => 'Под вопросом',
+        ];
+
+        $filename = 'meeting-' . $meeting->id . '-rsvp-' . now()->format('Ymd-His') . '.csv';
+
+        AuditLog::log($request, 'meeting_rsvp_export', $meeting, null, [
+            'participants_count' => $participants->count(),
+            'responses_count' => $rsvps->count(),
+        ]);
+
+        return response()->streamDownload(function () use ($participants, $rsvps, $labels) {
+            $output = fopen('php://output', 'w');
+            fwrite($output, "\xEF\xBB\xBF");
+
+            fputcsv($output, ['Участник', 'Логин', 'Ответ', 'Дата ответа'], ';', '"', '\\\\');
+
+            foreach ($participants as $participant) {
+                $rsvp = $rsvps->get($participant->id);
+                $response = $rsvp?->response;
+
+                fputcsv($output, [
+                    CsvCell::safe($participant->name),
+                    CsvCell::safe($participant->login),
+                    $response ? ($labels[$response] ?? 'Неизвестно') : 'Не ответил',
+                    $rsvp?->responded_at?->format('d.m.Y H:i') ?? '',
+                ], ';', '"', '\\\\');
+            }
+
+            fclose($output);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Cache-Control' => 'no-store, private',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
     /**
      * Ответить на приглашение: yes / no / maybe.
      * POST /api/meetings/{meeting}/rsvp
