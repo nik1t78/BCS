@@ -24,10 +24,16 @@ class UserController extends Controller
             return response()->json(['message' => 'Доступ запрещён'], 403);
         }
 
+        $filters = $request->validate([
+            'search' => 'nullable|string|max:100',
+            'role' => 'nullable|in:admin,moderator,user',
+            'per_page' => 'nullable|integer|min:1|max:100',
+        ]);
+
         $query = User::query();
 
-        if ($request->has('search')) {
-            $search = $request->search;
+        if (!empty($filters['search'])) {
+            $search = $filters['search'];
             $query->where(function($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
                   ->orWhere('login', 'like', "%{$search}%")
@@ -35,11 +41,11 @@ class UserController extends Controller
             });
         }
 
-        if ($request->has('role')) {
-            $query->where('role', $request->role);
+        if (!empty($filters['role'])) {
+            $query->where('role', $filters['role']);
         }
 
-        $users = $query->orderBy('name')->paginate($request->get('per_page', 50));
+        $users = $query->orderBy('name')->paginate($filters['per_page'] ?? 50);
 
         return response()->json($users);
     }
