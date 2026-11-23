@@ -32,6 +32,9 @@ class MeetingSlotSuggestionController extends Controller
 
         $from = CarbonImmutable::createFromFormat('Y-m-d', $validated['date_from'])->startOfDay();
         $to = CarbonImmutable::createFromFormat('Y-m-d', $validated['date_to'])->startOfDay();
+        if ($from->lessThan(CarbonImmutable::today())) {
+            return response()->json(['message' => 'Подбор времени доступен только на сегодня и будущие даты.'], 422);
+        }
         if ($from->diffInDays($to) > 14) {
             return response()->json(['message' => 'Период подбора не может превышать 15 календарных дней.'], 422);
         }
