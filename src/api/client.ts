@@ -839,6 +839,14 @@ export const roomsAPI = {
   remove: (roomId: string | number) => apiRequest(`/rooms/${roomId}`, { method: "DELETE" }),
 };
 
+// Управление неудачными задачами очереди (только администратор).
+export const failedJobsAPI = {
+  list: (page = 1, perPage = 25) =>
+    apiRequest(`/admin/failed-jobs?${new URLSearchParams({ page: String(page), per_page: String(perPage) }).toString()}`),
+  retry: (id: number) => apiRequest(`/admin/failed-jobs/${id}/retry`, { method: "POST" }),
+  remove: (id: number) => apiRequest(`/admin/failed-jobs/${id}`, { method: "DELETE" }),
+};
+
 // MAX MESSENGER API — привязка аккаунта мессенджера MAX для уведомлений
 export const maxAPI = {
   status: () => apiRequest("/max/status"),
