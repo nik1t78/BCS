@@ -420,13 +420,18 @@ export const notificationsAPI = {
    * если браузер его поддерживает и пользователь авторизован; иначе null —
    * вызывающий код остаётся на поллинге. Событие "notification": {id, message, type}.
    */
-  stream: (): EventSource | null => {
-    if (typeof EventSource === "undefined") return null;
-    const token = getToken();
-    if (!token) return null;
-    // Laravel отдаёт StreamedResponse без Content-Encoding, поэтому gzip в
-    // Accept-Encoding здесь не нужен и не передаётся (иначе буферизация).
-    return new EventSource(`${API_BASE_URL}/notifications/stream?token=${encodeURIComponent(token)}`);
+  stream: async (): Promise<EventSource | null> => {
+    if (typeof EventSource === "undefined" || !getToken()) return null;
+
+    // Получаем одноразовый билет обычным Bearer-auth запросом.
+    // Постоянный access token никогда не попадает в URL или access-логи.
+    const response = await apiRequest("/notifications/stream-ticket", { method: "POST" });
+    if (!response?.ticket) return null;
+
+    // При reconnect нужен новый билет: предыдущий уже был использован.
+    return new EventSource(
+      `${API_BASE_URL}/notifications/stream?ticket=${encodeURIComponent(response.ticket)}`
+    );
   },
 
   getAll: (params?: { type?: string; unread?: boolean; all?: boolean; per_page?: number }) => {
