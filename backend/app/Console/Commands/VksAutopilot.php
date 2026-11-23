@@ -126,10 +126,10 @@ class VksAutopilot extends Command
         // автопилот не должен одномоментно заполнить очередь тысячами задач.
         $batchSize = max(1, min(200, (int) env('VKSBOT_AUTOPILOT_BATCH', 50)));
 
+        $noLinkQueued = 0;
         foreach ($noLinkQuery
             ->orderBy('date')
             ->orderBy('start_time')
-            ->limit($batchSize)
             ->cursor()
             ->unique() as $meeting) {
             // Не ставить в очередь повторно задачу, которая ещё не выполнена.
@@ -137,12 +137,16 @@ class VksAutopilot extends Command
             if (cache()->has($lockKey)) {
                 continue;
             }
+            if ($noLinkQueued >= $batchSize) {
+                break;
+            }
 
             try {
                 CreateVksLinkJob::dispatch($meeting->id)->onQueue('vks');
                 // Блокировку ставим только после успешного dispatch: при отказе
                 // БД/Redis задача должна быть доступна для следующего цикла.
                 cache()->put($lockKey, 1, now()->addMinutes(15));
+                $noLinkQueued++;
                 $queued++;
             } catch (\Throwable $e) {
                 report($e);
