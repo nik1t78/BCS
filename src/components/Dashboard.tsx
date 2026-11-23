@@ -666,15 +666,22 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
       {/* Модалка выбора зала: Outlook-шкала дня 00:00–24:00, клик по свободному времени →
           «Занять и создать ВКС» (переход в форму с автогенерацией ссылки) */}
       {bookingOpen && (
-        <Suspense fallback={null}>
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/30" role="status">
+              <i className="fas fa-circle-notch fa-spin mr-2" aria-hidden="true"></i>
+              Загрузка…
+            </div>
+          }
+        >
           <RoomBookingModal
-        open={bookingOpen}
-        date={bookingAt.date}
-        startTime={bookingAt.startTime}
-        endTime={bookingAt.endTime}
-        roomName={bookingAt.room}
-        onClose={() => setBookingOpen(false)}
-          onConfirm={handleBookingConfirm}
+            open={bookingOpen}
+            date={bookingAt.date}
+            startTime={bookingAt.startTime}
+            endTime={bookingAt.endTime}
+            roomName={bookingAt.room}
+            onClose={() => setBookingOpen(false)}
+            onConfirm={handleBookingConfirm}
           />
         </Suspense>
       )}
