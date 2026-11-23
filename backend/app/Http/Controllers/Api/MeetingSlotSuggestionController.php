@@ -23,7 +23,7 @@ class MeetingSlotSuggestionController extends Controller
             'date_from' => ['required', 'date_format:Y-m-d'],
             'date_to' => ['required', 'date_format:Y-m-d', 'after_or_equal:date_from'],
             'duration' => ['required', 'integer', 'min:15', 'max:480'],
-            'participant_ids' => ['required', 'array', 'min:1', 'max:100'],
+            'participant_ids' => ['required', 'array', 'max:100'],
             'participant_ids.*' => ['required', 'integer', 'distinct', 'exists:users,id'],
             'room_id' => ['nullable', 'integer', 'exists:rooms,id'],
             'exclude_meeting_id' => ['nullable', 'integer', 'exists:meetings,id'],
