@@ -63,20 +63,20 @@ Route::middleware('auth:sanctum')->get('/meta/stamps', function (\Illuminate\Htt
     ]]);
 });
 
-// Realtime-канал уведомлений (Server-Sent Events) — ОБЯЗАТЕЛЬНО вне группы
-// auth:sanctum/throttle:api. Причина: у EventSource нет способа отправить
-// заголовок Authorization, токен передаётся только в query (?token=...).
-// Внутри sanctum-группы такой запрос не аутентифицируется гардой и падал
-// с 401/500 (fatal уже после отправки SSE-заголовков). Маршрут объявляется
-// здесь, контроль сам резолвит пользователя по ?token= через Sanctum::findByToken.
-// throttle:120,60 — «120 запросов в течение 60 секунд» (второй параметр —
-// DECAY SECONDS). Раньше стояло throttle:2,60 («2 запроса за минуту») — это
-// ОШИБКА: SSE-стрим держит соединение открытым, но при каждом сетевом ретрае
-// (nginx proxy_read_timeout, обрыв Wi-Fi, sleep/wake ноутбука) браузер открывает
-// НОВЫЙ /notifications/stream, и после 3 reconnect'ов на минуту все остальные
-// запросы того же пользователя/IP получали 429 Too Many Requests в цикле.
-// 120/мин = штатные reconnect + запас; защита от флуда остаётся.
-Route::middleware('throttle:120,60')->get('/notifications/stream', [\App\Http\Controllers\Api\NotificationStreamController::class, 'stream']);
+// EventSource не умеет отправлять Authorization header. Постоянный Sanctum
+// token не передаём в URL: авторизованный POST выдаёт одноразовый билет на 60 с.
+// В URL SSE попадает только этот короткоживущий билет; GET consume-ит его.
+Route::middleware(['auth:sanctum', 'throttle:api'])->post(
+    '/notifications/stream-ticket',
+    [\App\Http\Controllers\Api\NotificationStreamController::class, 'issueTicket']
+);
+
+// Долгоживущий SSE-поток находится вне auth:sanctum, так как EventSource
+// не поддерживает пользовательские заголовки. Доступ — только по билету.
+Route::middleware('throttle:120,60')->get(
+    '/notifications/stream',
+    [\App\Http\Controllers\Api\NotificationStreamController::class, 'stream']
+);
 
 // Пункт 5 плана: «экран ожидания» в зале. Телевизор открывает /tv/{room}?token=...
 // без логина; токен зала (rooms.tv_token) даёт доступ только на чтение нейтральных

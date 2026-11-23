@@ -82,6 +82,9 @@ jobs:
       - name: Run notification access regression smoke tests
         run: php tests/notification-access-smoke.php
 
+      - name: Run notification stream ticket regression smoke tests
+        run: php tests/notification-stream-ticket-smoke.php
+
       - name: Run meeting edit policy regression smoke tests
         run: php tests/meeting-edit-policy-smoke.php
 
