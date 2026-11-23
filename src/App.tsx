@@ -11,7 +11,6 @@ import Notifications, {
   NotificationToasts,
   subscribeToNotifications,
 } from "./components/Notifications";
-undefined
 import GlobalSearch from "./components/GlobalSearch";
 import ThemeToggle from "./components/ThemeToggle";
 import ResetData from "./components/ResetData";
