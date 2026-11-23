@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
-use App\\Support\\NotificationStreamTicket;
+use App\Support\NotificationStreamTicket;
 
 function assertSseTicket(bool $expected, bool $actual, string $label): void
 {
