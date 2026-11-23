@@ -11,7 +11,6 @@ import Notifications, {
   NotificationToasts,
   subscribeToNotifications,
 } from "./components/Notifications";
-undefined
 // Глобальный поиск нужен только по запросу пользователя; не включаем его код в первый экран.
 const GlobalSearch = lazy(() => import("./components/GlobalSearch"));
 import ThemeToggle from "./components/ThemeToggle";
