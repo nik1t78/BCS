@@ -90,11 +90,8 @@ class MessengerNotifier
             'read'       => false,
         ]);
 
-        $user = User::find($userId);
-        if ($user) {
-            self::notifyMeeting($user, $notification);
-        }
-
+        // Notification::created уже публикует событие в realtime и отправляет
+        // одно сообщение в MAX. Не дублируем внешнюю отправку здесь.
         return $notification;
     }
 }

@@ -19,6 +19,9 @@ Route::middleware('throttle:api')->group(function () {
     Route::post('/auth/refresh', [AuthController::class, 'refresh'])->middleware('throttle:login');
 });
 
+// Read-only external calendar subscription. The 64-character secret is validated in the controller.
+Route::middleware('throttle:30,1')->get('/calendar-feed/{token}.ics', [\App\Http\Controllers\Api\MeetingIcsController::class, 'feed'])->where('token', '[A-Za-z0-9]{64}');
+
 // Health check
 Route::get('/health', function () {
     return response()->json([
@@ -86,6 +89,16 @@ Route::middleware('throttle:120,60')->get('/notifications/stream', [\App\Http\Co
 // RateLimiter — DECAY SECONDS, не минуты). Раньше стояло throttle:30,1 =
 // 30/мин на IP: все телевизоры офиса выходят с одного NAT-IP, и уже 3 экрана
 // (поллинг каждые 10 с = 180/мин) гарантированно ловили 429.
+Route::middleware('throttle:600,60')->get('/tv/{room}/all', function (\Illuminate\Http\Request $request, string $room) {
+    $model = is_numeric($room)
+        ? \App\Models\Room::find((int) $room)
+        : \App\Models\Room::where('name', urldecode($room))->first();
+    if (!$model || !$model->is_active) {
+        return response()->json(['message' => 'Зал не найден'], 404);
+    }
+    return app(\App\Http\Controllers\Api\TvScreenController::class)->all($request, $model);
+});
+
 Route::middleware('throttle:600,60')->get('/tv/{room}/next', function (\Illuminate\Http\Request $request, string $room) {
     // is_numeric() — встроенная функция PHP. \Illuminate\Support\Str::isNumeric()
     // НЕ существует (Str не имеет такого метода/макроса) и давала
@@ -151,6 +164,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         ->whereNumber('meeting')->name('meetings.rooms-availability');
 
     // Meetings
+    Route::post('/meetings/{meeting}/retry-vks-link', [MeetingController::class, 'retryVksLink']);
     Route::apiResource('meetings', MeetingController::class);
     Route::get('/meetings-stats', [MeetingController::class, 'getStats']);
 
@@ -237,6 +251,9 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
     // Экспорт расписания в iCalendar (.ics): скачать или подписаться ссылкой
     Route::get('/schedule.ics', [\App\Http\Controllers\Api\MeetingIcsController::class, 'index']);
+    Route::get('/calendar-feed/status', [\App\Http\Controllers\Api\MeetingIcsController::class, 'feedStatus']);
+    Route::post('/calendar-feed/rotate', [\App\Http\Controllers\Api\MeetingIcsController::class, 'rotateFeed']);
+    Route::delete('/calendar-feed', [\App\Http\Controllers\Api\MeetingIcsController::class, 'revokeFeed']);
 
     // Web Push: подписки браузера на push-уведомления
     Route::post('/push/subscribe', [\App\Http\Controllers\Api\PushSubscriptionController::class, 'store']);

@@ -5,27 +5,13 @@ namespace App\Services;
 use Illuminate\Support\Facades\Http;
 
 /**
- * Клиент Selenium-бота генерации ссылок ВКС (контейнер vks-bot, профиль "bot").
+ * Клиент Playwright-бота генерации ссылок ВКС (контейнер vks-bot, профиль "bot").
  *
  * POST {VKSBOT_URL}/create  с заголовком X-Bot-Token: BOT_TOKENS[0]
- * Ответ бота: { ok, link, room, password } либо { ok:false, fallback_link }.
+ * Ответ бота: { ok, link, room, password }; фиктивные fallback-ссылки запрещены.
  */
 class VkSBotClient
 {
-    /**
-     * Локальная ссылка в формате платформы (без бота). Совпадает с fallback
-     * в CreateVksLinkJob::failed() — единая точка генерации.
-     *
-     * @return array{ok:bool,link:string,real:false}
-     */
-    public static function localLink(): array
-    {
-        $code = substr(preg_replace('/[^a-z0-9]/', '', strtolower(base64_encode(random_bytes(8)))), 0, 8);
-        $pwd = substr(preg_replace('/[^A-Z0-9]/', '', strtoupper(base64_encode(random_bytes(16)))), 0, 16);
-
-        return ['ok' => false, 'real' => false, 'link' => "https://salutejazz.ru/calls/{$code}?psw={$pwd}"];
-    }
-
     /**
      * Привести дату встречи к виду «ДД.ММ.ГГГГ» для бота и названия комнаты.
      * Принимает ISO-строку Laravel ("2026-10-29 00:00:00" / "2026-10-29"),
@@ -57,15 +43,16 @@ class VkSBotClient
     /** @return array{ok:bool,link?:string,error?:string,detail?:string} */
     public function create(string $title, string $name, mixed $date = null): array
     {
-        // Бот не развёрнут (VKSBOT_EXPECTED=false / профиль bot выключен) —
-        // сразу отдаём локальную ссылку, не дожидаясь таймаута HTTP.
-        if (!filter_var(config('services.vks_bot.expected', env('VKSBOT_EXPECTED', false)), FILTER_VALIDATE_BOOLEAN)) {
-            return self::localLink();
+        if (!filter_var(config('services.vks_bot.expected', false), FILTER_VALIDATE_BOOLEAN)) {
+            return ['ok' => false, 'error' => 'VKS bot is disabled'];
         }
 
         $url = rtrim((string) config('services.vks_bot.url', 'http://vks-bot:8090'), '/') . '/create';
         // Секрет — первое значение из списка BOT_TOKENS (см. vks-bot/server.py).
-        $token = trim(explode(',', (string) env('BOT_TOKENS', ''))[0] ?? '');
+        $token = trim(explode(',', (string) config('services.vks_bot.token', ''))[0] ?? '');
+        if ($token === '') {
+            return ['ok' => false, 'error' => 'BOT_TOKENS is not configured'];
+        }
 
         // Дату встречи передаём боту ЯВНО и по Москве: если спросить «сегодня»
         // у сервера в UTC (или обрезать ISO-строку до первых 10 символов),
@@ -92,7 +79,7 @@ class VkSBotClient
         $data = $response->json() ?? [];
         $link = !empty($data['ok']) && !empty($data['link'])
             ? (string) $data['link']
-            : (isset($data['fallback_link']) ? (string) $data['fallback_link'] : null);
+            : null;
 
         if ($link === null || !str_starts_with($link, 'https://salutejazz.ru/calls/')) {
             return ['ok' => false, 'error' => 'бот не вернул ссылку', 'detail' => mb_substr(json_encode($data, JSON_UNESCAPED_UNICODE) ?: '', 0, 300)];

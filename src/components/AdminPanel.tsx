@@ -415,6 +415,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     php?: { version?: string; uptime_s?: number | null };
     services?: Record<string, any>;
     vks_bot?: { expected?: boolean; auto?: boolean; events_24h?: number; success_rate_24h?: number | null; recent?: any[] };
+    backup?: { ok?: boolean; last_file?: string | null; last_at?: string | null; age_hours?: number | null; size_mb?: number | null; verified?: boolean; count?: number };
     tv_screens?: { room: string; screen_id?: string | null; ip?: string; last_seen?: string }[];
   }
   const [sysStatus, setSysStatus] = useState<SystemStatus | null>(null);
@@ -439,7 +440,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     if (activeTab === "audit") loadAuditLogs(1);
     if (activeTab === "trash") loadTrashed();
     if (activeTab === "botlog") loadBotLog(1);
-    if (activeTab === "status") loadSystemStatus();
+    if (activeTab === "status") {
+      loadSystemStatus();
+      // Статус и состояние бэкапов обновляются автоматически, пока вкладка открыта.
+      const timer = window.setInterval(() => loadSystemStatus(), 60_000);
+      return () => window.clearInterval(timer);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
@@ -2180,6 +2186,11 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-1">ВКС-бот (24ч)</p>
                       {pill(true, `${sysStatus.vks_bot?.events_24h ?? 0} событий · успех ${sysStatus.vks_bot?.success_rate_24h ?? "—"}%`)}
+                    </div>
+                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-1">Резервные копии БД</p>
+                      {pill(!!sysStatus.backup?.ok, sysStatus.backup?.ok ? `Проверена · ${sysStatus.backup.age_hours ?? "?"} ч назад` : "Нет свежей проверенной копии")}
+                      <p className="text-[11px] text-gray-400 mt-1">{sysStatus.backup?.count ?? 0} копий · {sysStatus.backup?.size_mb ?? "—"} МБ</p>
                     </div>
                   </div>
                   <p className="text-xs text-gray-500 mb-2">

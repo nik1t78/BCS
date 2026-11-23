@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily verified BCS database backup (catch up after downtime)
+
+[Timer]
+OnCalendar=*-*-* 02:45:00
+Persistent=true
+RandomizedDelaySec=5m
+
+[Install]
+WantedBy=timers.target

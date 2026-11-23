@@ -27,9 +27,10 @@ return [
     'vks_bot' => [
         'url'      => env('VKSBOT_URL', 'http://vks-bot:8090'),
         // true — следить за доступностью бота и алертить админа (bot:monitor)
-        'expected' => env('VKSBOT_EXPECTED', false),
+        'expected' => filter_var(env('VKSBOT_EXPECTED', false), FILTER_VALIDATE_BOOLEAN),
         // true — автоматически ставить встречи без ссылки в очередь к боту
         'auto'     => filter_var(env('VKSBOT_AUTO', false), FILTER_VALIDATE_BOOLEAN),
+        'token'    => env('BOT_TOKENS', ''),
     ],
 
 ];

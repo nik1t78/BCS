@@ -101,23 +101,13 @@ class SystemStatusController extends Controller
 
         $queueMax = max(60, (int) env('QUEUE_HEARTBEAT_MAX_AGE', 180));
 
-        // Аварийный heartbeat: web-процесс (schedule:run registerCallback)
-        // пишет маркер, когда основной цикл планировщика молчит дольше 3 мин.
-        // Отличаем честный «Активен» от страховочного, чтобы админ не принял
-        // зависший scheduler за живой.
-        $emergency = false;
-        if ($cronAge !== null && $cronAge > 150) {
-            try {
-                $emergency = (bool) cache()->get('scheduler:heartbeat-emergency');
-            } catch (\Throwable $e) {
-                $emergency = false;
-            }
-        }
-
+        // Не подменяем heartbeat scheduler сигналом от web-процесса:
+        // иначе остановленный планировщик мог отображаться как «живой».
+        // Поле оставлено для совместимости с текущим интерфейсом админки.
         $out['services']['scheduler'] = [
             'ok' => $cronAge !== null && $cronAge <= 150,
             'cron_age_s' => $cronAge,
-            'emergency_heartbeat' => $emergency,
+            'emergency_heartbeat' => false,
         ];
         $out['services']['queue_worker']['ok'] = $hbAge !== null && $hbAge <= $queueMax;
 
@@ -135,6 +125,34 @@ class SystemStatusController extends Controller
             'success_rate_24h' => $total > 0 ? round($okCnt / $total * 100, 1) : null,
             'recent' => BotLog::latest()->latest('id')->take(10)
                 ->get(['id', 'action', 'trigger', 'success', 'error', 'meeting_id', 'created_at']),
+        ];
+
+        // Последняя резервная копия: показываем только метаданные, без ссылок
+        // на скачивание и без раскрытия содержимого каталога пользователям.
+        $backupDir = storage_path('app/backups');
+        $backupFiles = glob($backupDir . '/backup-*.sql.gz') ?: [];
+        usort($backupFiles, fn ($a, $b) => filemtime($b) <=> filemtime($a));
+        $latestBackup = $backupFiles[0] ?? null;
+        $backupMeta = $latestBackup && is_file($latestBackup . '.json')
+            ? json_decode((string) @file_get_contents($latestBackup . '.json'), true)
+            : null;
+        $backupAge = $latestBackup ? max(0, now()->getTimestamp() - (int) filemtime($latestBackup)) : null;
+        $actualHash = $latestBackup && is_file($latestBackup) ? @hash_file('sha256', $latestBackup) : false;
+        $actualSize = $latestBackup && is_file($latestBackup) ? @filesize($latestBackup) : false;
+        $backupVerified = is_array($backupMeta)
+            && !empty($backupMeta['sha256'])
+            && is_string($actualHash)
+            && hash_equals((string) $backupMeta['sha256'], $actualHash)
+            && $actualSize !== false
+            && (int) ($backupMeta['size_bytes'] ?? -1) === (int) $actualSize;
+        $out['backup'] = [
+            'ok' => $latestBackup !== null && $backupAge !== null && $backupAge <= 30 * 3600 && $backupVerified,
+            'last_file' => $latestBackup ? basename($latestBackup) : null,
+            'last_at' => $latestBackup ? date(DATE_ATOM, filemtime($latestBackup)) : null,
+            'age_hours' => $backupAge !== null ? round($backupAge / 3600, 1) : null,
+            'size_mb' => $latestBackup && $actualSize !== false ? round($actualSize / 1024 / 1024, 2) : null,
+            'verified' => $backupVerified,
+            'count' => count($backupFiles),
         ];
 
         // Экраны ТВ, живые за 15 минут

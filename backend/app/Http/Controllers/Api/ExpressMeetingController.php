@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Meeting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Пункты 8 + 4 плана: API для телевизора/QR без полноценного UI.
@@ -39,40 +40,82 @@ class ExpressMeetingController extends Controller
         }
         $endHM = $end->format('H:i');
 
-        // Занятость зала (точные встречи + occurrence'ы серий) — как в RoomController.
-        $conflict = Meeting::query()
-            ->where('room', $validated['room'])
-            ->whereIn('status', ['scheduled', 'in-progress'])
-            ->whereDate('date', $now->toDateString())
-            ->get(['start_time', 'end_time', 'recurring', 'repeat_until', 'rrule', 'date'])
-            ->contains(fn (Meeting $m) => \App\Services\RecurrenceService::occursOn($m, $now) &&
-                substr((string) $m->start_time, 0, 5) < $endHM &&
-                substr((string) $m->end_time, 0, 5) > $startHM);
+        // Один физический зал блокируется на время проверки + commit.
+        // Другие залы остаются независимыми — ВКС на одинаковое время разрешены.
+        $lockName = 'bcs_room_' . substr(hash('sha256', mb_strtolower(trim($validated['room']))), 0, 48);
+        $lockAcquired = false;
+        try {
+            $meeting = DB::transaction(function () use ($validated, $minutes, $user, $now, $startHM, $endHM, $lockName, &$lockAcquired) {
+                $lock = DB::selectOne('SELECT GET_LOCK(?, 10) AS acquired', [$lockName]);
+                if ((int) ($lock->acquired ?? 0) !== 1) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'room' => ['Не удалось зарезервировать зал. Повторите попытку.'],
+                    ]);
+                }
+                $lockAcquired = true;
 
-        if ($conflict) {
-            return response()->json(['message' => 'Зал занят в это время — выберите другое окно'], 422);
+                // Занятость точных встреч + повторяющихся серий.
+                $targetDate = $now->toDateString();
+                $conflict = Meeting::query()
+                    ->where('room', $validated['room'])
+                    ->whereIn('status', ['scheduled', 'in-progress'])
+                    ->where(function ($query) use ($targetDate, $now) {
+                        $query->whereDate('date', $targetDate)
+                            ->orWhere(function ($recurring) use ($targetDate, $now) {
+                                $recurring->where('recurring', '!=', 'none')
+                                    ->whereNotNull('recurring')
+                                    ->whereDate('date', '<=', $targetDate)
+                                    ->whereDate('date', '>=', $now->copy()->subDays(\App\Services\RecurrenceService::HORIZON_DAYS)->toDateString())
+                                    ->where(function ($until) use ($targetDate) {
+                                        $until->whereNull('repeat_until')->orWhereDate('repeat_until', '>=', $targetDate);
+                                    });
+                            });
+                    })
+                    ->get(['start_time', 'end_time', 'recurring', 'repeat_until', 'rrule', 'date'])
+                    ->filter(fn (Meeting $m) => $m->date->toDateString() === $targetDate
+                        || \App\Services\RecurrenceService::occursOn($m, $now))
+                    ->contains(fn (Meeting $m) => substr((string) $m->start_time, 0, 5) < $endHM
+                        && substr((string) $m->end_time, 0, 5) > $startHM);
+
+                if ($conflict) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'room' => ['Зал занят в это время — выберите другое окно.'],
+                    ]);
+                }
+
+                return Meeting::create([
+                    'title' => $validated['title'] ?? ('Экспресс · ' . $minutes . ' мин'),
+                    'description' => null,
+                    'date' => $now->toDateString(),
+                    'start_time' => $startHM,
+                    'end_time' => $endHM,
+                    'organizer_id' => $user->id,
+                    'participants' => [$user->id],
+                    'room' => $validated['room'],
+                    'status' => 'scheduled',
+                    'priority' => 'medium',
+                    'recurring' => 'none',
+                ]);
+            });
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['message' => $e->validator->errors()->first()], 422);
+        } finally {
+            // Освобождаем только после завершения commit/rollback.
+            if ($lockAcquired) {
+                DB::selectOne('SELECT RELEASE_LOCK(?) AS released', [$lockName]);
+            }
         }
 
-        $meeting = Meeting::create([
-            'title' => $validated['title'] ?? ('Экспресс · ' . $minutes . ' мин'),
-            'description' => null,
-            'date' => $now->toDateString(),
-            'start_time' => $startHM,
-            'end_time' => $endHM,
-            'organizer_id' => $user->id,
-            'participants' => [$user->id],
-            'room' => $validated['room'],
-            'status' => 'scheduled',
-            'priority' => 'medium',
-            'recurring' => 'none',
-        ]);
-
         try {
-            if (config('services.vks_bot.auto', false)) {
-                \App\Jobs\CreateVksLinkJob::dispatch($meeting->id);
+            if (config('services.vks_bot.auto', false) && config('services.vks_bot.expected', false)) {
+                $meeting->update(['vks_link_status' => 'pending']);
+                \App\Jobs\CreateVksLinkJob::dispatch($meeting->id)->onQueue('vks');
+            } else {
+                $meeting->update(['vks_link_status' => 'not_required']);
             }
         } catch (\Throwable $e) {
             report($e);
+            $meeting->update(['vks_link_status' => 'failed']);
         }
 
         \App\Support\MeetingCache::bump(\App\Support\MeetingCache::roomIdsFromNames([$meeting->room ?? null]));

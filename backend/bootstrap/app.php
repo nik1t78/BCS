@@ -40,9 +40,23 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withSchedule(function (Illuminate\Console\Scheduling\Schedule $schedule) {
-        // ВАЖНО: в Laravel 11+/12 планировщик подключается ТОЛЬКО здесь
-        // (bootstrap/app.php). Метод schedule() в App\Console\Kernel игнорируется —
-        // из-за этого напоминания о встречах и уведомления участникам не создавались.
+        // Laravel 11/12 регистрирует расписание здесь; App\Console\Kernel::schedule()
+        // в этой конфигурации не вызывается. Поэтому heartbeat и все фоновые задачи
+        // должны быть зарегистрированы именно в этом блоке.
+
+        // Heartbeat самого планировщика. Пишем Unix timestamp атомарно в общий storage
+        // и дублируем в cache (TTL 3 минуты), чтобы статус не зависел от filemtime()
+        // bind-mount на Windows/WSL2. Если scheduler действительно остановлен,
+        // сигнал перестанет обновляться и админка покажет простой.
+        $schedule->call(function () {
+            \App\Support\CronHeartbeat::write();
+            try {
+                cache()->put('scheduler:heartbeat', time(), now()->addMinutes(3));
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Scheduler heartbeat cache write failed: '.$e->getMessage());
+            }
+        })->everyMinute()->name('scheduler-heartbeat');
+
         $schedule->command('meetings:send-reminders')
                  ->everyMinute()
                  ->withoutOverlapping()
@@ -88,6 +102,31 @@ return Application::configure(basePath: dirname(__DIR__))
                  ->everyFiveMinutes()
                  ->withoutOverlapping()
                  ->runInBackground();
+
+        // Автопилот ссылок ВКС: контроль ближайших конференций и постановка
+        // отсутствующих/нерабочих ссылок в очередь. Дедупликация выполняется
+        // внутри команды через cache locks.
+        $schedule->command('vks:autopilot')
+                 ->everyMinute()
+                 ->withoutOverlapping()
+                 ->runInBackground();
+
+        // Общий мониторинг MySQL/Redis/nginx/queue-worker.
+        $schedule->command('system:monitor')
+                 ->everyFiveMinutes()
+                 ->withoutOverlapping()
+                 ->runInBackground();
+
+        // Очистка старых журналов, чтобы служебные таблицы не росли бесконечно.
+        $schedule->call(function () {
+            \App\Models\BotLog::where('created_at', '<', now()->subDays(90))
+                ->chunkById(1000, fn ($rows) => $rows->each->delete());
+        })->dailyAt('03:30')->name('bot-logs-prune');
+
+        $schedule->call(function () {
+            \App\Models\TvViewLog::where('last_seen_at', '<', now()->subDays(30))
+                ->limit(5000)->delete();
+        })->dailyAt('03:40')->name('tv-view-logs-prune');
     })
     ->withExceptions(function (Exceptions $exceptions) {
         // Тот же случай на уровне обработчика исключений: shouldReturnJson()
@@ -115,6 +154,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(function (\Throwable $e, $request) {
             if (!$request->is('api/*') && !$request->expectsJson()) {
                 return null; // обычные веб-страницы — стандартный рендер Laravel
+            }
+
+            // Истёкший или отсутствующий Sanctum-токен — штатный 401, а не 500.
+            // Не ослабляем auth:sanctum и не возвращаем фиктивный успешный ответ.
+            if ($e instanceof \Illuminate\Auth\AuthenticationException) {
+                return response()->json(['message' => 'Unauthenticated.'], 401);
             }
 
             \Illuminate\Support\Facades\Log::error(

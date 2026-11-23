@@ -27,6 +27,7 @@ export interface Meeting {
   participants: string[]; // user IDs
   participantEmails?: string[]; // for guests
   link?: string;
+  vksLinkStatus?: "not_required" | "pending" | "creating" | "created" | "failed";
   room?: string;
   status: "scheduled" | "in-progress" | "completed" | "cancelled";
   reminderMinutes: number;

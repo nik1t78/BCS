@@ -1,0 +1,9 @@
+[Unit]
+Description=Create and verify a BCS database backup
+After=docker.service bcs.service
+Requires=docker.service bcs.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/bcs
+ExecStart=/usr/bin/docker compose exec -T backend php artisan db:backup --keep=14

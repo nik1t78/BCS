@@ -17,6 +17,7 @@ class UserSetting extends Model
         'work_hours_start',
         'work_hours_end',
         'timezone',
+        'calendar_token_hash',
     ];
 
     protected $casts = [

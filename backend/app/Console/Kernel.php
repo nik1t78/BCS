@@ -141,27 +141,9 @@ class Kernel extends ConsoleKernel
             }
         })->everyMinute()->name('scheduler-heartbeat');
 
-        // Страховка от ложного «Планировщик молчит N мин» в админке: если
-        // цикл scheduler-heartbeat не писал ни файл, ни Redis дольше порога
-        // (контейнер scheduler мёртв / залип withoutOverlapping-лок /
-        // schedule:run упал до записи), планировщик НЕ сможет сам себя
-        // «оживить». Поэтому web-процесс пишет аварийный маркер — статус
-        // покажет «Активен (аварийный heartbeat)», а не загробное число
-        // минут простоя. Заодно снимает 429-шторм: страница админки больше
-        // не рисует бессмысленный «Молчит 5907 мин».
-        $schedule->registerCallback(function () {
-            try {
-                $last = max(\App\Support\CronHeartbeat::lastTs(), (int) cache()->get('scheduler:heartbeat'));
-                if ($last === 0 || (time() - $last) > 180) {
-                    cache()->put('scheduler:heartbeat', time(), now()->addMinutes(3));
-                    cache()->put('scheduler:heartbeat-emergency', 1, now()->addMinutes(3));
-                } else {
-                    cache()->forget('scheduler:heartbeat-emergency');
-                }
-            } catch (\Throwable $e) {
-                // кэш недоступен — ничего не делаем
-            }
-        });
+        // В Laravel 12 web-fallback heartbeat не регистрируется через Kernel:
+        // активный heartbeat находится в bootstrap/app.php, а статус API
+        // показывает только фактический сигнал scheduler.
 
         // Подчистка журнала посещаемости ТВ: строки, невидевшиеся 30 дней,
         // больше не нужны (аналог ротации bot_logs). Раз в сутки.

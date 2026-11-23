@@ -252,6 +252,8 @@ export const meetingsAPI = {
 
   get: (id: string) => apiRequest(`/meetings/${id}`),
 
+  retryVksLink: (id: string) => apiRequest(`/meetings/${id}/retry-vks-link`, { method: "POST" }),
+
   create: (data: any) =>
     apiRequest("/meetings", {
       method: "POST",
@@ -854,6 +856,9 @@ export const bulkParticipantsAPI = {
 // Экспорт расписания в iCalendar (.ics)
 export const icsAPI = {
   download: () => downloadBlob("/schedule.ics"),
+  status: () => apiRequest("/calendar-feed/status"),
+  rotateFeed: () => apiRequest("/calendar-feed/rotate", { method: "POST" }),
+  revokeFeed: () => apiRequest("/calendar-feed", { method: "DELETE" }),
 };
 
 // Web Push подписки браузера

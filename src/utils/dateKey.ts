@@ -35,6 +35,18 @@ export const addMinToHm = (hm: string, addMinutes: number): string => {
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 };
 
+/** Округлить время до ближайшего 30-минутного слота.
+ *  Например: 10:05 → 10:00, 10:20 → 10:30, 10:45 → 11:00.
+ *  На границе 15 минут округляем вперёд. Встречи за полночь не переносим. */
+export const snapHmTo30 = (hm: string): string => {
+  const match = hm.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return hm;
+  const minutes = Number(match[1]) * 60 + Number(match[2]);
+  if (minutes < 0 || minutes >= 24 * 60) return hm;
+  const snapped = Math.min(Math.round(minutes / 30) * 30, 23 * 60 + 30);
+  return `${String(Math.floor(snapped / 60)).padStart(2, "0")}:${String(snapped % 60).padStart(2, "0")}`;
+};
+
 /** Полночь ЛОКАЛЬНОГО дня для ключа даты YYYY-MM-DD или Date (для сравнений
  *  «в пределах недели» и т.п.) — без сдвига на UTC-полночь. */
 export const startOfDayLocal = (v: string | Date): Date => {

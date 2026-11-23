@@ -19,6 +19,24 @@ Route::get('/', function () {
 // Маршрут живёт в web (а не SPA): nginx location /tv/ проксирует такие URL
 // сюда, иначе SPA отдавал бы index.html и JS-модули грузились бы как HTML
 // ("Failed to load module script ... MIME type text/html").
+Route::get('/tv/{room}/all', function (string $room) {
+    $q = \App\Models\Room::where('is_active', true);
+    if (ctype_digit($room)) {
+        $q->where(fn ($w) => $w->where('id', (int) $room)->orWhere('name', urldecode($room)));
+    } else {
+        $q->where('name', urldecode($room));
+    }
+    $model = $q->first();
+    $token = (string) request()->query('token', '');
+    $ok = $model && $token !== '' && $model->tv_token && hash_equals((string) $model->tv_token, $token);
+    if (!$ok) {
+        return response()->view('tv-all-meetings', ['roomName' => $model?->name ?? 'Зал', 'roomId' => $model?->id, 'token' => '', 'invalid' => true], 403)
+            ->header('Content-Type', 'text/html; charset=utf-8')->header('Cache-Control', 'no-store');
+    }
+    return response()->view('tv-all-meetings', ['roomName' => $model->name, 'roomId' => $model->id, 'token' => $token, 'invalid' => false])
+        ->header('Content-Type', 'text/html; charset=utf-8')->header('Cache-Control', 'no-store');
+})->where('room', '[^/]+');
+
 Route::get('/tv/{room}', function (string $room) {
     // Резолвим ПО НАЗВАНИЮ: телевизор открывает человекочитаемый адрес
     // /tv/Переговорная%20А%20(3%20этаж)?token=..., а не id.

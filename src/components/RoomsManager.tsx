@@ -136,7 +136,7 @@ export default function RoomsManager({ isAdmin, userDepartment }: RoomsManagerPr
   const [onlyMine, setOnlyMine] = useState(false);
 
   // Список подразделений уникален по всем комнатам с department_id
-  const departments = Array.from(new Set(rooms.map((r) => r.departmentId).filter((d): d is number => d != null))).sort(
+  const departments = Array.from(new Set<number>(rooms.map((r) => r.departmentId).filter((d): d is number => d != null))).sort(
     (a, b) => a - b
   );
 
@@ -307,7 +307,7 @@ export default function RoomsManager({ isAdmin, userDepartment }: RoomsManagerPr
             onChange={(e) => setForm({ ...form, departmentId: e.target.value })}
           >
             <option value="">Публичная (все)</option>
-            {Array.from(new Set([...departments, ...(form.departmentId ? [Number(form.departmentId)] : [])]))
+            {Array.from(new Set<number>([...departments, ...(form.departmentId ? [Number(form.departmentId)] : [])]))
               .sort((a, b) => a - b)
               .map((d) => (
                 <option key={d} value={d}>

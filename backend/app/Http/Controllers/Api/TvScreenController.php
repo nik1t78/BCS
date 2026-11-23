@@ -70,6 +70,7 @@ class TvScreenController extends Controller
                     return [
                         'id' => $m->id,
                         'title' => $m->title,
+                        'date' => $start->format('Y-m-d'),
                         'start' => $start->toIso8601String(),
                         'end' => $end->toIso8601String(),
                         'join_url' => '/api/m/' . $m->id, // «вечная» ссылка — всегда ведёт на актуальную комнату
@@ -91,6 +92,81 @@ class TvScreenController extends Controller
             'server_time' => $now->toIso8601String(),
             'next' => $meetings->first(),
             'upcoming' => $meetings,
+        ]);
+    }
+
+    /** Полный список предстоящих ВКС конкретного зала для страницы ТВ «Все ВКС». */
+    public function all(Request $request, Room $room)
+    {
+        $token = (string) $request->query('token', '');
+        if ($token === '' || !$room->tv_token || !hash_equals((string) $room->tv_token, $token)) {
+            return response()->json(['message' => 'Неверный токен экрана'], 403);
+        }
+
+        $now = now();
+        $from = $now->toDateString();
+        $to = $now->copy()->addDays(30)->toDateString();
+        $meetings = Meeting::query()
+            ->where('room', $room->name)
+            ->whereIn('status', ['scheduled', 'in-progress'])
+            ->whereDate('date', '<=', $to)
+            ->where(function ($q) use ($from) {
+                $q->whereDate('date', '>=', $from)
+                  ->orWhere(function ($r) use ($from) {
+                      $r->where('recurring', '!=', 'none')
+                        ->where(function ($u) use ($from) {
+                            $u->whereNull('repeat_until')->orWhereDate('repeat_until', '>=', $from);
+                        });
+                  });
+            })
+            ->get(['id', 'title', 'date', 'start_time', 'end_time', 'recurring', 'repeat_until', 'rrule', 'status']);
+
+        $rows = [];
+        foreach ($meetings as $meeting) {
+            try {
+                $baseDate = $meeting->date->toDateString();
+                $startHm = substr((string) $meeting->start_time, 0, 5);
+                $endHm = substr((string) $meeting->end_time, 0, 5);
+                if ($startHm === '' || $endHm === '') continue;
+
+                $dates = [];
+                if ($meeting->recurring === 'none') {
+                    $dates[] = $baseDate;
+                } else {
+                    $last = $meeting->repeat_until ? $meeting->repeat_until->toDateString() : $to;
+                    $cursor = max($baseDate, $from);
+                    $last = min($last, $to);
+                    while ($cursor <= $last) {
+                        if (\App\Services\RecurrenceService::occursOn($meeting, $cursor)) $dates[] = $cursor;
+                        $cursor = date('Y-m-d', strtotime($cursor . ' +1 day'));
+                    }
+                }
+
+                foreach ($dates as $day) {
+                    $start = \Carbon\CarbonImmutable::parse($day . ' ' . $startHm);
+                    $end = \Carbon\CarbonImmutable::parse($day . ' ' . $endHm);
+                    if ($end->lessThan($start)) $end = $end->addDay();
+                    if ($end->lessThanOrEqualTo($now)) continue;
+                    $rows[] = [
+                        'id' => $meeting->id,
+                        'title' => $meeting->title,
+                        'date' => $day,
+                        'start' => $start->toIso8601String(),
+                        'end' => $end->toIso8601String(),
+                        'join_url' => '/api/m/' . $meeting->id,
+                        'live' => $start->lessThanOrEqualTo($now) && $end->greaterThan($now),
+                    ];
+                }
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        usort($rows, fn ($a, $b) => strcmp($a['start'], $b['start']));
+        return response()->json([
+            'room' => ['id' => $room->id, 'name' => $room->name],
+            'server_time' => $now->toIso8601String(),
+            'meetings' => array_slice($rows, 0, 300),
         ]);
     }
 
@@ -145,11 +221,11 @@ class TvScreenController extends Controller
         }
         // Скользящее обновление существующей строки (single UPDATE — атомарно).
         \App\Models\TvViewLog::withoutTimestamps(function () use ($row, $request, $now) {
-            $row->update([
+            $row->increment('polls', 1, [
                 'ip'           => $request->ip(),
                 'ua'           => mb_substr((string) $request->userAgent(), 0, 200),
                 'last_seen_at' => $now,
-            ])->increment('polls');
+            ]);
         });
     }
 }
