@@ -68,14 +68,14 @@ Route::middleware('auth:sanctum')->get('/meta/stamps', function (\Illuminate\Htt
 // В URL SSE попадает только этот короткоживущий билет; GET consume-ит его.
 Route::middleware(['auth:sanctum', 'throttle:api'])->post(
     '/notifications/stream-ticket',
-    [\\App\\Http\\Controllers\\Api\\NotificationStreamController::class, 'issueTicket']
+    [\App\Http\Controllers\Api\NotificationStreamController::class, 'issueTicket']
 );
 
 // Долгоживущий SSE-поток находится вне auth:sanctum, так как EventSource
 // не поддерживает пользовательские заголовки. Доступ — только по билету.
 Route::middleware('throttle:120,60')->get(
     '/notifications/stream',
-    [\\App\\Http\\Controllers\\Api\\NotificationStreamController::class, 'stream']
+    [\App\Http\Controllers\Api\NotificationStreamController::class, 'stream']
 );
 
 // Пункт 5 плана: «экран ожидания» в зале. Телевизор открывает /tv/{room}?token=...
