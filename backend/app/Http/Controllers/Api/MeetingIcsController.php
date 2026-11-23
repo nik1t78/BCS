@@ -1,19 +1,15 @@
 <?php
 
-namespace App\\Http\\Controllers\\Api;
+namespace App\Http\Controllers\Api;
 
-use App\\Http\\Controllers\\Controller;
-use App\\Models\\Meeting;
-use App\\Models\\User;
-use App\\Models\\UserSetting;
-use Carbon\\Carbon;
-use Illuminate\\Http\\Request;
-use Illuminate\\Support\\Str;
+use App\Http\Controllers\Controller;
+use App\Models\Meeting;
+use App\Models\User;
+use App\Models\UserSetting;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
-/**
- * Экспорт расписания в формате iCalendar (.ics) — для добавления ВКС
- * в Outlook / Яндекс.Календарь / Google Calendar.
- */
 class MeetingIcsController extends Controller
 {
     public function index(Request $request)
@@ -21,9 +17,6 @@ class MeetingIcsController extends Controller
         return $this->calendarResponse($request->user(), $request, true);
     }
 
-    /**
-     * Создать или заменить секретную ссылку подписки. В БД хранится только SHA-256.
-     */
     public function rotateFeed(Request $request)
     {
         $token = Str::random(64);
@@ -36,9 +29,6 @@ class MeetingIcsController extends Controller
         ]);
     }
 
-    /**
-     * Проверить, существует ли активная ссылка подписки (сам секрет не возвращается).
-     */
     public function feedStatus(Request $request)
     {
         return response()->json([
@@ -46,9 +36,6 @@ class MeetingIcsController extends Controller
         ]);
     }
 
-    /**
-     * Немедленно отозвать ссылку подписки.
-     */
     public function revokeFeed(Request $request)
     {
         $settings = $request->user()->settings;
@@ -60,10 +47,6 @@ class MeetingIcsController extends Controller
         return response()->json(['message' => 'Ссылка календаря отключена']);
     }
 
-    /**
-     * Публичная read-only ссылка для внешних календарей. Доступ даёт только
-     * длинный случайный токен; токен в базе хранится в виде хеша.
-     */
     public function feed(Request $request, string $token)
     {
         $settings = UserSetting::where('calendar_token_hash', hash('sha256', $token))->first();
@@ -77,8 +60,7 @@ class MeetingIcsController extends Controller
     private function calendarResponse(User $user, ?Request $request = null, bool $download = true)
     {
         // В схеме meetings используется is_private (а не is_public).
-        // Не выдаём приватные встречи посторонним, но оставляем их организатору
-        // и участникам, которым они уже доступны.
+        // Приватные встречи видны только организатору и участникам.
         $query = Meeting::query()
             ->where(function ($q) use ($user) {
                 $q->where('organizer_id', $user->id)
@@ -107,9 +89,8 @@ class MeetingIcsController extends Controller
         ];
 
         foreach ($meetings as $m) {
-            // В БД дата и время хранятся раздельно (DATE + TIME), поэтому
-            // start_time/end_time — строки, а не DateTimeInterface/Carbon.
-            // Собираем локальный момент и только затем переводим его в UTC.
+            // В БД DATE и TIME — отдельные поля. Собираем локальный момент
+            // в таймзоне приложения и только затем переводим его в UTC.
             $date = $m->getRawOriginal('date');
             if (!$date || !$m->start_time) {
                 continue;
@@ -117,11 +98,9 @@ class MeetingIcsController extends Controller
 
             try {
                 $startUtc = Carbon::parse($date . ' ' . $m->start_time, $timezone)->utc();
-                $endUtc = Carbon::parse(
-                    $date . ' ' . ($m->end_time ?: Carbon::parse($m->start_time)->addHour()->format('H:i:s')),
-                    $timezone
-                )->utc();
-            } catch (\\Throwable $e) {
+                $endTime = $m->end_time ?: Carbon::parse($m->start_time)->addHour()->format('H:i:s');
+                $endUtc = Carbon::parse($date . ' ' . $endTime, $timezone)->utc();
+            } catch (\Throwable $e) {
                 // Некорректная старая запись не должна ломать экспорт всего календаря.
                 continue;
             }
@@ -129,9 +108,9 @@ class MeetingIcsController extends Controller
             $lines = array_merge($lines, [
                 'BEGIN:VEVENT',
                 'UID:vks-meeting-' . $m->id . '@vks.local',
-                'DTSTAMP:' . now()->setTimezone('UTC')->format('Ymd\\THis\\Z'),
-                'DTSTART:' . $startUtc->format('Ymd\\THis\\Z'),
-                'DTEND:' . $endUtc->format('Ymd\\THis\\Z'),
+                'DTSTAMP:' . now()->setTimezone('UTC')->format('Ymd\THis\Z'),
+                'DTSTART:' . $startUtc->format('Ymd\THis\Z'),
+                'DTEND:' . $endUtc->format('Ymd\THis\Z'),
                 'SUMMARY:' . $this->esc($m->title),
                 'DESCRIPTION:' . $this->esc(trim(($m->description ?? '') . ' | Комната: ' . ($m->room ?: 'Онлайн'))),
                 'LOCATION:' . $this->esc($m->room ?: 'Онлайн'),
@@ -142,11 +121,9 @@ class MeetingIcsController extends Controller
         }
 
         $lines[] = 'END:VCALENDAR';
-
-        // RFC 5545: CRLF + перенос длинных строк.
-        $ics = collect($lines)->filter(fn ($l) => $l !== null)
-            ->map(fn ($l) => $this->foldLine($l))
-            ->implode("\\r\\n");
+        $ics = collect($lines)->filter(fn ($line) => $line !== null)
+            ->map(fn ($line) => $this->foldLine($line))
+            ->implode("\r\n");
 
         return response($ics, 200, [
             'Content-Type' => 'text/calendar; charset=UTF-8',
@@ -179,11 +156,11 @@ class MeetingIcsController extends Controller
         }
 
         $result[] = $current;
-        return implode("\\r\\n", $result);
+        return implode("\r\n", $result);
     }
 
     private function esc(string $value): string
     {
-        return str_replace(['\\\\', "\\n", ',', ';'], ['\\\\\\\\', '\\\\n', '\\\\,', '\\\\;'], $value);
+        return str_replace(['\\', "\n", ',', ';'], ['\\\\', '\\n', '\\,', '\\;'], $value);
     }
 }
