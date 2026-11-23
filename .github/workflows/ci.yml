@@ -76,6 +76,9 @@ jobs:
       - name: Boot Laravel and verify calendar routes
         run: php artisan route:list --path=calendar-feed
 
+      - name: Verify smart meeting slot suggestion route
+        run: php artisan route:list --path=meetings/suggest-slots
+
       - name: Run calendar regression smoke tests
         run: php tests/calendar-smoke.php
 
@@ -93,6 +96,9 @@ jobs:
 
       - name: Run RSVP reminder policy regression smoke tests
         run: php tests/rsvp-reminder-policy-smoke.php
+
+      - name: Run meeting slot suggestion policy smoke tests
+        run: php tests/meeting-slot-suggestion-policy-smoke.php
 
       - name: Run meeting edit policy regression smoke tests
         run: php tests/meeting-edit-policy-smoke.php

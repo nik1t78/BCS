@@ -13,13 +13,15 @@ import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { occursOn } from "../utils/recurrence";
 import { formatRuDate } from "../utils/dateKey";
 import OutlookCalendar, { OutlookView } from "./OutlookCalendar";
+import MeetingSlotFinder from "./MeetingSlotFinder";
 
 interface ScheduleProps {
   user: User;
   onNavigate: (page: string) => void;
+  onPickSlot?: (roomName: string, startTime: string, endTime: string, date: string) => void;
 }
 
-export default function Schedule({ user, onNavigate }: ScheduleProps) {
+export default function Schedule({ user, onNavigate, onPickSlot }: ScheduleProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [view, setView] = useState<OutlookView>("week");
@@ -47,6 +49,7 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
   const [editForm, setEditForm] = useState({ title: "", startTime: "", endTime: "" });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [slotFinderOpen, setSlotFinderOpen] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -234,6 +237,12 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
                 </button>
               ))}
             </div>
+            <button
+              onClick={() => setSlotFinderOpen(true)}
+              className="px-3 py-1.5 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <i className="fas fa-calendar-check mr-1"></i>Подобрать время
+            </button>
             <button
               onClick={() => onNavigate("meetings")}
               className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -444,6 +453,17 @@ export default function Schedule({ user, onNavigate }: ScheduleProps) {
             </div>
           );
         })()}
+      {slotFinderOpen && (
+        <MeetingSlotFinder
+          users={allUsers}
+          onClose={() => setSlotFinderOpen(false)}
+          onPickSlot={(roomName, startTime, endTime, date) => {
+            setSlotFinderOpen(false);
+            onPickSlot?.(roomName, startTime, endTime, date);
+            if (!onPickSlot) onNavigate("meetings");
+          }}
+        />
+      )}
     </div>
   );
 }
