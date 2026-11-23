@@ -583,7 +583,7 @@ class MeetingController extends Controller
             'description' => 'nullable|string',
             'date' => 'sometimes|date_format:Y-m-d',
             'start_time' => ['sometimes', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
-            'end_time' => ['sometimes', 'regex:/^\d{2}:\d{2}(:\d{2})?$/],
+            'end_time' => ['sometimes', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
             'room' => 'nullable|string|max:255',
             'link' => 'nullable|url|max:500',
             'status' => 'sometimes|in:scheduled,in-progress,completed,cancelled',
