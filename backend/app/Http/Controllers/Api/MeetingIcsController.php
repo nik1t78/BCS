@@ -138,7 +138,7 @@ class MeetingIcsController extends Controller
 
         // RFC 5545: CRLF + перенос длинных строк
         $ics = collect($lines)->filter(fn ($l) => $l !== null)
-            ->map(fn ($l) => implode("\r\n ", str_split($l, 74)))
+            ->map(fn ($l) => $this->foldLine($l))
             ->implode("\r\n");
 
         return response($ics, 200, [
@@ -146,6 +146,32 @@ class MeetingIcsController extends Controller
             'Content-Disposition' => ($download ? 'attachment' : 'inline') . '; filename="vks-schedule.ics"',
             'Cache-Control' => 'no-cache, must-revalidate',
         ]);
+    }
+
+    /**
+     * RFC 5545: строки не длиннее 75 октетов. Переносим по Unicode-символам,
+     * чтобы не разрезать русские буквы посередине UTF-8 последовательности.
+     */
+    private function foldLine(string $line): string
+    {
+        $characters = preg_split('//u', $line, -1, PREG_SPLIT_NO_EMPTY);
+        if ($characters === false) {
+            return $line;
+        }
+
+        $result = [];
+        $current = '';
+        foreach ($characters as $character) {
+            if ($current !== '' && strlen($current) + strlen($character) > 75) {
+                $result[] = $current;
+                $current = ' ' . $character;
+            } else {
+                $current .= $character;
+            }
+        }
+
+        $result[] = $current;
+        return implode("\r\n", $result);
     }
 
     private function esc(string $value): string
