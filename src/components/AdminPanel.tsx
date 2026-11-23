@@ -7,6 +7,7 @@ import { exportToExcel } from "../utils/export";
 import { SortMode, SORT_OPTIONS, sortMeetings } from "../utils/meetingSort";
 import { rescheduleMeeting, checkRescheduleConflicts } from "../store-api";
 import RoomsManager from "./RoomsManager";
+import FailedJobsPanel from "./FailedJobsPanel";
 import TvScreenPreview from "./TvScreenPreview";
 import OutlookCalendar, { OutlookView } from "./OutlookCalendar";
 import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
@@ -2202,6 +2203,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 </>
               )}
             </div>
+
+            <FailedJobsPanel />
 
             {/* Журнал посещаемости экранов ТВ */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
