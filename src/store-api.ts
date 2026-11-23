@@ -333,33 +333,47 @@ export async function updateUser(id: string, data: any): Promise<User | null> {
   }
 }
 
-export async function deleteUser(id: string): Promise<boolean> {
+export interface UserMutationResult {
+  ok: boolean;
+  message?: string;
+}
+
+export async function deleteUser(id: string): Promise<UserMutationResult> {
   try {
     await usersAPI.delete(id);
-    return true;
+    return { ok: true };
   } catch (error) {
     console.error("Delete user error:", error);
-    return false;
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Не удалось удалить пользователя",
+    };
   }
 }
 
-export async function changeUserRole(id: string, role: string): Promise<boolean> {
+export async function changeUserRole(id: string, role: string): Promise<UserMutationResult> {
   try {
     await usersAPI.changeRole(id, role);
-    return true;
+    return { ok: true };
   } catch (error) {
     console.error("Change role error:", error);
-    return false;
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Не удалось изменить роль пользователя",
+    };
   }
 }
 
-export async function toggleUserActive(id: string): Promise<boolean> {
+export async function toggleUserActive(id: string): Promise<UserMutationResult> {
   try {
     await usersAPI.toggleActive(id);
-    return true;
+    return { ok: true };
   } catch (error) {
     console.error("Toggle active error:", error);
-    return false;
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Не удалось изменить статус пользователя",
+    };
   }
 }
 

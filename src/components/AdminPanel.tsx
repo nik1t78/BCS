@@ -688,10 +688,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       return;
     }
 
-    if (confirm("Удалить пользователя?")) {
-      const ok = await deleteUser(id);
-      if (!ok) {
-        alert("Не удалось удалить пользователя");
+    if (confirm("Удалить пользователя? Если у него есть встречи или история участия, аккаунт нужно отключить, а не удалять.")) {
+      const result = await deleteUser(id);
+      if (!result.ok) {
+        alert(result.message || "Не удалось удалить пользователя");
         return;
       }
       setUsers(await getUsers());
@@ -705,9 +705,9 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       return;
     }
 
-    const ok = await toggleUserActive(id);
-    if (!ok) {
-      alert("Не удалось изменить статус пользователя");
+    const result = await toggleUserActive(id);
+    if (!result.ok) {
+      alert(result.message || "Не удалось изменить статус пользователя");
       return;
     }
     setUsers(await getUsers());
@@ -715,9 +715,9 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   };
 
   const handleChangeRole = async (id: string, role: User["role"]) => {
-    const ok = await changeUserRole(id, role);
-    if (!ok) {
-      alert("Не удалось изменить роль (доступно только администраторам)");
+    const result = await changeUserRole(id, role);
+    if (!result.ok) {
+      alert(result.message || "Не удалось изменить роль пользователя");
       return;
     }
     setUsers(await getUsers());
