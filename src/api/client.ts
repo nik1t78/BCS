@@ -297,6 +297,19 @@ export const meetingsAPI = {
     return apiRequest(`/meetings/rooms-availability${queryString}`);
   },
 
+  // Подбор общих свободных интервалов для выбранных участников и переговорных.
+  suggestSlots: (data: {
+    date_from: string;
+    date_to: string;
+    duration: number;
+    participant_ids: number[];
+    room_id?: number;
+    limit?: number;
+  }) => apiRequest("/meetings/suggest-slots", {
+    method: "POST",
+    body: JSON.stringify(data),
+  }),
+
   // Проверка конфликтов расписания: пересекающиеся встречи у тех же людей
   checkConflicts: (params: {
     date: string;
