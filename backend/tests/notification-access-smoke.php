@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
-use App\\Support\\NotificationAccess;
-use Illuminate\\Http\\Request;
+use App\Support\NotificationAccess;
+use Illuminate\Http\Request;
 
 function assertNotificationPolicy(bool $expected, bool $actual, string $label): void
 {
