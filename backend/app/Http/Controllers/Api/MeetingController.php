@@ -1075,7 +1075,7 @@ class MeetingController extends Controller
 
         // Неактивная комната остаётся в истории и справочнике, но её нельзя
         // назначать новым встречам или выбирать при переносе существующей.
-        if ($room && !$room->is_active) {
+        if ($room && !\App\Support\RoomLifecyclePolicy::canBook((bool) $room->is_active)) {
             abort(422, 'Эта переговорная отключена и недоступна для новых бронирований');
         }
 
