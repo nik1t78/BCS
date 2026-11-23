@@ -21,38 +21,27 @@ class AnalyticsController extends Controller
 
         $meetings = Meeting::query()
             ->where('date', '>=', $since->toDateString())
+            ->where('date', '<=', now()->toDateString())
             ->where('status', '!=', 'cancelled')
-            ->get(['date', 'start_time', 'end_time']);
+            ->get(['date', 'start_time', 'end_time'])
+            ->map(fn (Meeting $meeting) => [
+                'date' => $meeting->getRawOriginal('date'),
+                'start_time' => $meeting->start_time,
+                'end_time' => $meeting->end_time,
+            ])
+            ->all();
 
-        // matrix[dayOfWeek 0..6][hour 8..20] = count
-        $matrix = array_fill(0, 7, array_fill(8, 13, 0));
-        $total = 0;
-
-        foreach ($meetings as $m) {
-            try {
-                $d = new \DateTime($m->date);
-            } catch (\Exception $e) {
-                continue;
-            }
-            $dow = (int) $d->format('w'); // 0=вс..6=сб
-            $startHour = (int) substr((string) $m->start_time, 0, 2);
-            $endHour = (int) substr((string) ($m->end_time ?: $m->start_time), 0, 2);
-            if ($endHour <= $startHour) {
-                $endHour = $startHour + 1;
-            }
-            for ($h = max($startHour, 8); $h < min($endHour + 1, 21); $h++) {
-                $matrix[$dow][$h]++;
-                $total++;
-            }
-        }
+        $heatmap = MeetingHeatmapPolicy::build($meetings);
 
         return response()->json([
             'weeks' => $weeks,
             'hours' => range(8, 20),
             // дни в порядке Пн..Вс
             'days' => [1, 2, 3, 4, 5, 6, 0],
-            'matrix' => $matrix,
-            'total_meetings' => $total,
+            'matrix' => $heatmap['matrix'],
+            // Сохраняем старое поле для совместимости с существующим экраном.
+            'total_meetings' => $heatmap['occupied_hour_slots'],
+            'meetings_count' => $heatmap['meetings_count'],
         ]);
     }
 
@@ -82,6 +71,7 @@ class AnalyticsController extends Controller
             ->selectRaw('SUBSTRING(start_time,1,2) as hr, COUNT(*) as cnt')
             ->where('date', '>=', $since)
             ->where('status', '!=', 'cancelled')
+            ->where('date', '<=', now()->toDateString())
             ->groupBy('hr')
             ->pluck('cnt', 'hr');
 
@@ -92,6 +82,7 @@ class AnalyticsController extends Controller
             ->whereNotNull('room')
             ->where('room', '!=', '')
             ->where('status', '!=', 'cancelled')
+            ->where('date', '<=', now()->toDateString())
             ->groupBy('room')
             ->orderByDesc('cnt')
             ->limit(5)
