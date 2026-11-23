@@ -164,8 +164,8 @@ return Application::configure(basePath: dirname(__DIR__))
 
             // Подробности остаются только в серверном журнале. Не включаем
             // query string в URL: там могут находиться одноразовые билеты.
-            $errorId = (string) \\Illuminate\\Support\\Str::uuid();
-            \\Illuminate\\Support\\Facades\\Log::error(
+            $errorId = (string) \Illuminate\Support\Str::uuid();
+            \Illuminate\Support\Facades\Log::error(
                 '[API-ERROR] ' . $request->method() . ' ' . $request->path(),
                 [
                     'error_id' => $errorId,
