@@ -286,7 +286,7 @@ function App() {
               />
             )}
             {currentPage === "schedule" && (
-              <Schedule user={user} onNavigate={(page: string) => setCurrentPage(page as Page)} />
+              <Schedule user={user} onNavigate={(page: string) => setCurrentPage(page as Page)} onPickSlot={handleBookSlot} />
             )}
             {currentPage === "meetings" && (
               <UserPanel
