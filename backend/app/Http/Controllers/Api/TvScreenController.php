@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Meeting;
 use App\Models\Room;
+use App\Support\TvScreenPolicy;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 
 /**
@@ -35,38 +37,39 @@ class TvScreenController extends Controller
 
         // Встречи этого зала: сегодня + occurrence'ы повторяющихся серий
         // (та же логика занятости, что в RoomController::allAvailability).
+        $today = $now->toDateString();
+        $weekEnd = $now->copy()->addDays(7)->toDateString();
+        $recurrenceStart = $now->copy()->subDays(\App\Services\RecurrenceService::HORIZON_DAYS)->toDateString();
+
         $meetings = Meeting::query()
             ->where('room', $room->name)
             ->whereIn('status', ['scheduled', 'in-progress'])
-            ->whereDate('date', '>=', $now->toDateString())
-            ->whereDate('date', '<=', $now->copy()->addDays(7)->toDateString())
+            ->where('is_private', false)
+            ->where(function ($query) use ($today, $weekEnd, $recurrenceStart) {
+                $query->whereBetween('date', [$today, $weekEnd])
+                    ->orWhere(function ($recurring) use ($today, $recurrenceStart) {
+                        $recurring->where('recurring', '!=', 'none')
+                            ->whereDate('date', '>=', $recurrenceStart)
+                            ->whereDate('date', '<', $today)
+                            ->where(function ($until) use ($today) {
+                                $until->whereNull('repeat_until')
+                                    ->orWhereDate('repeat_until', '>=', $today);
+                            });
+                    });
+            })
             ->get(['id', 'title', 'date', 'start_time', 'end_time', 'link', 'recurring', 'repeat_until', 'rrule', 'status'])
             ->map(function (Meeting $m) use ($now) {
                 // Одна «битая» запись (например, пустое start_time или невалидный rrule)
                 // не должна ронять весь экран ТВ с 500 — пропускаем её.
                 try {
-                    $day = $m->date->toDateString();
-                    $startHm = substr((string) $m->start_time, 0, 5);
-                    $endRaw = substr((string) $m->end_time, 0, 5);
-                    if ($startHm === '' || $endRaw === '') return null;
-                    $start = \Carbon\CarbonImmutable::parse($day . ' ' . $startHm);
-                    $end = \Carbon\CarbonImmutable::parse($day . ' ' . $endRaw);
-                    if ($end->lessThan($start)) {
-                        $end = $end->addDay(); // встреча через полночь
-                    }
-                    // Повторяющиеся серии: приводим к ближайшему будущему occurrence.
-                    // Если серия уже «происходит» сегодня, но её время вышло —
-                    // ищем следующий день серии в горизонте 30 дней.
-                    if ($m->recurring !== 'none' && $end->lessThan($now)) {
-                        for ($d = 1; $d <= 30; $d++) {
-                            $day2 = $now->copy()->addDays($d)->toDateString();
-                            if (\App\Services\RecurrenceService::occursOn($m, $day2)) {
-                                $start = \Carbon\CarbonImmutable::parse($day2 . ' ' . $startHm);
-                                $end = \Carbon\CarbonImmutable::parse($day2 . ' ' . $endRaw);
-                                break;
-                            }
-                        }
-                    }
+                    $occurrence = TvScreenPolicy::nextOccurrence(
+                        $m,
+                        CarbonImmutable::parse($now),
+                        7
+                    );
+                    if ($occurrence === null) return null;
+                    $start = $occurrence['start'];
+                    $end = $occurrence['end'];
                     return [
                         'id' => $m->id,
                         'title' => $m->title,
@@ -106,14 +109,17 @@ class TvScreenController extends Controller
         $now = now();
         $from = $now->toDateString();
         $to = $now->copy()->addDays(30)->toDateString();
+        $recurrenceStart = $now->copy()->subDays(\App\Services\RecurrenceService::HORIZON_DAYS)->toDateString();
         $meetings = Meeting::query()
             ->where('room', $room->name)
             ->whereIn('status', ['scheduled', 'in-progress'])
+            ->where('is_private', false)
             ->whereDate('date', '<=', $to)
-            ->where(function ($q) use ($from) {
+            ->where(function ($q) use ($from, $recurrenceStart) {
                 $q->whereDate('date', '>=', $from)
-                  ->orWhere(function ($r) use ($from) {
+                  ->orWhere(function ($r) use ($from, $recurrenceStart) {
                       $r->where('recurring', '!=', 'none')
+                        ->whereDate('date', '>=', $recurrenceStart)
                         ->where(function ($u) use ($from) {
                             $u->whereNull('repeat_until')->orWhereDate('repeat_until', '>=', $from);
                         });

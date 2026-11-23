@@ -103,6 +103,9 @@ jobs:
       - name: Run meeting heatmap accuracy policy smoke tests
         run: php tests/meeting-heatmap-policy-smoke.php
 
+      - name: Run TV screen privacy and recurrence smoke tests
+        run: php tests/tv-screen-policy-smoke.php
+
       - name: Run meeting edit policy regression smoke tests
         run: php tests/meeting-edit-policy-smoke.php
 
