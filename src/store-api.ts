@@ -994,9 +994,9 @@ export async function getNotifications(params?: {
   }
 }
 
-export async function markNotificationRead(id: string): Promise<boolean> {
+export async function markNotificationRead(id: string, params?: { all?: boolean }): Promise<boolean> {
   try {
-    await notificationsAPI.markAsRead(id);
+    await notificationsAPI.markAsRead(id, params);
     return true;
   } catch (error) {
     console.error("Mark notification read error:", error);
