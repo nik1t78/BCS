@@ -164,7 +164,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         ->whereNumber('meeting')->name('meetings.rooms-availability');
 
     // Поиск общих свободных интервалов для участников и активных переговорных.
-    Route::post('/meetings/suggest-slots', [\\App\\Http\\Controllers\\Api\\MeetingSlotSuggestionController::class, 'index'])
+    Route::post('/meetings/suggest-slots', [\App\Http\Controllers\Api\MeetingSlotSuggestionController::class, 'index'])
         ->middleware('throttle:10,1');
 
     // Meetings
