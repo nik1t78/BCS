@@ -5,12 +5,13 @@ import { occursOn, withDate, MEETING_OCCURRENCES_LIMIT_DAYS } from "../utils/rec
 import FreeRoomsWidget from "./FreeRoomsWidget";
 import OutlookCalendar, { OutlookView } from "./OutlookCalendar";
 import RoomBookingModal from "./RoomBookingModal";
-const UserPanel = lazy(() => import("./UserPanel"));
 import type { MeetingPrefill } from "./UserPanel";
 import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { toDateKey, formatRuDate } from "../utils/dateKey";
 import { icsAPI, meetingsAPI } from "../api/client";
 import { syncServerTime, serverNowDate, serverTodayKey as serverTodayKeyTz, serverNowHm as serverNowHmTz, serverTodayKey as guessServerTodayKey } from "../api/serverTime";
+
+const UserPanel = lazy(() => import("./UserPanel"));
 
 /** Часы главной страницы: «сейчас» по СЕРВЕРНОМУ времени (с offset из
  *  /api/time / localStorage), а не по часам браузера. При сбитой дате/времени
