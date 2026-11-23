@@ -98,14 +98,27 @@ class VksAutopilot extends Command
         // VKSBOT_AUTO) — тоже отдаём боту.
         $noLinkQuery = Meeting::query()
             ->where('status', 'scheduled')
-            ->where(function ($q) use ($now, $horizon, $autoQueue) {
+            ->where(function ($q) {
                 $q->whereNull('link')->orWhere('link', '');
-                if (!$autoQueue) {
-                    // без автосоздания чиним только то, что вот-вот начнётся
-                    $q->whereDate('date', '=', $now->toDateString());
-                }
             });
+
+        if ($autoQueue) {
+            // Автосоздание распространяется только на будущие встречи.
+            // Без этого условия в очередь попадали старые записи со статусом
+            // scheduled и прошедшей датой, создавая лишние комнаты и нагрузку.
+            $noLinkQuery->where(function ($q) use ($now) {
+                $q->whereDate('date', '>', $now->toDateString())
+                    ->orWhere(function ($today) use ($now) {
+                        $today->whereDate('date', '=', $now->toDateString())
+                            ->whereTime('start_time', '>=', $now->format('H:i:s'));
+                    });
+            });
+        }
+
         if (!$autoQueue) {
+            $noLinkQuery->where(function ($q) use ($now) {
+                $q->whereNull('link')->orWhere('link', '');
+            });
             $noLinkQuery->where(function ($q) use ($horizon) {
                 $q->whereTime('start_time', '>=', $now->format('H:i:s'))
                   ->whereTime('start_time', '<=', $horizon->format('H:i:s'));
