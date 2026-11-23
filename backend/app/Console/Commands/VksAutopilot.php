@@ -116,13 +116,10 @@ class VksAutopilot extends Command
         }
 
         if (!$autoQueue) {
-            $noLinkQuery->where(function ($q) use ($now) {
-                $q->whereNull('link')->orWhere('link', '');
-            });
-            $noLinkQuery->where(function ($q) use ($horizon) {
-                $q->whereTime('start_time', '>=', $now->format('H:i:s'))
-                  ->whereTime('start_time', '<=', $horizon->format('H:i:s'));
-            });
+            $noLinkQuery
+                ->whereDate('date', '=', $now->toDateString())
+                ->whereTime('start_time', '>=', $now->format('H:i:s'))
+                ->whereTime('start_time', '<=', $horizon->format('H:i:s'));
         }
 
         foreach ($noLinkQuery->cursor()->unique() as $meeting) {
