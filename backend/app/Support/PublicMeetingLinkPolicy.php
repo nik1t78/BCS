@@ -7,11 +7,12 @@ use App\Models\Meeting;
 final class PublicMeetingLinkPolicy
 {
     /**
-     * Постоянная ссылка /api/m/{id} доступна только для непублично закрытых встреч.
-     * Для приватных встреч требуется авторизованный API-сценарий.
+     * Открытая ссылка разрешена для обычных встреч.
+     * Приватная встреча требует криптографически подписанный URL из QR,
+     * сформированного через защищённый API для пользователя с доступом.
      */
-    public static function canRedirect(Meeting $meeting): bool
+    public static function canRedirect(Meeting $meeting, bool $hasValidSignature = false): bool
     {
-        return !$meeting->is_private;
+        return !$meeting->is_private || $hasValidSignature;
     }
 }
