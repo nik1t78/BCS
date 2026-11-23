@@ -620,17 +620,17 @@ class MeetingController extends Controller
         $effectiveDate = $validated['date'] ?? $meeting->date?->toDateString();
         $effectiveStart = substr((string) ($validated['start_time'] ?? $meeting->start_time), 0, 5);
         $effectiveEnd = substr((string) ($validated['end_time'] ?? $meeting->end_time), 0, 5);
-        if ($effectiveEnd <= $effectiveStart) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
-                'end_time' => ['Время окончания должно быть позже времени начала.'],
-            ]);
-        }
-
         $scheduleChanged = ($effectiveDate !== $meeting->date?->toDateString())
             || ($effectiveStart !== substr((string) $meeting->start_time, 0, 5))
             || ($effectiveEnd !== substr((string) $meeting->end_time, 0, 5));
 
         if ($scheduleChanged) {
+            if ($effectiveEnd <= $effectiveStart) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                        'end_time' => ['Время окончания должно быть позже времени начала.'],
+                ]);
+            }
+
             $people = array_unique(array_merge(
                 [(int) $meeting->organizer_id],
                 array_map('intval', $meeting->participants ?? []),
