@@ -108,7 +108,7 @@ class MeetingIcsController extends Controller
                 'SUMMARY:' . $this->esc($m->title),
                 'DESCRIPTION:' . $this->esc(trim(($m->description ?? '') . ' | Комната: ' . ($m->room ?: 'Онлайн'))),
                 'LOCATION:' . $this->esc($m->room ?: 'Онлайн'),
-                ($m->rrule ? 'RRULE:' . $m->rrule : null),
+                ($rrule = $this->buildRRule($m)) ? 'RRULE:' . $rrule : null,
                 'STATUS:' . ($m->status === 'cancelled' ? 'CANCELLED' : 'CONFIRMED'),
                 'END:VEVENT',
             ]);
@@ -125,6 +125,43 @@ class MeetingIcsController extends Controller
             'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
             'Pragma' => 'no-cache',
         ]);
+    }
+
+
+    /**
+     * Переводит правила повторения приложения в подмножество RFC 5545.
+     * Для стандартных daily/weekly/monthly встреч RRULE строится автоматически:
+     * иначе внешние календари показывали бы только первое событие серии.
+     */
+    private function buildRRule(Meeting $meeting): ?string
+    {
+        $rule = trim((string) $meeting->rrule);
+        if ($rule !== '') {
+            $rule = preg_replace('/^RRULE:/i', '', $rule);
+        } else {
+            $frequency = match ($meeting->recurring) {
+                'daily' => 'DAILY',
+                'weekly' => 'WEEKLY',
+                'monthly' => 'MONTHLY',
+                default => null,
+            };
+
+            if (!$frequency) {
+                return null;
+            }
+
+            $rule = 'FREQ=' . $frequency;
+        }
+
+        if ($meeting->repeat_until && !preg_match('/(?:^|;)UNTIL=/i', $rule)) {
+            $until = Carbon::parse(
+                $meeting->repeat_until->format('Y-m-d') . ' 23:59:59',
+                config('app.timezone', 'Europe/Moscow')
+            )->utc()->format('Ymd\\THis\\Z');
+            $rule .= ';UNTIL=' . $until;
+        }
+
+        return $rule;
     }
 
     /**
