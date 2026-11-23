@@ -100,7 +100,11 @@ class AttachmentController extends Controller
 
         // Файлы вложений не отдаются напрямую из публичного /storage.
         // Допускаем только собственный каталог вложений.
-        if (!Str::startsWith((string) $attachment->file_path, 'attachments/')) {
+        $expectedPrefix = 'attachments/' . $meeting->id . '/';
+        if (
+            !Str::startsWith((string) $attachment->file_path, $expectedPrefix)
+            || Str::contains((string) $attachment->file_path, ['..', '\\\\'])
+        ) {
             return response()->json(['message' => 'Файл не найден'], 404);
         }
 
