@@ -193,19 +193,26 @@ class MeetingMinuteController extends Controller
             'status' => 'sometimes|in:pending,in_progress,done',
         ]);
 
-        $payload = collect($validated)->except(['assignee_id', 'assignee_ids'])->filter(fn($v) => !is_null($v) || array_key_exists($v, $validated))->all();
+        // Не отбрасываем null: для nullable-полей (например deadline)
+        // явный null означает очистить значение, а не оставить старое.
+        $payload = collect($validated)->except(['assignee_id', 'assignee_ids'])->all();
 
         if (array_key_exists('assignee_ids', $validated) || array_key_exists('assignee_id', $validated)) {
             $ids = collect($validated['assignee_ids'] ?? [])
                 ->merge(array_filter([$validated['assignee_id'] ?? null]))
+                ->map(fn ($id) => (int) $id)
                 ->unique()->values()->all();
+
+            // Сохраняем старый список ДО sync: после sync pivot уже содержит
+            // новые ID, и сравнение не находит новых ответственных.
+            $oldIds = $task->assignees()->pluck('users.id')->map(fn ($id) => (int) $id)->all();
+
             $payload['assignee_id'] = $ids[0] ?? null;
             $payload['assignee_ids'] = $ids ?: null;
             $task->assignees()->sync($ids);
 
-            // Уведомления новым ответственным
-            $oldIds = array_column($task->assignees()->getRelated()->whereIn('id', $task->assignees()->pluck('user_id')->all())->get()->keyBy('id')->all(), 'id');
-            $newOnes = array_diff($ids, $oldIds ?: []);
+            // Уведомления только тем, кто действительно добавлен сейчас.
+            $newOnes = array_diff($ids, $oldIds);
             foreach ($newOnes as $uid) {
                 if ($uid === $request->user()->id) continue;
                 Notification::create([
