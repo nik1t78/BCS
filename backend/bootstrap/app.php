@@ -162,12 +162,19 @@ return Application::configure(basePath: dirname(__DIR__))
                 return response()->json(['message' => 'Unauthenticated.'], 401);
             }
 
-            \Illuminate\Support\Facades\Log::error(
-                '[API-ERROR] ' . $request->method() . ' ' . $request->fullUrl() .
-                ' => ' . get_class($e) . ': ' . $e->getMessage() .
-                ' @ ' . $e->getFile() . ':' . $e->getLine()
+            // Подробности остаются только в серверном журнале. Не включаем
+            // query string в URL: там могут находиться одноразовые билеты.
+            $errorId = (string) \\Illuminate\\Support\\Str::uuid();
+            \\Illuminate\\Support\\Facades\\Log::error(
+                '[API-ERROR] ' . $request->method() . ' ' . $request->path(),
+                [
+                    'error_id' => $errorId,
+                    'exception' => get_class($e),
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                ]
             );
-
             // Алерт админу в MAX при 5xx на API (только когда настроен чат —
             // см. ADMIN_ALERT_CHAT_ID). Дедуп по signature: одна и та же ошибка
             // не будет спамить чаще, чем раз в 10 минут. Статус берём из
@@ -204,8 +211,10 @@ return Application::configure(basePath: dirname(__DIR__))
             }
 
             return response()->json([
-                'message' => $e->getMessage() ?: 'Server Error',
-                'detail' => get_class($e) . ': ' . $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine(),
+                'message' => $status >= 500
+                    ? 'Внутренняя ошибка сервера.'
+                    : 'Не удалось выполнить запрос.',
+                'error_id' => $errorId,
             ], $status);
         });
     })->create();
