@@ -20,7 +20,7 @@
 | Слой           | Технологии                                                                         |
 | -------------- | ---------------------------------------------------------------------------------- |
 | Frontend       | React 18 + TypeScript, Vite 6, Tailwind CSS 4 (PWA; ExcelJS — ленивая загрузка)    |
-| Backend        | PHP 8.2 / Laravel, Sanctum (Bearer-токены + refresh), MySQL 8, Redis (queue/cache) |
+| Backend        | PHP 8.4 / Laravel, Sanctum (Bearer-токены + refresh), MySQL 8, Redis (queue/cache) |
 | VKS-бот        | Python 3.12 + Selenium (headless Chromium) — автосоздание ссылок на salutejazz.ru   |
 | Инфраструктура | Docker Compose: nginx, php-fpm, mysql, redis, queue-worker, scheduler, vks-bot      |
 | Языки проекта  | **TypeScript** (фронт), **PHP** (бэк), **Python** (vks-bot), YAML/shell (конфиги). Других языков нет. |
