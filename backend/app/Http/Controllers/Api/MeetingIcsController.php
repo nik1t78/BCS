@@ -59,15 +59,9 @@ class MeetingIcsController extends Controller
 
     private function calendarResponse(User $user, ?Request $request = null, bool $download = true)
     {
-        // В схеме meetings используется is_private (а не is_public).
-        // Приватные встречи видны только организатору и участникам.
-        $query = Meeting::query()
-            ->where(function ($q) use ($user) {
-                $q->where('organizer_id', $user->id)
-                    ->orWhereJsonContains('participants', (string) $user->id)
-                    ->orWhereJsonContains('participants', $user->id)
-                    ->orWhere('is_private', false);
-            });
+        // Используем общий scope приложения, чтобы правила доступа к приватным
+        // встречам совпадали с основным API (включая полный доступ администратора).
+        $query = Meeting::query()->accessibleBy($user);
 
         if ($request && $request->filled('from')) {
             $query->where('date', '>=', $request->input('from'));
