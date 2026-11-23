@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Кеш-слой: зависимости ставятся заново только при изменении package.json/lock
 COPY package*.json ./
-RUN npm ci --maxsockets=5 || npm install --legacy-peer-deps --maxsockets=1
+RUN npm ci --maxsockets=5
 
 COPY src ./src
 COPY public ./public
