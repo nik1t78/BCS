@@ -16,11 +16,15 @@ class AuthController extends Controller
      */
     public function register(Request $request)
     {
+        if (!config('vks.public_registration', false)) {
+            return response()->json(['message' => 'Публичная регистрация отключена. Обратитесь к администратору.'], 403);
+        }
+
         $request->validate([
             'name' => ['required', 'string', 'max:255', 'regex:/^[А-Яа-яЁёA-Za-z]+(?:[ -][А-Яа-яЁёA-Za-z]+)+$/u'],
             'login' => 'required|string|max:255|unique:users',
-            // Пароль: минимум 6 символов, обязательно буква и цифра (совпадает с фронтендом).
-            'password' => ['required', 'string', 'min:6', 'regex:/[A-Za-zА-Яа-яЁё]/u', 'regex:/[0-9]/'],
+            // Пароль: минимум 12 символов, обязательно буква и цифра.
+            'password' => ['required', 'string', 'min:12', 'regex:/[A-Za-zА-Яа-яЁё]/u', 'regex:/[0-9]/'],
             'phone' => 'nullable|string|max:20',
             'department' => 'required|string|max:255',
         ], [
@@ -122,7 +126,7 @@ class AuthController extends Controller
         try {
             defer(function () {
                 try {
-                    $cutoff = now()->subDays(30);
+                    $cutoff = now()->subDays(max(30, (int) config('vks.refresh_token_ttl_days', 30)));
                     \DB::table('personal_access_tokens')
                         ->where(function ($q) use ($cutoff) {
                             $q->whereNotNull('expires_at')->where('expires_at', '<', $cutoff)
@@ -185,21 +189,36 @@ class AuthController extends Controller
         $request->validate(['refresh_token' => 'required|string']);
 
         $hashed = hash('sha256', $request->refresh_token);
-        $record = \DB::table('personal_access_tokens')
-            ->where('name', 'like', 'refresh_token:%')
-            ->where('token', $hashed)
-            ->first();
+        $ttlDays = (int) config('vks.refresh_token_ttl_days', 30);
 
-        if (!$record) {
-            return response()->json(['message' => 'Refresh-токен недействителен. Требуется повторный вход.'], 401);
-        }
+        // Блокировка строки делает refresh действительно одноразовым даже при
+        // двух параллельных запросах с одним и тем же токеном.
+        $user = \DB::transaction(function () use ($hashed, $ttlDays) {
+            $record = \DB::table('personal_access_tokens')
+                ->where('name', 'like', 'refresh_token:%')
+                ->where('token', $hashed)
+                ->lockForUpdate()
+                ->first();
 
-        // Одноразовость: старый refresh аннулируется
-        \DB::table('personal_access_tokens')->where('id', $record->id)->delete();
+            if (!$record || \App\Support\RefreshTokenPolicy::isExpired(
+                $record->expires_at ?? null,
+                $record->created_at ?? null,
+                $ttlDays
+            )) {
+                if ($record) {
+                    \DB::table('personal_access_tokens')->where('id', $record->id)->delete();
+                }
+                return null;
+            }
 
-        $user = User::find($record->tokenable_id);
-        if (!$user || !$user->is_active) {
-            return response()->json(['message' => 'Пользователь недоступен.'], 401);
+            $account = User::find($record->tokenable_id);
+            \DB::table('personal_access_tokens')->where('id', $record->id)->delete();
+
+            return $account && $account->is_active ? $account : null;
+        });
+
+        if (!$user) {
+            return response()->json(['message' => 'Refresh-токен недействителен или истёк. Требуется повторный вход.'], 401);
         }
 
         $token = $user->createToken('auth_token')->plainTextToken;
@@ -252,6 +271,7 @@ class AuthController extends Controller
             'abilities' => json_encode(['*']),
             'created_at' => now(),
             'updated_at' => now(),
+            'expires_at' => now()->addDays((int) config('vks.refresh_token_ttl_days', 30)),
         ]);
 
         return $plain;
