@@ -132,6 +132,17 @@ class VksAutopilot extends Command
             ->orderBy('start_time')
             ->cursor()
             ->unique() as $meeting) {
+            // Дополнительная проверка на уровне приложения защищает от
+            // повторного включения прошедших записей в автосоздание ссылок.
+            if ($autoQueue && !\App\Support\VksAutopilotPolicy::isFutureOrCurrent(
+                $meeting->date->toDateString(),
+                (string) $meeting->start_time,
+                $now->toDateString(),
+                $now->format('H:i')
+            )) {
+                continue;
+            }
+
             // Не ставить в очередь повторно задачу, которая ещё не выполнена.
             $lockKey = 'vks_queued_' . $meeting->id;
             if (cache()->has($lockKey)) {
