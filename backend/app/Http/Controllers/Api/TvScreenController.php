@@ -37,7 +37,7 @@ class TvScreenController extends Controller
         // (та же логика занятости, что в RoomController::allAvailability).
         $today = $now->toDateString();
         $weekEnd = $now->copy()->addDays(7)->toDateString();
-        $recurrenceStart = $now->copy()->subDays(\\App\\Services\\RecurrenceService::HORIZON_DAYS)->toDateString();
+        $recurrenceStart = $now->copy()->subDays(\App\Services\RecurrenceService::HORIZON_DAYS)->toDateString();
 
         $meetings = Meeting::query()
             ->where('room', $room->name)
@@ -73,11 +73,11 @@ class TvScreenController extends Controller
                         // сегодня событие не вытесняет следующее.
                         for ($offset = 0; $offset <= 7; $offset++) {
                             $candidate = $now->copy()->startOfDay()->addDays($offset);
-                            if (!\\App\\Services\\RecurrenceService::occursOn($m, $candidate)) {
+                            if (!\App\Services\RecurrenceService::occursOn($m, $candidate)) {
                                 continue;
                             }
-                            $candidateStart = \\Carbon\\CarbonImmutable::parse($candidate->toDateString() . ' ' . $startHm);
-                            $candidateEnd = \\Carbon\\CarbonImmutable::parse($candidate->toDateString() . ' ' . $endRaw);
+                            $candidateStart = \Carbon\CarbonImmutable::parse($candidate->toDateString() . ' ' . $startHm);
+                            $candidateEnd = \Carbon\CarbonImmutable::parse($candidate->toDateString() . ' ' . $endRaw);
                             if ($candidateEnd->lessThan($candidateStart)) {
                                 $candidateEnd = $candidateEnd->addDay();
                             }
@@ -89,8 +89,8 @@ class TvScreenController extends Controller
                         if ($occurrenceDate === null) return null;
                     }
 
-                    $start = \\Carbon\\CarbonImmutable::parse($occurrenceDate . ' ' . $startHm);
-                    $end = \\Carbon\\CarbonImmutable::parse($occurrenceDate . ' ' . $endRaw);
+                    $start = \Carbon\CarbonImmutable::parse($occurrenceDate . ' ' . $startHm);
+                    $end = \Carbon\CarbonImmutable::parse($occurrenceDate . ' ' . $endRaw);
                     if ($end->lessThan($start)) {
                         $end = $end->addDay(); // встреча через полночь
                     }
@@ -133,7 +133,7 @@ class TvScreenController extends Controller
         $now = now();
         $from = $now->toDateString();
         $to = $now->copy()->addDays(30)->toDateString();
-        $recurrenceStart = $now->copy()->subDays(\\App\\Services\\RecurrenceService::HORIZON_DAYS)->toDateString();
+        $recurrenceStart = $now->copy()->subDays(\App\Services\RecurrenceService::HORIZON_DAYS)->toDateString();
         $meetings = Meeting::query()
             ->where('room', $room->name)
             ->whereIn('status', ['scheduled', 'in-progress'])
