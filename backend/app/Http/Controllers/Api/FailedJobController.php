@@ -47,7 +47,7 @@ class FailedJobController extends Controller
                 'connection' => $job->connection,
                 'queue' => $job->queue,
                 'failed_at' => $job->failed_at,
-                'exception_summary' => $this->exceptionSummary((string) $job->exception),
+                'exception_summary' => \App\Support\FailedJobPolicy::summarizeException((string) $job->exception),
             ];
         });
 
@@ -119,12 +119,4 @@ class FailedJobController extends Controller
         return response()->json(['message' => 'Запись об ошибке удалена.']);
     }
 
-    private function exceptionSummary(string $exception): string
-    {
-        $firstLine = trim((string) (preg_split('/\r\n|\r|\n/', $exception, 2)[0] ?? ''));
-        $firstLine = preg_replace('/(Bearer\s+)[A-Za-z0-9._~+\/-]+/i', '$1[скрыто]', $firstLine) ?? $firstLine;
-        $firstLine = preg_replace('/((?:password|token|secret|authorization)\s*[=:]\s*)[^\s,;]+/i', '$1[скрыто]', $firstLine) ?? $firstLine;
-
-        return mb_substr($firstLine, 0, 400);
-    }
 }
