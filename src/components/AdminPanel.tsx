@@ -58,6 +58,7 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   meeting_created: "Создание конференции",
   meeting_updated: "Изменение конференции",
   meeting_deleted: "Удаление конференции",
+  meeting_rsvp_export: "Экспорт списка участников",
   user_created: "Создание пользователя",
   user_deleted: "Удаление пользователя",
   user_role_changed: "Смена роли пользователя",
