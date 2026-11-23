@@ -19,6 +19,9 @@ Route::middleware('throttle:api')->group(function () {
     Route::post('/auth/refresh', [AuthController::class, 'refresh'])->middleware('throttle:login');
 });
 
+// Read-only external calendar subscription. The 64-character secret is validated in the controller.
+Route::middleware('throttle:30,1')->get('/calendar-feed/{token}.ics', [\App\Http\Controllers\Api\MeetingIcsController::class, 'feed'])->where('token', '[A-Za-z0-9]{64}');
+
 // Health check
 Route::get('/health', function () {
     return response()->json([
@@ -248,6 +251,8 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
     // Экспорт расписания в iCalendar (.ics): скачать или подписаться ссылкой
     Route::get('/schedule.ics', [\App\Http\Controllers\Api\MeetingIcsController::class, 'index']);
+    Route::post('/calendar-feed/rotate', [\App\Http\Controllers\Api\MeetingIcsController::class, 'rotateFeed']);
+    Route::delete('/calendar-feed', [\App\Http\Controllers\Api\MeetingIcsController::class, 'revokeFeed']);
 
     // Web Push: подписки браузера на push-уведомления
     Route::post('/push/subscribe', [\App\Http\Controllers\Api\PushSubscriptionController::class, 'store']);
