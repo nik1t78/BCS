@@ -38,7 +38,7 @@ class QueueHeartbeat extends Command
 
             $commandLine = @file_get_contents($path);
             if ($commandLine !== false
-                && \\App\\Support\\QueueHeartbeatPolicy::isQueueWorkerCommandLine($commandLine)) {
+                && \App\Support\QueueHeartbeatPolicy::isQueueWorkerCommandLine($commandLine)) {
                 return true;
             }
         }
@@ -73,16 +73,29 @@ class QueueHeartbeat extends Command
         // Бесконечный цикл: пишет timestamp, спит interval секунд.
         // Умирает вместе с контейнером — т.е. отсутствие свежей записи == нет воркера.
         while (true) {
-            $ok = @file_put_contents($file, (string) time()) !== false;
-            try {
-                // Fallback в кэш: переживает проблемы bind-mount с файлом.
-                cache()->put(MonitorSystem::QUEUE_HEARTBEAT_KEY, time(), now()->addMinutes(5));
-            } catch (\Throwable $e) {
-                // кэш недоступен — остаёмся на файле
+            $workerAlive = $this->hasQueueWorkerProcess();
+            $ok = false;
+
+            if ($workerAlive) {
+                $ok = @file_put_contents($file, (string) time()) !== false;
+                try {
+                    // Fallback в кэш: переживает проблемы bind-mount с файлом.
+                    cache()->put(MonitorSystem::QUEUE_HEARTBEAT_KEY, time(), now()->addMinutes(5));
+                } catch (\Throwable $e) {
+                    // кэш недоступен — остаёмся на файле
+                }
+            } else {
+                // Не позволяем sidecar-процессу маскировать остановившиеся worker-процессы.
+                try {
+                    cache()->forget(MonitorSystem::QUEUE_HEARTBEAT_KEY);
+                } catch (\Throwable $e) {
+                    // старый timestamp станет неактуальным по max-age
+                }
             }
+
             if ($i++ % $logEvery === 0) {
                 try {
-                    \Illuminate\Support\Facades\Log::info('queue:heartbeat live', [
+                    \Illuminate\Support\Facades\Log::info('queue:heartbeat check', [
                         'file' => $file,
                         'writable' => $ok,
                         'worker_detected' => $workerAlive,
@@ -92,6 +105,7 @@ class QueueHeartbeat extends Command
                     // логирование не должно ронять heartbeat
                 }
             }
+
             if (!is_dir($dir)) {
                 @mkdir($dir, 0775, true);
             }
