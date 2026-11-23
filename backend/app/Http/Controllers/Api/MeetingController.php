@@ -802,7 +802,7 @@ class MeetingController extends Controller
         // При переносе без явно переданного end_time сохраняем старое окончание,
         // но не допускаем интервал нулевой/отрицательной длительности.
         if ($newEnd <= $newStart) {
-            throw \Illuminate\\Validation\\ValidationException::withMessages([
+            throw \Illuminate\Validation\ValidationException::withMessages([
                 'end_time' => ['Время окончания должно быть позже времени начала. Укажите новое окончание встречи.'],
             ]);
         }
