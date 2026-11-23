@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\User;
+use App\Models\Meeting;
 use App\Models\UserSetting;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -191,97 +192,158 @@ class UserController extends Controller
             return response()->json(['message' => 'Доступ запрещён'], 403);
         }
 
-        if ($id == $request->user()->id) {
+        if ((int) $id === (int) $request->user()->id) {
             return response()->json(['message' => 'Нельзя удалить свой аккаунт'], 422);
         }
 
-        $user = User::findOrFail($id);
+        $result = DB::transaction(function () use ($id, $request) {
+            $user = User::query()->whereKey($id)->lockForUpdate()->firstOrFail();
+            $activeAdmins = User::query()
+                ->where('role', 'admin')
+                ->where('is_active', true)
+                ->lockForUpdate()
+                ->get(['id']);
 
-        try {
-            DB::transaction(function () use ($user, $request) {
-                // Токены Sanctum (morph: tokenable_type/tokenable_id)
-                DB::table('personal_access_tokens')
-                    ->where('tokenable_type', get_class($user))
-                    ->where('tokenable_id', $user->id)
-                    ->delete();
+            $hasMeetingHistory = Meeting::withTrashed()
+                ->where(function ($query) use ($user) {
+                    $query->where('organizer_id', $user->id)
+                        ->orWhereJsonContains('participants', (int) $user->id);
+                })
+                ->exists();
 
-                // Записи аудита, где пользователь указан как "user_id"
-                // (в базе может быть FK без ON DELETE SET NULL — отвязываем явно)
-                if (Schema::hasColumn('audit_logs', 'user_id')) {
-                    DB::table('audit_logs')
-                        ->where('user_id', $user->id)
-                        ->update(['user_id' => null]);
-                }
+            if (!\App\Support\UserAdministrationPolicy::canDelete($hasMeetingHistory)) {
+                return ['error' => 'У пользователя есть встречи или история участия. Не удаляйте аккаунт: отключите его, чтобы сохранить историю.', 'status' => 409];
+            }
 
-                $user->delete();
-            });
-        } catch (QueryException $e) {
-            // Остались связи, которые нельзя снять автоматически (например,
-            // таблицы, добавленные сторонними миграциями) — возвращаем
-            // понятную ошибку вместо «Не удалось удалить пользователя».
-            \Log::error('User delete failed due to related records', [
-                'target_user_id' => $user->id,
-                'sql_state' => $e->getCode(),
-                'message' => $e->getMessage(),
-            ]);
+            if (!\App\Support\UserAdministrationPolicy::canRemoveActiveAdmin(
+                $user->role,
+                (bool) $user->is_active,
+                $activeAdmins->count()
+            )) {
+                return ['error' => 'Нельзя удалить последнего активного администратора системы.', 'status' => 409];
+            }
 
-            return response()->json([
-                'message' => 'Не удалось удалить пользователя: у него остались связанные записи, '
-                    . 'которые блокируют удаление. Сначала удалите его конференции или заблокируйте аккаунт.',
-            ], 409);
+            DB::table('personal_access_tokens')
+                ->where('tokenable_type', get_class($user))
+                ->where('tokenable_id', $user->id)
+                ->delete();
+
+            if (Schema::hasColumn('audit_logs', 'user_id')) {
+                DB::table('audit_logs')
+                    ->where('user_id', $user->id)
+                    ->update(['user_id' => null]);
+            }
+
+            $deleted = ['name' => $user->name, 'login' => $user->login];
+            $user->delete();
+
+            return ['error' => null, 'deleted' => $deleted];
+        });
+
+        if ($result['error'] !== null) {
+            return response()->json(['message' => $result['error']], $result['status']);
         }
 
-        AuditLog::log($request, 'user_deleted', null, ['name' => $user->name, 'login' => $user->login]);
+        AuditLog::log($request, 'user_deleted', null, $result['deleted']);
 
         return response()->json(['message' => 'Пользователь удалён']);
     }
-
-    /**
-     * Изменение роли (admin)
-     */
     public function changeRole(Request $request, $id)
     {
         if (!$request->user()->isAdmin()) {
             return response()->json(['message' => 'Доступ запрещён'], 403);
         }
 
-        $request->validate([
+        $validated = $request->validate([
             'role' => 'required|in:admin,moderator,user',
         ]);
 
-        $user = User::findOrFail($id);
-        $oldRole = $user->role;
-        $user->update(['role' => $request->role]);
+        $result = DB::transaction(function () use ($id, $validated) {
+            $user = User::query()->whereKey($id)->lockForUpdate()->firstOrFail();
+            $oldRole = $user->role;
+            $activeAdmins = User::query()
+                ->where('role', 'admin')
+                ->where('is_active', true)
+                ->lockForUpdate()
+                ->get(['id']);
 
-        AuditLog::log($request, 'user_role_changed', $user, ['role' => $oldRole], ['role' => $request->role]);
+            if ($oldRole !== $validated['role']
+                && !\App\Support\UserAdministrationPolicy::canRemoveActiveAdmin(
+                    $oldRole,
+                    (bool) $user->is_active,
+                    $activeAdmins->count()
+                )
+                && $validated['role'] !== 'admin') {
+                return ['blocked' => true, 'message' => 'Нельзя снять роль у последнего активного администратора. Сначала назначьте другого администратора.'];
+            }
 
-        return response()->json($user);
-    }
+            $user->update(['role' => $validated['role']]);
 
-    /**
-     * Блокировка/разблокировка (admin/moderator)
-     */
-    public function toggleActive(Request $request, $id)
-    {
-        if (!$request->user()->isAdminOrModerator()) {
-            return response()->json(['message' => 'Доступ запрещён'], 403);
+            return ['blocked' => false, 'user' => $user, 'old_role' => $oldRole];
+        });
+
+        if ($result['blocked']) {
+            return response()->json(['message' => $result['message']], 409);
         }
 
-        if ($id == $request->user()->id) {
+        if ($result['old_role'] !== $validated['role']) {
+            AuditLog::log($request, 'user_role_changed', $result['user'], ['role' => $result['old_role']], ['role' => $validated['role']]);
+        }
+
+        return response()->json($result['user']);
+    }
+    public function toggleActive(Request $request, $id)
+    {
+        $actor = $request->user();
+
+        if ((int) $id === (int) $actor->id) {
             return response()->json(['message' => 'Нельзя заблокировать свой аккаунт'], 422);
         }
 
-        $user = User::findOrFail($id);
-        $user->update(['is_active' => !$user->is_active]);
+        $result = DB::transaction(function () use ($actor, $id) {
+            $user = User::query()->whereKey($id)->lockForUpdate()->firstOrFail();
 
+            if (!\App\Support\UserAdministrationPolicy::canToggleActive(
+                (string) $actor->role,
+                (string) $user->role,
+                (int) $actor->id,
+                (int) $user->id
+            )) {
+                return ['forbidden' => true];
+            }
+
+            $activeAdmins = User::query()
+                ->where('role', 'admin')
+                ->where('is_active', true)
+                ->lockForUpdate()
+                ->get(['id']);
+
+            if ($user->is_active && !\App\Support\UserAdministrationPolicy::canRemoveActiveAdmin(
+                (string) $user->role,
+                true,
+                $activeAdmins->count()
+            )) {
+                return ['last_admin' => true];
+            }
+
+            $user->update(['is_active' => !$user->is_active]);
+
+            return ['user' => $user];
+        });
+
+        if (!empty($result['forbidden'])) {
+            return response()->json(['message' => 'Модератор может блокировать только обычных пользователей.'], 403);
+        }
+
+        if (!empty($result['last_admin'])) {
+            return response()->json(['message' => 'Нельзя отключить последнего активного администратора системы.'], 409);
+        }
+
+        $user = $result['user'];
         AuditLog::log($request, $user->is_active ? 'user_unblocked' : 'user_blocked', $user);
 
         return response()->json($user);
     }
-
-    /**
-     * Получить настройки
-     */
     public function getSettings(Request $request)
     {
         return response()->json($request->user()->getSettings());
