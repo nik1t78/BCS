@@ -64,6 +64,8 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   user_blocked: "Блокировка пользователя",
   user_unblocked: "Разблокировка пользователя",
   password_changed: "Смена пароля",
+  failed_job_retried: "Повтор задачи очереди",
+  failed_job_deleted: "Удаление ошибки очереди",
 };
 
 // Поля, которые не стоит показывать в колонке «Изменения»
