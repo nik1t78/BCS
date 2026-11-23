@@ -79,6 +79,9 @@ jobs:
       - name: Run calendar regression smoke tests
         run: php tests/calendar-smoke.php
 
+      - name: Run notification access regression smoke tests
+        run: php tests/notification-access-smoke.php
+
       - name: Run Laravel test suite
         shell: bash
         run: |
