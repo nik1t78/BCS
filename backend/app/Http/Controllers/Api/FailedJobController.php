@@ -73,7 +73,7 @@ class FailedJobController extends Controller
 
         try {
             $exitCode = Artisan::call('queue:retry', ['id' => $failedJob->uuid]);
-            if ($exitCode !== ConsoleCommand::SUCCESS) {
+            if ($exitCode !== 0) {
                 return response()->json([
                     'message' => 'Laravel не смог вернуть задачу в очередь. Проверьте подключение очереди и логи.',
                 ], 503);
