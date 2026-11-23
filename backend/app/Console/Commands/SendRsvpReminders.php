@@ -1,17 +1,17 @@
 <?php
 
-namespace App\\Console\\Commands;
+namespace App\Console\Commands;
 
-use App\\Models\\Meeting;
-use App\\Models\\MeetingRsvp;
-use App\\Models\\Notification;
-use App\\Models\\User;
-use App\\Services\\RecurrenceService;
-use App\\Support\\RsvpReminderPolicy;
-use Carbon\\Carbon;
-use Carbon\\CarbonImmutable;
-use Illuminate\\Console\\Command;
-use Illuminate\\Support\\Facades\\Cache;
+use App\Models\Meeting;
+use App\Models\MeetingRsvp;
+use App\Models\Notification;
+use App\Models\User;
+use App\Services\RecurrenceService;
+use App\Support\RsvpReminderPolicy;
+use Carbon\Carbon;
+use Carbon\CarbonImmutable;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 
 class SendRsvpReminders extends Command
 {
