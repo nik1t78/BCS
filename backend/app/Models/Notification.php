@@ -108,6 +108,7 @@ class Notification extends Model
     {
         return match($this->type) {
             'reminder' => 'fa-bell',
+            'rsvp_reminder' => 'fa-clipboard-check',
             'starting' => 'fa-video',
             'info' => 'fa-info-circle',
             'warning' => 'fa-exclamation-triangle',
@@ -123,6 +124,7 @@ class Notification extends Model
     {
         return match($this->type) {
             'reminder' => 'yellow',
+            'rsvp_reminder' => 'indigo',
             'starting' => 'blue',
             'info' => 'green',
             'warning' => 'red',

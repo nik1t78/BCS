@@ -63,20 +63,20 @@ Route::middleware('auth:sanctum')->get('/meta/stamps', function (\Illuminate\Htt
     ]]);
 });
 
-// Realtime-канал уведомлений (Server-Sent Events) — ОБЯЗАТЕЛЬНО вне группы
-// auth:sanctum/throttle:api. Причина: у EventSource нет способа отправить
-// заголовок Authorization, токен передаётся только в query (?token=...).
-// Внутри sanctum-группы такой запрос не аутентифицируется гардой и падал
-// с 401/500 (fatal уже после отправки SSE-заголовков). Маршрут объявляется
-// здесь, контроль сам резолвит пользователя по ?token= через Sanctum::findByToken.
-// throttle:120,60 — «120 запросов в течение 60 секунд» (второй параметр —
-// DECAY SECONDS). Раньше стояло throttle:2,60 («2 запроса за минуту») — это
-// ОШИБКА: SSE-стрим держит соединение открытым, но при каждом сетевом ретрае
-// (nginx proxy_read_timeout, обрыв Wi-Fi, sleep/wake ноутбука) браузер открывает
-// НОВЫЙ /notifications/stream, и после 3 reconnect'ов на минуту все остальные
-// запросы того же пользователя/IP получали 429 Too Many Requests в цикле.
-// 120/мин = штатные reconnect + запас; защита от флуда остаётся.
-Route::middleware('throttle:120,60')->get('/notifications/stream', [\App\Http\Controllers\Api\NotificationStreamController::class, 'stream']);
+// EventSource не умеет отправлять Authorization header. Постоянный Sanctum
+// token не передаём в URL: авторизованный POST выдаёт одноразовый билет на 60 с.
+// В URL SSE попадает только этот короткоживущий билет; GET consume-ит его.
+Route::middleware(['auth:sanctum', 'throttle:api'])->post(
+    '/notifications/stream-ticket',
+    [\App\Http\Controllers\Api\NotificationStreamController::class, 'issueTicket']
+);
+
+// Долгоживущий SSE-поток находится вне auth:sanctum, так как EventSource
+// не поддерживает пользовательские заголовки. Доступ — только по билету.
+Route::middleware('throttle:120,60')->get(
+    '/notifications/stream',
+    [\App\Http\Controllers\Api\NotificationStreamController::class, 'stream']
+);
 
 // Пункт 5 плана: «экран ожидания» в зале. Телевизор открывает /tv/{room}?token=...
 // без логина; токен зала (rooms.tv_token) даёт доступ только на чтение нейтральных
@@ -163,6 +163,10 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/meetings/rooms-availability', [\App\Http\Controllers\Api\RoomController::class, 'allAvailability'])
         ->whereNumber('meeting')->name('meetings.rooms-availability');
 
+    // Поиск общих свободных интервалов для участников и активных переговорных.
+    Route::post('/meetings/suggest-slots', [\App\Http\Controllers\Api\MeetingSlotSuggestionController::class, 'index'])
+        ->middleware('throttle:10,1');
+
     // Meetings
     Route::post('/meetings/{meeting}/retry-vks-link', [MeetingController::class, 'retryVksLink']);
     Route::apiResource('meetings', MeetingController::class);
@@ -240,6 +244,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
     // RSVP: подтверждение присутствия участником + сводка для организатора
     Route::get('/meetings/{meeting}/rsvp', [\App\Http\Controllers\Api\MeetingRsvpController::class, 'index']);
+    Route::get('/meetings/{meeting}/rsvp/export', [\App\Http\Controllers\Api\MeetingRsvpController::class, 'export']);
     Route::post('/meetings/{meeting}/rsvp', [\App\Http\Controllers\Api\MeetingRsvpController::class, 'store']);
 
     // Переговорные комнаты: справочник и доступность (бронирование через поле room встречи)
@@ -314,6 +319,10 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         // Статус системы: uptime/MySQL/Redis/очереди/бот/экраны ТВ + журнал посещаемости ТВ
         Route::get('/admin/system-status', [\App\Http\Controllers\Api\SystemStatusController::class, 'show']);
         Route::get('/admin/tv-views', [\App\Http\Controllers\Api\SystemStatusController::class, 'tvViews']);
+        // Управление failed_jobs: только администратор, payload задач не раскрывается.
+        Route::get('/admin/failed-jobs', [\App\Http\Controllers\Api\FailedJobController::class, 'index']);
+        Route::post('/admin/failed-jobs/{id}/retry', [\App\Http\Controllers\Api\FailedJobController::class, 'retry'])->whereNumber('id');
+        Route::delete('/admin/failed-jobs/{id}', [\App\Http\Controllers\Api\FailedJobController::class, 'destroy'])->whereNumber('id');
 
         // Аудит-лог действий пользователей (только администратор)
         Route::get('/admin/audit-logs', [\App\Http\Controllers\Api\AuditLogController::class, 'index']);

@@ -82,6 +82,21 @@ jobs:
       - name: Run notification access regression smoke tests
         run: php tests/notification-access-smoke.php
 
+      - name: Run notification stream ticket regression smoke tests
+        run: php tests/notification-stream-ticket-smoke.php
+
+      - name: Run notification stream recovery regression smoke tests
+        run: php tests/notification-stream-recovery-smoke.php
+
+      - name: Run CSV formula injection regression smoke tests
+        run: php tests/csv-cell-smoke.php
+
+      - name: Run RSVP reminder policy regression smoke tests
+        run: php tests/rsvp-reminder-policy-smoke.php
+
+      - name: Run meeting slot suggestion policy smoke tests
+        run: php tests/meeting-slot-suggestion-policy-smoke.php
+
       - name: Run meeting edit policy regression smoke tests
         run: php tests/meeting-edit-policy-smoke.php
 
@@ -96,6 +111,12 @@ jobs:
 
       - name: Run queue heartbeat policy regression smoke tests
         run: php tests/queue-heartbeat-policy-smoke.php
+
+      - name: Run failed job summary redaction smoke tests
+        run: php tests/failed-job-policy-smoke.php
+
+      - name: Run VKS autopilot backlog regression smoke tests
+        run: php tests/vks-autopilot-policy-smoke.php
 
       - name: Run Laravel test suite
         shell: bash

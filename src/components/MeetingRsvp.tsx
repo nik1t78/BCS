@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Meeting, User, RsvpData, RsvpResponse } from "../types";
 import { getMeetingRsvp, respondRsvp } from "../store-api";
+import { rsvpAPI } from "../api/client";
 
 const OPTIONS: { value: RsvpResponse; label: string; icon: string; activeCls: string }[] = [
   { value: "yes", label: "Приду", icon: "fa-check", activeCls: "bg-green-600 text-white border-green-600" },
@@ -22,8 +23,11 @@ export default function MeetingRsvp({ meeting, user }: Props) {
   const [data, setData] = useState<RsvpData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
 
   const isOrganizer = Number(meeting.organizerId) === Number(user.id);
+  const canExport = isOrganizer || user.role === "admin";
   const isParticipant = (meeting.participants ?? []).some((p) => Number(p) === Number(user.id));
   const canRespond = !isOrganizer && isParticipant && meeting.status !== "cancelled" && meeting.status !== "completed";
 
@@ -47,6 +51,28 @@ export default function MeetingRsvp({ meeting, user }: Props) {
     const ok = await respondRsvp(meeting.id, response);
     setSaving(false);
     if (ok) setData(await getMeetingRsvp(meeting.id));
+  };
+
+
+  const handleExport = async () => {
+    setExporting(true);
+    setExportError("");
+    try {
+      const blob = await rsvpAPI.exportCsv(meeting.id);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `meeting-${meeting.id}-rsvp.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      console.error("RSVP export failed:", error);
+      setExportError("Не удалось выгрузить список. Проверьте права доступа и повторите попытку.");
+    } finally {
+      setExporting(false);
+    }
   };
 
   if (loading) {
@@ -105,7 +131,20 @@ export default function MeetingRsvp({ meeting, user }: Props) {
       )}
 
       {isOrganizer && (
-        <ul className="space-y-1 max-h-40 overflow-y-auto">
+        <div className="space-y-2">
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleExport}
+              disabled={exporting}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+            >
+              <i className={`fas ${exporting ? "fa-spinner fa-spin" : "fa-file-csv"}`}></i>
+              {exporting ? "Формирование CSV…" : "Скачать список участников (CSV)"}
+            </button>
+          </div>
+          {exportError && <p role="alert" className="text-xs text-red-600">{exportError}</p>}
+          <ul className="space-y-1 max-h-40 overflow-y-auto">
           {(data?.rsvps ?? []).length === 0 && (
             <li className="text-xs text-gray-400">Пока никто не ответил на приглашение.</li>
           )}
@@ -127,7 +166,8 @@ export default function MeetingRsvp({ meeting, user }: Props) {
           {summary && summary.pending > 0 && (
             <li className="text-xs text-gray-400 italic">+ {summary.pending} без ответа</li>
           )}
-        </ul>
+          </ul>
+        </div>
       )}
     </div>
   );

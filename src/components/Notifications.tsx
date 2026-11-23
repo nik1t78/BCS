@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { User, Notification } from "../types";
 import { getNotifications, markNotificationRead, markAllNotificationsRead, clearAllNotifications } from "../store-api";
-import { notificationsAPI, API_BASE_URL, getToken } from "../api/client";
+import { notificationsAPI, getToken } from "../api/client";
 
 // --- Toast-уведомления: всплывают на любом экране (правый нижний угол) ---
 interface ToastItem {
@@ -20,64 +20,86 @@ interface RealtimeEvent {
 // или null, если EventSource недоступен / нет токена — тогда работают только
 // поллинг-циклы (обратная совместимость гарантирована).
 export function subscribeToNotifications(onNotification: (n: RealtimeEvent) => void): (() => void) | null {
-  const es = notificationsAPI.stream();
-  if (!es) return null;
-  const handler = (e: MessageEvent) => {
-    try {
-      const data = JSON.parse(e.data);
-      if (data && data.id) onNotification(data);
-    } catch {
-      /* игнорируем битые кадры */
-    }
-  };
-  es.addEventListener("notification", handler);
-  // Сервер может отдать штатное событие "unavailable" (нет Redis / SSE
-  // недоступен) — закрываем соединение, чтобы EventSource не переподключался
-  // бесконечно и не спамил в консоль. Поллинг unread-count остаётся запасным.
-  const unavailable = () => {
-    try {
-      es.close();
-    } catch {
-      /* noop */
-    }
-  };
-  es.addEventListener("unavailable", unavailable);
-  // 429 Too Many Requests / fatal-ошибка сервера: при CONNECTING/OPEN ошибке
-  // (битый кадр, сетевой обрыв) браузер сам переподключится через ~3 с. Но
-  // если сервер ответил HTTP-ошибкой, готовим backoff: проверяем доступность
-  // эндпоинта обычным fetch — на 401/403/429 закрываем стрим, чтобы
-  // EventSource не уходил в бесконечный цикл reconnect'ов, каждый из которых
-  // снова тратит слот троттлинг-лимитера.
+  if (typeof EventSource === "undefined" || !getToken()) return null;
+
+  let cancelled = false;
+  let unavailable = false;
+  let source: EventSource | null = null;
+  let retryTimer: number | null = null;
   let retryDelay = 5000;
-  es.onerror = () => {
-    if (es.readyState === EventSource.CONNECTING) {
-      // штатный авто-reconnect EventSource; при серии ошибок удваиваем паузу
-      retryDelay = Math.min(retryDelay * 2, 60000);
-    }
+
+  const scheduleReconnect = () => {
+    if (cancelled || unavailable || retryTimer !== null) return;
+    retryTimer = window.setTimeout(() => {
+      retryTimer = null;
+      void connect();
+    }, retryDelay);
+    retryDelay = Math.min(retryDelay * 2, 60000);
   };
-  const probe = async () => {
+
+  const connect = async () => {
     try {
-      const token = getToken();
-      if (!token) return;
-      const r = await fetch(`${API_BASE_URL}/notifications/stream?token=${encodeURIComponent(token)}`, {
-        method: "GET",
-        headers: { Accept: "text/event-stream" },
-        signal: AbortSignal.timeout(8000),
+      const next = await notificationsAPI.stream();
+      if (cancelled || unavailable) {
+        next?.close();
+        return;
+      }
+      if (!next) {
+        scheduleReconnect();
+        return;
+      }
+
+      source = next;
+      const handler = (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data && data.id) onNotification(data);
+        } catch {
+          /* игнорируем некорректный кадр */
+        }
+      };
+
+      next.addEventListener("notification", handler);
+      next.addEventListener("unavailable", (event) => {
+        let retryable = true;
+        try {
+          const payload = JSON.parse((event as MessageEvent).data);
+          // Старые версии сервера не присылают флаг: считаем их ответ временным.
+          retryable = payload?.retryable !== false;
+        } catch {
+          /* неизвестный ответ не должен навсегда отключать realtime */
+        }
+
+        if (!retryable) unavailable = true;
+        next.close();
+        if (source === next) source = null;
+        if (retryable) scheduleReconnect();
       });
-      // 429/401/403 — закрываем SSE полностью (поллинг останется запасным)
-      if (r.status === 429 || r.status === 401 || r.status === 403) unavailable();
+
+      // Билет одноразовый: отключаем встроенный reconnect EventSource
+      // с уже использованным URL и запрашиваем новый билет.
+      next.onerror = () => {
+        next.close();
+        if (source === next) source = null;
+        scheduleReconnect();
+      };
     } catch {
-      /* сеть недоступна — ничего не делаем, EventSource сам ретраит */
+      // При временной сетевой ошибке повторяем запрос билета с backoff.
+      if (!getToken()) {
+        unavailable = true;
+        return;
+      }
+      scheduleReconnect();
     }
   };
-  // одна отсроченная проверка после первой же ошибки reconnect
-  es.addEventListener("error", () => {
-    window.setTimeout(probe, retryDelay);
-  }, { once: true });
+
+  void connect();
+
   return () => {
-    es.removeEventListener("notification", handler);
-    es.removeEventListener("unavailable", unavailable);
-    es.close();
+    cancelled = true;
+    if (retryTimer !== null) window.clearTimeout(retryTimer);
+    if (source) source.close();
+    source = null;
   };
 }
 
@@ -190,13 +212,15 @@ export function NotificationToasts({ toasts, onDismiss }: { toasts: ToastItem[];
   const iconFor = (type: string) =>
     type === "starting"
       ? "🔴"
-      : type === "reminder"
-        ? "⏰"
-        : type === "warning"
-          ? "⚠️"
-          : type === "user-added"
-            ? "👤"
-            : "📅";
+      : type === "rsvp_reminder"
+        ? "📝"
+        : type === "reminder"
+          ? "⏰"
+          : type === "warning"
+            ? "⚠️"
+            : type === "user-added"
+              ? "👤"
+              : "📅";
 
   return (
     <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 max-w-sm w-[calc(100vw-2rem)] sm:w-80 pointer-events-none">
@@ -313,6 +337,8 @@ export default function Notifications({ user }: NotificationsProps) {
     switch (type) {
       case "reminder":
         return { icon: "fa-bell", color: "text-yellow-500", bg: "bg-yellow-50 dark:bg-yellow-900/20" };
+      case "rsvp_reminder":
+        return { icon: "fa-clipboard-check", color: "text-indigo-500", bg: "bg-indigo-50 dark:bg-indigo-900/20" };
       case "starting":
         return { icon: "fa-video", color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-900/20" };
       case "info":

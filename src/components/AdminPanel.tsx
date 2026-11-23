@@ -7,6 +7,7 @@ import { exportToExcel } from "../utils/export";
 import { SortMode, SORT_OPTIONS, sortMeetings } from "../utils/meetingSort";
 import { rescheduleMeeting, checkRescheduleConflicts } from "../store-api";
 import RoomsManager from "./RoomsManager";
+import FailedJobsPanel from "./FailedJobsPanel";
 import TvScreenPreview from "./TvScreenPreview";
 import OutlookCalendar, { OutlookView } from "./OutlookCalendar";
 import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
@@ -57,12 +58,15 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   meeting_created: "Создание конференции",
   meeting_updated: "Изменение конференции",
   meeting_deleted: "Удаление конференции",
+  meeting_rsvp_export: "Экспорт списка участников",
   user_created: "Создание пользователя",
   user_deleted: "Удаление пользователя",
   user_role_changed: "Смена роли пользователя",
   user_blocked: "Блокировка пользователя",
   user_unblocked: "Разблокировка пользователя",
   password_changed: "Смена пароля",
+  failed_job_retried: "Повтор задачи очереди",
+  failed_job_deleted: "Удаление ошибки очереди",
 };
 
 // Поля, которые не стоит показывать в колонке «Изменения»
@@ -2202,6 +2206,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 </>
               )}
             </div>
+
+            <FailedJobsPanel />
 
             {/* Журнал посещаемости экранов ТВ */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">

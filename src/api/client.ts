@@ -297,6 +297,19 @@ export const meetingsAPI = {
     return apiRequest(`/meetings/rooms-availability${queryString}`);
   },
 
+  // Подбор общих свободных интервалов для выбранных участников и переговорных.
+  suggestSlots: (data: {
+    date_from: string;
+    date_to: string;
+    duration: number;
+    participant_ids: number[];
+    room_id?: number;
+    limit?: number;
+  }) => apiRequest("/meetings/suggest-slots", {
+    method: "POST",
+    body: JSON.stringify(data),
+  }),
+
   // Проверка конфликтов расписания: пересекающиеся встречи у тех же людей
   checkConflicts: (params: {
     date: string;
@@ -411,22 +424,30 @@ export const rsvpAPI = {
       method: "POST",
       body: JSON.stringify({ response }),
     }),
+
+  exportCsv: (meetingId: string) =>
+    downloadBlob(`/meetings/${meetingId}/rsvp/export`),
 };
 
 // NOTIFICATIONS API
 export const notificationsAPI = {
   /**
-   * Realtime-канал уведомлений (Server-Sent Events). Возвращает EventSource,
-   * если браузер его поддерживает и пользователь авторизован; иначе null —
-   * вызывающий код остаётся на поллинге. Событие "notification": {id, message, type}.
+   * Realtime-канал уведомлений (Server-Sent Events). Асинхронно получает
+   * короткоживущий билет и создаёт EventSource; при отсутствии поддержки
+   * браузера или авторизации возвращает null. Событие "notification": {id, message, type}.
    */
-  stream: (): EventSource | null => {
-    if (typeof EventSource === "undefined") return null;
-    const token = getToken();
-    if (!token) return null;
-    // Laravel отдаёт StreamedResponse без Content-Encoding, поэтому gzip в
-    // Accept-Encoding здесь не нужен и не передаётся (иначе буферизация).
-    return new EventSource(`${API_BASE_URL}/notifications/stream?token=${encodeURIComponent(token)}`);
+  stream: async (): Promise<EventSource | null> => {
+    if (typeof EventSource === "undefined" || !getToken()) return null;
+
+    // Получаем одноразовый билет обычным Bearer-auth запросом.
+    // Постоянный access token никогда не попадает в URL или access-логи.
+    const response = await apiRequest("/notifications/stream-ticket", { method: "POST" });
+    if (!response?.ticket) return null;
+
+    // При reconnect нужен новый билет: предыдущий уже был использован.
+    return new EventSource(
+      `${API_BASE_URL}/notifications/stream?ticket=${encodeURIComponent(response.ticket)}`
+    );
   },
 
   getAll: (params?: { type?: string; unread?: boolean; all?: boolean; per_page?: number }) => {
@@ -837,6 +858,14 @@ export const roomsAPI = {
   update: (roomId: string | number, data: Record<string, unknown>) =>
     apiRequest(`/rooms/${roomId}`, { method: "PUT", body: JSON.stringify(data) }),
   remove: (roomId: string | number) => apiRequest(`/rooms/${roomId}`, { method: "DELETE" }),
+};
+
+// Управление неудачными задачами очереди (только администратор).
+export const failedJobsAPI = {
+  list: (page = 1, perPage = 25) =>
+    apiRequest(`/admin/failed-jobs?${new URLSearchParams({ page: String(page), per_page: String(perPage) }).toString()}`),
+  retry: (id: number) => apiRequest(`/admin/failed-jobs/${id}/retry`, { method: "POST" }),
+  remove: (id: number) => apiRequest(`/admin/failed-jobs/${id}`, { method: "DELETE" }),
 };
 
 // MAX MESSENGER API — привязка аккаунта мессенджера MAX для уведомлений
