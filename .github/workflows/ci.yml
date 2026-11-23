@@ -37,6 +37,9 @@ jobs:
       - name: Frontend performance code-splitting smoke checks
         run: node scripts/frontend-performance-smoke.mjs
 
+      - name: Frontend API error redaction smoke checks
+        run: node scripts/api-error-redaction-smoke.mjs
+
       - name: Build
         run: npm run build
 
