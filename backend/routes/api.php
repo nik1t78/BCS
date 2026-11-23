@@ -314,6 +314,10 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         // Статус системы: uptime/MySQL/Redis/очереди/бот/экраны ТВ + журнал посещаемости ТВ
         Route::get('/admin/system-status', [\App\Http\Controllers\Api\SystemStatusController::class, 'show']);
         Route::get('/admin/tv-views', [\App\Http\Controllers\Api\SystemStatusController::class, 'tvViews']);
+        // Управление failed_jobs: только администратор, payload задач не раскрывается.
+        Route::get('/admin/failed-jobs', [\App\Http\Controllers\Api\FailedJobController::class, 'index']);
+        Route::post('/admin/failed-jobs/{id}/retry', [\App\Http\Controllers\Api\FailedJobController::class, 'retry'])->whereNumber('id');
+        Route::delete('/admin/failed-jobs/{id}', [\App\Http\Controllers\Api\FailedJobController::class, 'destroy'])->whereNumber('id');
 
         // Аудит-лог действий пользователей (только администратор)
         Route::get('/admin/audit-logs', [\App\Http\Controllers\Api\AuditLogController::class, 'index']);
