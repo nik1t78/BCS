@@ -1,0 +1,38 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "Europe/Moscow"
+    open-pull-requests-limit: 10
+    groups:
+      npm-patch-and-minor:
+        update-types:
+          - "patch"
+          - "minor"
+
+  - package-ecosystem: "composer"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:15"
+      timezone: "Europe/Moscow"
+    open-pull-requests-limit: 10
+    groups:
+      composer-patch-and-minor:
+        update-types:
+          - "patch"
+          - "minor"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:30"
+      timezone: "Europe/Moscow"
+    open-pull-requests-limit: 5
