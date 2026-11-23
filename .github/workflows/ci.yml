@@ -100,6 +100,9 @@ jobs:
       - name: Run meeting slot suggestion policy smoke tests
         run: php tests/meeting-slot-suggestion-policy-smoke.php
 
+      - name: Run meeting heatmap accuracy policy smoke tests
+        run: php tests/meeting-heatmap-policy-smoke.php
+
       - name: Run meeting edit policy regression smoke tests
         run: php tests/meeting-edit-policy-smoke.php
 
