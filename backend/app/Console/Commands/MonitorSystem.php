@@ -118,13 +118,12 @@ class MonitorSystem extends Command
 
     private function checkRedis(): array
     {
-        // Если кэш крутится на redis — простая команда PING проходит через facade.
+        // Redis — отдельный сервис стека, а не только cache driver.
+        // В production CACHE_STORE=file выбран намеренно, поэтому проверка
+        // через config('cache.default') пропускала бы Redis даже при его
+        // полном отказе. Проверяем выделенное Redis-соединение напрямую.
         try {
-            $driver = config('cache.default');
-            if ($driver !== 'redis') {
-                return [true, null]; // redis не используется — не считаем сбоем
-            }
-            app('redis')->connection()->ping();
+            app('redis')->connection('default')->ping();
             return [true, null];
         } catch (\Throwable $e) {
             return [false, mb_substr($e->getMessage(), 0, 160)];
@@ -136,9 +135,9 @@ class MonitorSystem extends Command
         $url = rtrim((string) env('SYSTEM_MONITOR_BASE_URL', 'http://nginx'), '/') . '/';
         try {
             $response = Http::timeout(5)->get($url);
-            // nginx отдаёт index.html SPA — любой HTTP-ответ (2xx/3xx) = жив;
-            // 5xx от nginx — уже авария.
-            if ($response->status() >= 500) {
+            // nginx должен отдавать SPA или штатный redirect (2xx/3xx).
+            // 4xx означает неверный маршрут/конфигурацию, 5xx — сбой сервера.
+            if ($response->status() >= 400) {
                 return [false, 'HTTP ' . $response->status()];
             }
             return [true, null];
