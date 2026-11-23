@@ -46,7 +46,7 @@ class SendMeetingReminders extends Command
 
         foreach ($meetings as $meeting) {
             // Проверка: конференция начинается сейчас
-            if ($meeting->start_time === $currentTime) {
+            if (\App\Support\MeetingReminderPolicy::isStartingAt((string) $meeting->start_time, $currentTime)) {
                 $count += $this->sendStartingNotification($meeting);
             }
 
