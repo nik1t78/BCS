@@ -4,19 +4,30 @@ declare(strict_types=1);
 
 $bootstrap = (string) file_get_contents(__DIR__ . '/../bootstrap/app.php');
 
+$statusStart = strpos($bootstrap, '$status = method_exists($e');
+$responseStart = $statusStart === false
+    ? false
+    : strpos($bootstrap, 'return response()->json([', $statusStart);
+$responseEnd = $responseStart === false
+    ? false
+    : strpos($bootstrap, '], $status);', $responseStart);
+$responseBlock = ($responseStart !== false && $responseEnd !== false)
+    ? substr($bootstrap, $responseStart, $responseEnd - $responseStart)
+    : '';
+
 $checks = [
     'API exception responses include a correlation identifier' =>
-        str_contains($bootstrap, "'error_id' => $errorId"),
+        $responseBlock !== '' && str_contains($responseBlock, "'error_id' => $errorId"),
     'API exception details are logged server-side' =>
         str_contains($bootstrap, "'exception' => get_class($e)")
         && str_contains($bootstrap, "'file' => $e->getFile()"),
     'API error logs do not include query strings' =>
-        str_contains($bootstrap, '$request->path()')
-        && !str_contains($bootstrap, '$request->fullUrl()'),
-    'API exception message is not returned to clients' =>
-        !str_contains($bootstrap, "'message' => $e->getMessage()"),
-    'Exception class and file path are not returned as detail' =>
-        !str_contains($bootstrap, "'detail' => get_class($e)"),
+        str_contains($bootstrap, "'[API-ERROR] ' . $request->method() . ' ' . $request->path()")
+        && !str_contains($bootstrap, "'[API-ERROR] ' . $request->method() . ' ' . $request->fullUrl()"),
+    'API exception messages are not returned to clients' =>
+        $responseBlock !== '' && !str_contains($responseBlock, '$e->getMessage()'),
+    'Exception class and file path are not returned to clients' =>
+        $responseBlock !== '' && !str_contains($responseBlock, "'detail'"),
 ];
 
 foreach ($checks as $label => $passed) {
