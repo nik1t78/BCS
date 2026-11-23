@@ -118,13 +118,12 @@ class MonitorSystem extends Command
 
     private function checkRedis(): array
     {
-        // Если кэш крутится на redis — простая команда PING проходит через facade.
+        // Redis — отдельный сервис стека, а не только cache driver.
+        // В production CACHE_STORE=file выбран намеренно, поэтому проверка
+        // через config('cache.default') пропускала бы Redis даже при его
+        // полном отказе. Проверяем выделенное Redis-соединение напрямую.
         try {
-            $driver = config('cache.default');
-            if ($driver !== 'redis') {
-                return [true, null]; // redis не используется — не считаем сбоем
-            }
-            app('redis')->connection()->ping();
+            app('redis')->connection('default')->ping();
             return [true, null];
         } catch (\Throwable $e) {
             return [false, mb_substr($e->getMessage(), 0, 160)];
