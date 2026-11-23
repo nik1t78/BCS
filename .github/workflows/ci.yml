@@ -91,6 +91,9 @@ jobs:
       - name: Run user administration policy regression smoke tests
         run: php tests/user-administration-policy-smoke.php
 
+      - name: Run meeting reminder timing regression smoke tests
+        run: php tests/meeting-reminder-policy-smoke.php
+
       - name: Run Laravel test suite
         shell: bash
         run: |
