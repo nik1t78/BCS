@@ -9,6 +9,7 @@ use App\Models\Meeting;
 use App\Models\Notification;
 use App\Models\Room;
 use App\Support\MeetingCache;
+use App\Support\MeetingEditPolicy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
