@@ -32,6 +32,10 @@ $checks = [
         ], '08:00', '11:00', 60, 30, 2)[0] === ['start' => '10:00', 'end' => '11:00'],
     'supports midnight as the end of a working day' =>
         MeetingSlotSuggestionPolicy::suggest([], '23:00', '24:00', 60, 30, 1)[0] === ['start' => '23:00', 'end' => '24:00'],
+    'rounds a non-aligned working-day start forward to the next step' =>
+        MeetingSlotSuggestionPolicy::suggest([], '08:05', '10:00', 60, 30, 1)[0] === ['start' => '08:30', 'end' => '09:30'],
+    'respects the requested result limit' =>
+        count(MeetingSlotSuggestionPolicy::suggest([], '08:00', '18:00', 30, 30, 3)) === 3,
     'rejects invalid working hours and duration' =>
         MeetingSlotSuggestionPolicy::suggest([], '20:00', '08:00', 60) === []
         && MeetingSlotSuggestionPolicy::suggest([], '08:00', '12:00', 10) === [],
