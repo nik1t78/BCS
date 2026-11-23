@@ -89,8 +89,25 @@ class VksAutopilot extends Command
                 // боту на создание новой (воркер впишет актуальную).
                 $meeting->update(['link' => null, 'vks_link_status' => 'pending']);
                 \App\Support\MeetingCache::bump(\App\Support\MeetingCache::roomIdsFromNames([$meeting->room]));
-                CreateVksLinkJob::dispatch($meeting->id)->onQueue('vks');
-                $queued++;
+
+                // Сразу резервируем dispatch, иначе эта же запись попадёт
+                // ниже в no-link выборку и будет поставлена в очередь повторно.
+                $queueLockKey = 'vks_queued_' . $meeting->id;
+                try {
+                    if (!cache()->has($queueLockKey)) {
+                        cache()->put($queueLockKey, 1, now()->addMinutes(15));
+                        try {
+                            CreateVksLinkJob::dispatch($meeting->id)->onQueue('vks');
+                            $queued++;
+                        } catch (\Throwable $dispatchError) {
+                            cache()->forget($queueLockKey);
+                            throw $dispatchError;
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    report($e);
+                    $this->warn("Не удалось поставить встречу {$meeting->id} в очередь: {$e->getMessage()}");
+                }
             }
         }
 
@@ -98,29 +115,85 @@ class VksAutopilot extends Command
         // VKSBOT_AUTO) — тоже отдаём боту.
         $noLinkQuery = Meeting::query()
             ->where('status', 'scheduled')
-            ->where(function ($q) use ($now, $horizon, $autoQueue) {
+            ->where(function ($q) {
                 $q->whereNull('link')->orWhere('link', '');
-                if (!$autoQueue) {
-                    // без автосоздания чиним только то, что вот-вот начнётся
-                    $q->whereDate('date', '=', $now->toDateString());
-                }
             });
-        if (!$autoQueue) {
-            $noLinkQuery->where(function ($q) use ($horizon) {
-                $q->whereTime('start_time', '>=', $now->format('H:i:s'))
-                  ->whereTime('start_time', '<=', $horizon->format('H:i:s'));
+
+        if ($autoQueue) {
+            // Автосоздание распространяется только на будущие встречи.
+            // Без этого условия в очередь попадали старые записи со статусом
+            // scheduled и прошедшей датой, создавая лишние комнаты и нагрузку.
+            $noLinkQuery->where(function ($q) use ($now) {
+                $q->whereDate('date', '>', $now->toDateString())
+                    ->orWhere(function ($today) use ($now) {
+                        $today->whereDate('date', '=', $now->toDateString())
+                            ->whereTime('start_time', '>=', $now->format('H:i:s'));
+                    });
             });
         }
 
-        foreach ($noLinkQuery->cursor()->unique() as $meeting) {
-            // Не ставить в очередь повторно задачу, которая ещё не выполнена.
-            $lockKey = 'vks_queued_' . $meeting->id;
-            if (cache()->has($lockKey)) {
+        if (!$autoQueue) {
+            $noLinkQuery
+                ->whereDate('date', '=', $now->toDateString())
+                ->whereTime('start_time', '>=', $now->format('H:i:s'))
+                ->whereTime('start_time', '<=', $horizon->format('H:i:s'));
+        }
+
+        // Ограничиваем объём одной итерации: при массовом импорте встреч
+        // автопилот не должен одномоментно заполнить очередь тысячами задач.
+        $batchSize = max(1, min(200, (int) env('VKSBOT_AUTOPILOT_BATCH', 50)));
+
+        $noLinkQueued = 0;
+        foreach ($noLinkQuery
+            ->orderBy('date')
+            ->orderBy('start_time')
+            ->cursor()
+            ->unique() as $meeting) {
+            // Дополнительная проверка на уровне приложения защищает от
+            // повторного включения прошедших записей в автосоздание ссылок.
+            if ($autoQueue && !\App\Support\VksAutopilotPolicy::isFutureOrCurrent(
+                $meeting->date->toDateString(),
+                (string) $meeting->start_time,
+                $now->toDateString(),
+                $now->format('H:i')
+            )) {
                 continue;
             }
-            cache()->put($lockKey, 1, now()->addMinutes(15));
-            CreateVksLinkJob::dispatch($meeting->id)->onQueue('vks');
-            $queued++;
+
+            // Не ставить в очередь повторно задачу, которая ещё не выполнена.
+            $lockKey = 'vks_queued_' . $meeting->id;
+            if ($noLinkQueued >= $batchSize) {
+                break;
+            }
+
+            try {
+                if (cache()->has($lockKey)) {
+                    continue;
+                }
+                // Сначала ставим dedupe-lock, чтобы два параллельных цикла
+                // не отправили одну встречу одновременно.
+                cache()->put($lockKey, 1, now()->addMinutes(15));
+            } catch (\Throwable $e) {
+                report($e);
+                $this->warn("Не удалось установить блокировку встречи {$meeting->id}: {$e->getMessage()}");
+                continue;
+            }
+
+            try {
+                CreateVksLinkJob::dispatch($meeting->id)->onQueue('vks');
+                $noLinkQueued++;
+                $queued++;
+            } catch (\Throwable $e) {
+                // Если dispatch не удался, снимаем lock — следующий цикл
+                // сможет повторить постановку задачи.
+                try {
+                    cache()->forget($lockKey);
+                } catch (\Throwable $cacheError) {
+                    report($cacheError);
+                }
+                report($e);
+                $this->warn("Не удалось поставить встречу {$meeting->id} в очередь: {$e->getMessage()}");
+            }
         }
 
         $this->info("vks:autopilot — проверено {$checked}, поставлено в очередь {$queued}");
