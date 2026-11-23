@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { User, Meeting } from "../types";
 import { getMeetings, getUsersForDisplay } from "../store-api";
 import { startOfDayLocal } from "../utils/dateKey";
+import { exportAnalyticsReport } from "../utils/export";
 
 interface StatsProps {
   user: User;
@@ -76,6 +77,7 @@ export default function Stats({ user }: StatsProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -206,6 +208,25 @@ export default function Stats({ user }: StatsProps) {
     .sort((a, b) => b.count - a.count)
     .slice(0, 7);
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await exportAnalyticsReport({
+        generatedAt: new Date().toISOString(),
+        totals: stats,
+        daily: dailyData,
+        weekly: weeklyData,
+        rooms: topRooms,
+        organizers: topOrganizers,
+      }, user.login || user.name || "user");
+    } catch (error) {
+      console.error("Analytics export failed:", error);
+      alert("Не удалось сформировать Excel-отчёт");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -218,13 +239,31 @@ export default function Stats({ user }: StatsProps) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-6 text-white">
-        <h2 className="text-2xl font-bold flex items-center gap-2">
-          <i className="fas fa-chart-line"></i>
-          Статистика и аналитика
-        </h2>
-        <p className="text-blue-100 mt-1">Обзор вашей активности</p>
+    <div className="space-y-6 print-area">
+      <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-6 text-white flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <i className="fas fa-chart-line"></i>
+            Статистика и аналитика
+          </h2>
+          <p className="text-blue-100 mt-1">Обзор вашей активности</p>
+        </div>
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={exporting}
+          className="px-4 py-2 rounded-lg bg-white/15 hover:bg-white/25 disabled:opacity-50 text-white font-medium border border-white/30"
+        >
+          <i className={`fas ${exporting ? "fa-spinner fa-spin" : "fa-file-excel"} mr-2`}></i>
+          {exporting ? "Формируем отчёт..." : "Скачать отчёт Excel"}
+        </button>
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="px-4 py-2 rounded-lg bg-white/15 hover:bg-white/25 text-white font-medium border border-white/30"
+        >
+          <i className="fas fa-file-pdf mr-2"></i>Печать / сохранить PDF
+        </button>
       </div>
 
       {/* Main Stats */}
