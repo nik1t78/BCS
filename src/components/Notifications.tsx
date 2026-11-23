@@ -60,10 +60,20 @@ export function subscribeToNotifications(onNotification: (n: RealtimeEvent) => v
       };
 
       next.addEventListener("notification", handler);
-      next.addEventListener("unavailable", () => {
-        unavailable = true;
+      next.addEventListener("unavailable", (event) => {
+        let retryable = true;
+        try {
+          const payload = JSON.parse((event as MessageEvent).data);
+          // Старые версии сервера не присылают флаг: считаем их ответ временным.
+          retryable = payload?.retryable !== false;
+        } catch {
+          /* неизвестный ответ не должен навсегда отключать realtime */
+        }
+
+        if (!retryable) unavailable = true;
         next.close();
         if (source === next) source = null;
+        if (retryable) scheduleReconnect();
       });
 
       // Билет одноразовый: отключаем встроенный reconnect EventSource

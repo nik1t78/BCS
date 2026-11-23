@@ -119,7 +119,10 @@ class NotificationStreamController extends Controller
     {
         return new StreamedResponse(function () use ($reason) {
             echo "event: unavailable\n";
-            echo 'data: ' . json_encode(['reason' => $reason]) . "\n\n";
+            echo 'data: ' . json_encode([
+                'reason' => $reason,
+                'retryable' => \App\Support\NotificationStreamPolicy::shouldRetryUnavailable($reason),
+            ]) . "\n\n";
             @ob_flush();
             flush();
         }, 200, [
