@@ -88,6 +88,9 @@ jobs:
       - name: Run notification stream recovery regression smoke tests
         run: php tests/notification-stream-recovery-smoke.php
 
+      - name: Run CSV formula injection regression smoke tests
+        run: php tests/csv-cell-smoke.php
+
       - name: Run meeting edit policy regression smoke tests
         run: php tests/meeting-edit-policy-smoke.php
 

@@ -240,6 +240,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
     // RSVP: подтверждение присутствия участником + сводка для организатора
     Route::get('/meetings/{meeting}/rsvp', [\App\Http\Controllers\Api\MeetingRsvpController::class, 'index']);
+    Route::get('/meetings/{meeting}/rsvp/export', [\App\Http\Controllers\Api\MeetingRsvpController::class, 'export']);
     Route::post('/meetings/{meeting}/rsvp', [\App\Http\Controllers\Api\MeetingRsvpController::class, 'store']);
 
     // Переговорные комнаты: справочник и доступность (бронирование через поле room встречи)

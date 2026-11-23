@@ -411,6 +411,9 @@ export const rsvpAPI = {
       method: "POST",
       body: JSON.stringify({ response }),
     }),
+
+  exportCsv: (meetingId: string) =>
+    downloadBlob(`/meetings/${meetingId}/rsvp/export`),
 };
 
 // NOTIFICATIONS API
