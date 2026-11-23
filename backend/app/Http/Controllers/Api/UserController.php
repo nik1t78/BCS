@@ -192,6 +192,10 @@ class UserController extends Controller
      * Теперь в транзакции сначала чистятся зависимые записи токенов, а записи
      * аудита отвязываются (user_id = NULL), после чего пользователь удаляется.
      */
+    /**
+     * Безопасное удаление аккаунта.
+     * Аккаунты с историей встреч и последний активный администратор сохраняются.
+     */
     public function destroy(Request $request, $id)
     {
         if (!$request->user()->isAdmin()) {
@@ -203,51 +207,58 @@ class UserController extends Controller
         }
 
         try {
-        $result = DB::transaction(function () use ($id, $request) {
+            $result = DB::transaction(function () use ($id) {
                 $user = User::query()->whereKey($id)->lockForUpdate()->firstOrFail();
+
                 $activeAdmins = User::query()
                     ->where('role', 'admin')
                     ->where('is_active', true)
                     ->lockForUpdate()
                     ->get(['id']);
-    
+
                 $hasMeetingHistory = Meeting::withTrashed()
                     ->where(function ($query) use ($user) {
                         $query->where('organizer_id', $user->id)
                             ->orWhereJsonContains('participants', (int) $user->id);
                     })
                     ->exists();
-    
-                if (!\App\Support\UserAdministrationPolicy::canDelete($hasMeetingHistory)) {
-                    return ['error' => 'У пользователя есть встречи или история участия. Не удаляйте аккаунт: отключите его, чтобы сохранить историю.', 'status' => 409];
+
+                if (!\\App\\Support\\UserAdministrationPolicy::canDelete($hasMeetingHistory)) {
+                    return [
+                        'error' => 'У пользователя есть встречи или история участия. Не удаляйте аккаунт: отключите его, чтобы сохранить историю.',
+                        'status' => 409,
+                    ];
                 }
-    
-                if (!\App\Support\UserAdministrationPolicy::canRemoveActiveAdmin(
+
+                if (!\\App\\Support\\UserAdministrationPolicy::canRemoveActiveAdmin(
                     $user->role,
                     (bool) $user->is_active,
                     $activeAdmins->count()
                 )) {
-                    return ['error' => 'Нельзя удалить последнего активного администратора системы.', 'status' => 409];
+                    return [
+                        'error' => 'Нельзя удалить последнего активного администратора системы.',
+                        'status' => 409,
+                    ];
                 }
-    
+
                 DB::table('personal_access_tokens')
                     ->where('tokenable_type', get_class($user))
                     ->where('tokenable_id', $user->id)
                     ->delete();
-    
+
                 if (Schema::hasColumn('audit_logs', 'user_id')) {
                     DB::table('audit_logs')
                         ->where('user_id', $user->id)
                         ->update(['user_id' => null]);
                 }
-    
+
                 $deleted = ['name' => $user->name, 'login' => $user->login];
                 $user->delete();
-    
+
                 return ['error' => null, 'deleted' => $deleted];
             });
         } catch (QueryException $e) {
-            \Log::error('User delete failed due to related records', [
+            \\Log::error('User delete failed due to related records', [
                 'target_user_id' => $id,
                 'sql_state' => $e->getCode(),
                 'message' => $e->getMessage(),
@@ -266,6 +277,8 @@ class UserController extends Controller
 
         return response()->json(['message' => 'Пользователь удалён']);
     }
+
+    /** Изменение роли с защитой последнего активного администратора. */
     public function changeRole(Request $request, $id)
     {
         if (!$request->user()->isAdmin()) {
@@ -310,6 +323,7 @@ class UserController extends Controller
 
         return response()->json($result['user']);
     }
+    /** Блокировка аккаунта с проверкой полномочий и сохранением администратора. */
     public function toggleActive(Request $request, $id)
     {
         $actor = $request->user();
