@@ -241,7 +241,7 @@ class UserController extends Controller
                 return ['error' => null, 'deleted' => $deleted];
             });
         } catch (QueryException $e) {
-            \\Log::error('User delete failed due to related records', [
+            \Log::error('User delete failed due to related records', [
                 'target_user_id' => $id,
                 'sql_state' => $e->getCode(),
                 'message' => $e->getMessage(),
