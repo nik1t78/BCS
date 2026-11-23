@@ -122,6 +122,10 @@ class AttachmentController extends Controller
         $meeting = Meeting::findOrFail($attachment->meeting_id);
         $user = $request->user();
 
+        if (!$meeting->hasAccess($user)) {
+            return response()->json(['message' => 'Доступ запрещён'], 403);
+        }
+
         if (
             (int) $attachment->user_id !== (int) $user->id
             && !$meeting->isOrganizer($user->id)
