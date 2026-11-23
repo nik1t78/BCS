@@ -1,6 +1,6 @@
 <?php
 
-namespace App\\Support;
+namespace App\Support;
 
 /**
  * Защита CSV-экспорта от formula injection при открытии в Excel/LibreOffice.
@@ -12,7 +12,7 @@ final class CsvCell
         $value = (string) ($value ?? '');
         $probe = ltrim($value);
 
-        if ($probe !== '' && preg_match('/^[=+\\-@\\t\\r]/u', $probe)) {
+        if ($probe !== '' && preg_match('/^[=+\-@\t\r]/u', $probe)) {
             return "'" . $value;
         }
 
