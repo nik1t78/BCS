@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
-use App\\Support\\CsvCell;
+use App\Support\CsvCell;
 
 $cases = [
     ['=1+1', "'=1+1", 'formula prefix'],
