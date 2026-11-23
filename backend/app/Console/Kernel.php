@@ -25,7 +25,7 @@ class Kernel extends ConsoleKernel
         // Интервалы задаются в RSVP_REMINDER_MINUTES (по умолчанию за сутки и за час).
         $schedule->command('meetings:send-rsvp-reminders')
                  ->everyMinute()
-                 ->withoutOverlapping();
+                 ->withoutOverlapping(2);
 
         // Автозавершение прошедших конференций (scheduled/in-progress -> completed).
         // Раньше стоял hourly(): встреча на 02.11 с окончанием, например, в 11:00
