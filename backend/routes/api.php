@@ -123,7 +123,7 @@ Route::middleware('throttle:600,60')->get('/tv/{room}/next', function (\Illumina
 // экранов одного NAT-IP и мгновенно упиралась в лимит («Too Many Attempts»).
 // 600,60 = 600 запросов в минуту — запас на все открытые страницы ожидания.
 Route::middleware('throttle:600,60')->get('/m/{meeting}', function (\App\Models\Meeting $meeting) {
-    if (!\App\Support\PublicMeetingLinkPolicy::canRedirect($meeting)) {
+    if (!\App\Support\PublicMeetingLinkPolicy::canRedirect($meeting, $request->hasValidSignature())) {
         return response('Not Found', 404)->header('Cache-Control', 'no-store');
     }
     if (!$meeting->link) {
@@ -133,7 +133,7 @@ Route::middleware('throttle:600,60')->get('/m/{meeting}', function (\App\Models\
     // no-store: страница-редирект не должна кэшироваться браузером ТВ —
     // иначе после пересоздания комнаты QR/SSE-ссылка ещё долго ведёт на старую.
     return redirect()->away($meeting->link)->header('Cache-Control', 'no-store');
-})->whereNumber('meeting');
+})->whereNumber('meeting')->name('meetings.permanent-link');
 
 // Защищённые маршруты
 Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
