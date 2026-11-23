@@ -583,7 +583,7 @@ class MeetingController extends Controller
             'description' => 'nullable|string',
             'date' => 'sometimes|date_format:Y-m-d',
             'start_time' => ['sometimes', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
-            'end_time' => ['sometimes', 'regex:/^\d{2}:\d{2}(:\d{2})?$/', 'after:start_time'],
+            'end_time' => ['sometimes', 'regex:/^\d{2}:\d{2}(:\d{2})?$/],
             'room' => 'nullable|string|max:255',
             'link' => 'nullable|url|max:500',
             'status' => 'sometimes|in:scheduled,in-progress,completed,cancelled',
@@ -616,6 +616,41 @@ class MeetingController extends Controller
 
         $tags = $validated['tags'] ?? null;
         unset($validated['tags']);
+
+        $effectiveDate = $validated['date'] ?? $meeting->date?->toDateString();
+        $effectiveStart = substr((string) ($validated['start_time'] ?? $meeting->start_time), 0, 5);
+        $effectiveEnd = substr((string) ($validated['end_time'] ?? $meeting->end_time), 0, 5);
+        if ($effectiveEnd <= $effectiveStart) {
+            throw \\Illuminate\\Validation\\ValidationException::withMessages([
+                'end_time' => ['Время окончания должно быть позже времени начала.'],
+            ]);
+        }
+
+        $scheduleChanged = ($effectiveDate !== $meeting->date?->toDateString())
+            || ($effectiveStart !== substr((string) $meeting->start_time, 0, 5))
+            || ($effectiveEnd !== substr((string) $meeting->end_time, 0, 5));
+
+        if ($scheduleChanged) {
+            $people = array_unique(array_merge(
+                [(int) $meeting->organizer_id],
+                array_map('intval', $meeting->participants ?? []),
+            ));
+
+            foreach ($people as $personId) {
+                if (ScheduleConflictController::userHasConflict(
+                    $personId,
+                    $effectiveDate,
+                    $effectiveStart,
+                    $effectiveEnd,
+                    (int) $meeting->id,
+                )) {
+                    return response()->json([
+                        'message' => 'На выбранном времени у участника уже есть другая встреча.',
+                        'conflict_user_id' => $personId,
+                    ], 409);
+                }
+            }
+        }
 
         if (array_key_exists('recurring', $validated) && $validated['recurring'] === 'none') {
             $validated['repeat_until'] = null;
