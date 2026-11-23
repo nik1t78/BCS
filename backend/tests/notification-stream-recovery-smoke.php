@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
-use App\\Support\\NotificationStreamPolicy;
+use App\Support\NotificationStreamPolicy;
 
 $cases = [
     'invalid_or_expired_ticket' => true,
