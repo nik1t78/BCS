@@ -4,7 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Meeting;
+use App\Models\User;
+use App\Models\UserSetting;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 /**
  * Экспорт расписания в формате iCalendar (.ics) — для добавления ВКС
@@ -14,7 +17,54 @@ class MeetingIcsController extends Controller
 {
     public function index(Request $request)
     {
-        $user = $request->user();
+        return $this->calendarResponse($request->user(), $request, true);
+    }
+
+    /**
+     * Создать или заменить секретную ссылку подписки. В БД хранится только SHA-256.
+     */
+    public function rotateFeed(Request $request)
+    {
+        $token = Str::random(64);
+        $settings = $request->user()->getSettings();
+        $settings->calendar_token_hash = hash('sha256', $token);
+        $settings->save();
+
+        return response()->json([
+            'url' => url('/api/calendar-feed/' . $token . '.ics'),
+        ]);
+    }
+
+    /**
+     * Немедленно отозвать ссылку подписки.
+     */
+    public function revokeFeed(Request $request)
+    {
+        $settings = $request->user()->settings;
+        if ($settings) {
+            $settings->calendar_token_hash = null;
+            $settings->save();
+        }
+
+        return response()->json(['message' => 'Ссылка календаря отключена']);
+    }
+
+    /**
+     * Публичная read-only ссылка для внешних календарей. Доступ даёт только
+     * длинный случайный токен; токен в базе хранится в виде хеша.
+     */
+    public function feed(Request $request, string $token)
+    {
+        $settings = UserSetting::where('calendar_token_hash', hash('sha256', $token))->first();
+        if (!$settings || !$settings->user || !$settings->user->is_active) {
+            return response()->json(['message' => 'Календарь не найден или ссылка отозвана'], 404);
+        }
+
+        return $this->calendarResponse($settings->user, null, false);
+    }
+
+    private function calendarResponse(User $user, ?Request $request = null, bool $download = true)
+    {
 
         $query = Meeting::query()
             ->whereNull('deleted_at')
@@ -25,10 +75,10 @@ class MeetingIcsController extends Controller
                   ->orWhere('is_public', true);
             });
 
-        if ($request->filled('from')) {
+        if ($request && $request->filled('from')) {
             $query->where('start_time', '>=', $request->input('from'));
         }
-        if ($request->filled('to')) {
+        if ($request && $request->filled('to')) {
             $query->where('start_time', '<=', $request->input('to'));
         }
 
@@ -83,7 +133,8 @@ class MeetingIcsController extends Controller
 
         return response($ics, 200, [
             'Content-Type' => 'text/calendar; charset=UTF-8',
-            'Content-Disposition' => 'attachment; filename="vks-schedule.ics"',
+            'Content-Disposition' => ($download ? 'attachment' : 'inline') . '; filename="vks-schedule.ics"',
+            'Cache-Control' => 'no-cache, must-revalidate',
         ]);
     }
 
