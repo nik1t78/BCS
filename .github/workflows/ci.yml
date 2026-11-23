@@ -61,7 +61,7 @@ jobs:
       - name: Verify composer.lock is in sync with composer.json
         # Лок-файл обязателен: без него docker-build идёт на packagist за
         # «latest» и падает по таймауту сети (curl error 28).
-        run: composer check-platform-reqs && composer validate --no-check-publish --strict
+        run: composer update --lock --no-install --no-scripts --no-interaction && composer check-platform-reqs && composer validate --no-check-publish --strict
 
       - name: Prepare environment
         run: |
