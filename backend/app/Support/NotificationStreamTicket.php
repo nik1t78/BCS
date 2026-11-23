@@ -1,8 +1,8 @@
 <?php
 
-namespace App\\Support;
+namespace App\Support;
 
-use Illuminate\\Support\\Facades\\Cache;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Короткоживущий билет для EventSource. Постоянный Sanctum-токен
