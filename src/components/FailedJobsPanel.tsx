@@ -18,7 +18,7 @@ export default function FailedJobsPanel() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState("");
 
-  const load = useCallback(async (nextPage = page) => {
+  const load = useCallback(async (nextPage: number) => {
     setLoading(true);
     try {
       const response = await failedJobsAPI.list(nextPage, 25);
@@ -31,11 +31,11 @@ export default function FailedJobsPanel() {
     } finally {
       setLoading(false);
     }
-  }, [page]);
+  }, []);
 
   useEffect(() => {
     void load(1);
-  }, []);
+  }, [load]);
 
   const retry = async (job: FailedJob) => {
     if (!confirm(`Вернуть задачу #${job.id} в очередь на повторное выполнение?`)) return;
