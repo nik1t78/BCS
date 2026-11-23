@@ -80,6 +80,9 @@ class MeetingMinuteController extends Controller
      */
     public function minutesUpdate(Request $request, Meeting $meeting, MeetingMinute $minute)
     {
+        if ((int) $minute->meeting_id !== (int) $meeting->id) {
+            return response()->json(['message' => 'Запись протокола не найдена'], 404);
+        }
         if ($denied = $this->ensureAccess($request, $meeting, true)) return $denied;
 
         $user = $request->user();
@@ -103,6 +106,9 @@ class MeetingMinuteController extends Controller
      */
     public function minutesDestroy(Request $request, Meeting $meeting, MeetingMinute $minute)
     {
+        if ((int) $minute->meeting_id !== (int) $meeting->id) {
+            return response()->json(['message' => 'Запись протокола не найдена'], 404);
+        }
         if ($denied = $this->ensureAccess($request, $meeting, true)) return $denied;
 
         $user = $request->user();
@@ -182,6 +188,9 @@ class MeetingMinuteController extends Controller
      */
     public function tasksUpdate(Request $request, Meeting $meeting, MeetingTask $task)
     {
+        if ((int) $task->meeting_id !== (int) $meeting->id) {
+            return response()->json(['message' => 'Задача не найдена'], 404);
+        }
         if ($denied = $this->ensureAccess($request, $meeting, true)) return $denied;
 
         $validated = $request->validate([
@@ -235,6 +244,9 @@ class MeetingMinuteController extends Controller
      */
     public function tasksDestroy(Request $request, Meeting $meeting, MeetingTask $task)
     {
+        if ((int) $task->meeting_id !== (int) $meeting->id) {
+            return response()->json(['message' => 'Задача не найдена'], 404);
+        }
         if ($denied = $this->ensureAccess($request, $meeting, true)) return $denied;
 
         $task->delete();
@@ -249,6 +261,9 @@ class MeetingMinuteController extends Controller
      */
     public function taskCommentStore(Request $request, Meeting $meeting, MeetingTask $task)
     {
+        if ((int) $task->meeting_id !== (int) $meeting->id) {
+            return response()->json(['message' => 'Задача не найдена'], 404);
+        }
         if ($denied = $this->ensureAccess($request, $meeting, true)) return $denied;
 
         $validated = $request->validate([
@@ -281,6 +296,9 @@ class MeetingMinuteController extends Controller
      */
     public function taskCommentDestroy(Request $request, Meeting $meeting, MeetingTask $task, \App\Models\TaskComment $comment)
     {
+        if ((int) $task->meeting_id !== (int) $meeting->id || (int) $comment->meeting_task_id !== (int) $task->id) {
+            return response()->json(['message' => 'Комментарий не найден'], 404);
+        }
         if ($denied = $this->ensureAccess($request, $meeting, true)) return $denied;
 
         $user = $request->user();
