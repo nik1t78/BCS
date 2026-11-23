@@ -15,6 +15,8 @@ $checks = [
         str_contains($compose, 'SYSTEM_MONITOR_ENABLED: "${SYSTEM_MONITOR_ENABLED:-false}"'),
     'Docker passes the internal Nginx health-check URL' =>
         str_contains($compose, 'SYSTEM_MONITOR_BASE_URL: "${SYSTEM_MONITOR_BASE_URL:-http://nginx}"'),
+    'Nginx 4xx/5xx responses are treated as unhealthy' =>
+        str_contains($monitor, '$response->status() >= 400'),
     'monitoring remains opt-in in the sample environment' =>
         str_contains($envExample, 'SYSTEM_MONITOR_ENABLED=false'),
 ];
