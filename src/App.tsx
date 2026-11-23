@@ -5,14 +5,14 @@ import { authAPI } from "./api/client";
 import ForcePasswordChange from "./components/ForcePasswordChange";
 import { getTheme } from "./store";
 import AuthPage from "./components/AuthPage";
-import Schedule from "./components/Schedule";
+
 import Notifications, {
   useNewNotificationToasts,
   NotificationToasts,
   subscribeToNotifications,
 } from "./components/Notifications";
-import Profile from "./components/Profile";
-import GlobalSearch from "./components/GlobalSearch";
+// Глобальный поиск нужен только по запросу пользователя; не включаем его код в первый экран.
+const GlobalSearch = lazy(() => import("./components/GlobalSearch"));
 import ThemeToggle from "./components/ThemeToggle";
 import ResetData from "./components/ResetData";
 import type { MeetingPrefill } from "./components/UserPanel";
@@ -22,6 +22,8 @@ import { getUnreadNotificationsCount, markNotificationRead } from "./store-api";
 // это уменьшает стартовый chunk. Экспорт Excel (exceljs, ~1 МБ) грузится
 // динамически только в момент нажатия «Скачать Excel».
 const Dashboard = lazy(() => import("./components/Dashboard"));
+const Schedule = lazy(() => import("./components/Schedule"));
+const Profile = lazy(() => import("./components/Profile"));
 const UserPanel = lazy(() => import("./components/UserPanel"));
 const AdminPanel = lazy(() => import("./components/AdminPanel"));
 const Stats = lazy(() => import("./components/Stats"));
@@ -250,7 +252,7 @@ function App() {
             </h2>
           </div>
           <div className="flex items-center gap-3">
-            <GlobalSearch user={user} />
+            <Suspense fallback={null}><GlobalSearch user={user} /></Suspense>
             <ThemeToggle />
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center overflow-hidden">

@@ -134,9 +134,12 @@ class ExpressMeetingController extends Controller
             return response()->json(['message' => 'Не найдено'], 404);
         }
 
-        // QR ведёт на «вечную» ссылку /api/m/{id} — она всегда редиректит на
-        // актуальную комнату, даже если автопилот пересоздал её после QR-печати.
-        $url = rtrim(config('app.url', $request->getSchemeAndHttpHost()), '/') . '/api/m/' . $m->id;
+        // Для приватной встречи выдаём постоянный URL с подписью Laravel.
+        // Сам QR API уже проверил, что текущий пользователь имеет доступ к встрече.
+        // Публичные встречи сохраняют старый короткий URL для совместимости.
+        $url = $m->is_private
+            ? \Illuminate\Support\Facades\URL::signedRoute('meetings.permanent-link', ['meeting' => $m->id])
+            : rtrim(config('app.url', $request->getSchemeAndHttpHost()), '/') . '/api/m/' . $m->id;
 
         // Генерация QR: сначала лёгкий self-contained генератор (без composer-пакетов,
         // работает на «голом» php-gd). Если установлен chillerlan/php-qrcode — берём его.

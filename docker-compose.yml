@@ -60,6 +60,10 @@ x-backend-env: &backend-env
   APP_KEY: "${APP_KEY:?APP_KEY не задан! Добавьте в .env строку APP_KEY=base64:... (см. docker compose run --rm backend php artisan key:generate --show)}"
   APP_ENV: "${APP_ENV:-production}"
   APP_DEBUG: "false"
+  # Системный мониторинг выключен по умолчанию; включается явно в корневом .env.
+  SYSTEM_MONITOR_ENABLED: "${SYSTEM_MONITOR_ENABLED:-false}"
+  SYSTEM_MONITOR_BASE_URL: "${SYSTEM_MONITOR_BASE_URL:-http://nginx}"
+  QUEUE_HEARTBEAT_MAX_AGE: "${QUEUE_HEARTBEAT_MAX_AGE:-180}"
   # Единая таймзона приложения (совпадает с TZ контейнеров php-fpm/очередей).
   # Без неё Carbon считал wall-clock-время как UTC → «время не совпадает» на 3 часа.
   APP_TIMEZONE: "${APP_TIMEZONE:-Europe/Moscow}"
