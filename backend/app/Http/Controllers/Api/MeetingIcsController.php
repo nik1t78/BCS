@@ -1,13 +1,14 @@
 <?php
 
-namespace App\Http\Controllers\Api;
+namespace App\\Http\\Controllers\\Api;
 
-use App\Http\Controllers\Controller;
-use App\Models\Meeting;
-use App\Models\User;
-use App\Models\UserSetting;
-use Illuminate\Http\Request;
-use Illuminate\Support\Str;
+use App\\Http\\Controllers\\Controller;
+use App\\Models\\Meeting;
+use App\\Models\\User;
+use App\\Models\\UserSetting;
+use Carbon\\Carbon;
+use Illuminate\\Http\\Request;
+use Illuminate\\Support\\Str;
 
 /**
  * Экспорт расписания в формате iCalendar (.ics) — для добавления ВКС
@@ -75,24 +76,26 @@ class MeetingIcsController extends Controller
 
     private function calendarResponse(User $user, ?Request $request = null, bool $download = true)
     {
-
+        // В схеме meetings используется is_private (а не is_public).
+        // Не выдаём приватные встречи посторонним, но оставляем их организатору
+        // и участникам, которым они уже доступны.
         $query = Meeting::query()
-            ->whereNull('deleted_at')
             ->where(function ($q) use ($user) {
                 $q->where('organizer_id', $user->id)
-                  ->orWhereJsonContains('participants', (string) $user->id)
-                  ->orWhereJsonContains('participants', $user->id)
-                  ->orWhere('is_public', true);
+                    ->orWhereJsonContains('participants', (string) $user->id)
+                    ->orWhereJsonContains('participants', $user->id)
+                    ->orWhere('is_private', false);
             });
 
         if ($request && $request->filled('from')) {
-            $query->where('start_time', '>=', $request->input('from'));
+            $query->where('date', '>=', $request->input('from'));
         }
         if ($request && $request->filled('to')) {
-            $query->where('start_time', '<=', $request->input('to'));
+            $query->where('date', '<=', $request->input('to'));
         }
 
-        $meetings = $query->orderBy('start_time')->limit(500)->get();
+        $meetings = $query->orderBy('date')->orderBy('start_time')->limit(500)->get();
+        $timezone = config('app.timezone', 'Europe/Moscow');
 
         $lines = [
             'BEGIN:VCALENDAR',
@@ -104,27 +107,31 @@ class MeetingIcsController extends Controller
         ];
 
         foreach ($meetings as $m) {
-            // start_time/end_time — Carbon, собранный из DATE + TIME в таймзоне
-            // приложения (Europe/Moscow). gmdate() печатал эти «московские» часы
-            // как UTC-«Z», из-за чего утренняя встреча 09:00 в Outlook/Google
-            // ложилась на 06:00Z и при возврате в локальную зону могла показаться
-            // другим днём. Правильно — переводить абсолютный момент в UTC.
-            $startUtc = $m->start_time instanceof \DateTimeInterface
-                ? (clone $m->start_time)->setTimezone(new \DateTimeZone('UTC'))
-                : null;
-            if (!$startUtc) continue; // нет валидного начала — пропускаем событие
-            $endRaw = $m->end_time ?: $m->start_time->copy()->addHour();
-            $endUtc = ($endRaw instanceof \DateTimeInterface)
-                ? (clone $endRaw)->setTimezone(new \DateTimeZone('UTC'))
-                : null;
-            if (!$endUtc) $endUtc = (clone $startUtc)->modify('+1 hour');
+            // В БД дата и время хранятся раздельно (DATE + TIME), поэтому
+            // start_time/end_time — строки, а не DateTimeInterface/Carbon.
+            // Собираем локальный момент и только затем переводим его в UTC.
+            $date = $m->getRawOriginal('date');
+            if (!$date || !$m->start_time) {
+                continue;
+            }
+
+            try {
+                $startUtc = Carbon::parse($date . ' ' . $m->start_time, $timezone)->utc();
+                $endUtc = Carbon::parse(
+                    $date . ' ' . ($m->end_time ?: Carbon::parse($m->start_time)->addHour()->format('H:i:s')),
+                    $timezone
+                )->utc();
+            } catch (\\Throwable $e) {
+                // Некорректная старая запись не должна ломать экспорт всего календаря.
+                continue;
+            }
 
             $lines = array_merge($lines, [
                 'BEGIN:VEVENT',
                 'UID:vks-meeting-' . $m->id . '@vks.local',
-                'DTSTAMP:' . now()->setTimezone(new \DateTimeZone('UTC'))->format('Ymd\THis\Z'),
-                'DTSTART:' . $startUtc->format('Ymd\THis\Z'),
-                'DTEND:' . $endUtc->format('Ymd\THis\Z'),
+                'DTSTAMP:' . now()->setTimezone('UTC')->format('Ymd\\THis\\Z'),
+                'DTSTART:' . $startUtc->format('Ymd\\THis\\Z'),
+                'DTEND:' . $endUtc->format('Ymd\\THis\\Z'),
                 'SUMMARY:' . $this->esc($m->title),
                 'DESCRIPTION:' . $this->esc(trim(($m->description ?? '') . ' | Комната: ' . ($m->room ?: 'Онлайн'))),
                 'LOCATION:' . $this->esc($m->room ?: 'Онлайн'),
@@ -136,15 +143,16 @@ class MeetingIcsController extends Controller
 
         $lines[] = 'END:VCALENDAR';
 
-        // RFC 5545: CRLF + перенос длинных строк
+        // RFC 5545: CRLF + перенос длинных строк.
         $ics = collect($lines)->filter(fn ($l) => $l !== null)
             ->map(fn ($l) => $this->foldLine($l))
-            ->implode("\r\n");
+            ->implode("\\r\\n");
 
         return response($ics, 200, [
             'Content-Type' => 'text/calendar; charset=UTF-8',
             'Content-Disposition' => ($download ? 'attachment' : 'inline') . '; filename="vks-schedule.ics"',
-            'Cache-Control' => 'no-cache, must-revalidate',
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma' => 'no-cache',
         ]);
     }
 
@@ -171,11 +179,11 @@ class MeetingIcsController extends Controller
         }
 
         $result[] = $current;
-        return implode("\r\n", $result);
+        return implode("\\r\\n", $result);
     }
 
     private function esc(string $value): string
     {
-        return str_replace(['\\', "\n", ',', ';'], ['\\\\', '\\n', '\\,', '\\;'], $value);
+        return str_replace(['\\\\', "\\n", ',', ';'], ['\\\\\\\\', '\\\\n', '\\\\,', '\\\\;'], $value);
     }
 }
