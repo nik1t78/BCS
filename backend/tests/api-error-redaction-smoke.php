@@ -17,13 +17,13 @@ $responseBlock = ($responseStart !== false && $responseEnd !== false)
 
 $checks = [
     'API exception responses include a correlation identifier' =>
-        $responseBlock !== '' && str_contains($responseBlock, "'error_id' => $errorId"),
+        $responseBlock !== '' && str_contains($responseBlock, "'error_id' => \$errorId"),
     'API exception details are logged server-side' =>
-        str_contains($bootstrap, "'exception' => get_class($e)")
-        && str_contains($bootstrap, "'file' => $e->getFile()"),
+        str_contains($bootstrap, "'exception' => get_class(\$e)")
+        && str_contains($bootstrap, "'file' => \$e->getFile()"),
     'API error logs do not include query strings' =>
-        str_contains($bootstrap, "'[API-ERROR] ' . $request->method() . ' ' . $request->path()")
-        && !str_contains($bootstrap, "'[API-ERROR] ' . $request->method() . ' ' . $request->fullUrl()"),
+        str_contains($bootstrap, "'[API-ERROR] ' . \$request->method() . ' ' . \$request->path()")
+        && !str_contains($bootstrap, "'[API-ERROR] ' . \$request->method() . ' ' . \$request->fullUrl()"),
     'API exception messages are not returned to clients' =>
         $responseBlock !== '' && !str_contains($responseBlock, '$e->getMessage()'),
     'Exception class and file path are not returned to clients' =>
