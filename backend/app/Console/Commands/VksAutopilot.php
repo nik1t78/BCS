@@ -89,8 +89,25 @@ class VksAutopilot extends Command
                 // боту на создание новой (воркер впишет актуальную).
                 $meeting->update(['link' => null, 'vks_link_status' => 'pending']);
                 \App\Support\MeetingCache::bump(\App\Support\MeetingCache::roomIdsFromNames([$meeting->room]));
-                CreateVksLinkJob::dispatch($meeting->id)->onQueue('vks');
-                $queued++;
+
+                // Сразу резервируем dispatch, иначе эта же запись попадёт
+                // ниже в no-link выборку и будет поставлена в очередь повторно.
+                $queueLockKey = 'vks_queued_' . $meeting->id;
+                try {
+                    if (!cache()->has($queueLockKey)) {
+                        cache()->put($queueLockKey, 1, now()->addMinutes(15));
+                        try {
+                            CreateVksLinkJob::dispatch($meeting->id)->onQueue('vks');
+                            $queued++;
+                        } catch (\Throwable $dispatchError) {
+                            cache()->forget($queueLockKey);
+                            throw $dispatchError;
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    report($e);
+                    $this->warn("Не удалось поставить встречу {$meeting->id} в очередь: {$e->getMessage()}");
+                }
             }
         }
 
