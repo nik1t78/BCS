@@ -95,7 +95,7 @@ class SendRsvpReminders extends Command
                 ? 'Вы отметили, что пока не определились. Уточните, пожалуйста, участие'
                 : 'Пожалуйста, подтвердите участие';
 
-            $message = "🔔 {$prefix} в конференции «{$meeting->title}» ({$dateLabel} в {$timeLabel}).";
+            $message = "🔔 {$prefix} в конференции «{$meeting->title}» ({$dateLabel} в {$timeLabel}). Напоминание за {$offset} мин.";
 
             // Дата occurrence и текст сообщения участвуют в ключе дедупликации:
             // один участник получает не более одного одинакового напоминания
