@@ -130,7 +130,20 @@ export default function MeetingRsvp({ meeting, user }: Props) {
       )}
 
       {isOrganizer && (
-        <ul className="space-y-1 max-h-40 overflow-y-auto">
+        <div className="space-y-2">
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleExport}
+              disabled={exporting}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+            >
+              <i className={`fas ${exporting ? "fa-spinner fa-spin" : "fa-file-csv"}`}></i>
+              {exporting ? "Формирование CSV…" : "Скачать список участников (CSV)"}
+            </button>
+          </div>
+          {exportError && <p role="alert" className="text-xs text-red-600">{exportError}</p>}
+          <ul className="space-y-1 max-h-40 overflow-y-auto">
           {(data?.rsvps ?? []).length === 0 && (
             <li className="text-xs text-gray-400">Пока никто не ответил на приглашение.</li>
           )}
@@ -152,7 +165,8 @@ export default function MeetingRsvp({ meeting, user }: Props) {
           {summary && summary.pending > 0 && (
             <li className="text-xs text-gray-400 italic">+ {summary.pending} без ответа</li>
           )}
-        </ul>
+          </ul>
+        </div>
       )}
     </div>
   );
