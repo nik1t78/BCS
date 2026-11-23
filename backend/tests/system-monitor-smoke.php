@@ -10,7 +10,7 @@ $checks = [
     'Redis is probed through its dedicated default connection' =>
         str_contains($monitor, "app('redis')->connection('default')->ping();"),
     'Redis health check is not skipped when cache driver is file' =>
-        !str_contains($monitor, "if ($driver !== 'redis')"),
+        !str_contains($monitor, "if (\$driver !== 'redis')"),
     'Docker passes the system monitoring toggle to Laravel' =>
         str_contains($compose, 'SYSTEM_MONITOR_ENABLED: "${SYSTEM_MONITOR_ENABLED:-false}"'),
     'Docker passes the internal Nginx health-check URL' =>
