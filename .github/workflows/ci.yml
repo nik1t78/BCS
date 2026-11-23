@@ -76,6 +76,9 @@ jobs:
       - name: Boot Laravel and verify calendar routes
         run: php artisan route:list --path=calendar-feed
 
+      - name: Verify smart meeting slot suggestion route
+        run: php artisan route:list --path=meetings/suggest-slots
+
       - name: Run calendar regression smoke tests
         run: php tests/calendar-smoke.php
 

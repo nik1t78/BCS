@@ -32,6 +32,9 @@ class MeetingSlotSuggestionController extends Controller
 
         $from = CarbonImmutable::createFromFormat('Y-m-d', $validated['date_from'])->startOfDay();
         $to = CarbonImmutable::createFromFormat('Y-m-d', $validated['date_to'])->startOfDay();
+        if ($from->lessThan(CarbonImmutable::today())) {
+            return response()->json(['message' => 'Подбор времени доступен только на сегодня и будущие даты.'], 422);
+        }
         if ($from->diffInDays($to) > 14) {
             return response()->json(['message' => 'Период подбора не может превышать 15 календарных дней.'], 422);
         }
@@ -45,7 +48,15 @@ class MeetingSlotSuggestionController extends Controller
             return response()->json(['message' => 'В списке есть неактивные участники.'], 422);
         }
 
-        $roomsQuery = Room::query()->where('is_active', true)->orderBy('name');
+        $roomsQuery = Room::query()
+            ->where('is_active', true)
+            // Не предлагаем зал, который физически меньше выбранной группы.
+            // Залы со старой записью без capacity остаются доступными.
+            ->where(function ($query) use ($participantIds) {
+                $query->whereNull('capacity')
+                    ->orWhere('capacity', '>=', count($participantIds));
+            })
+            ->orderBy('name');
         if (!empty($validated['room_id'])) {
             $roomsQuery->whereKey($validated['room_id']);
         }
@@ -99,6 +110,18 @@ class MeetingSlotSuggestionController extends Controller
                 );
                 if (!$hours || ($hours['end'] ?? '') <= ($hours['start'] ?? '')) continue;
 
+                // На текущую дату не предлагаем интервалы, которые уже прошли.
+                $dayStart = $hours['start'];
+                if ($dateKey === now()->toDateString()) {
+                    $clock = now();
+                    $currentTime = $clock->format('H:i');
+                    // Не предлагаем слот, если текущая минута уже началась.
+                    if ((int) $clock->format('s') > 0) {
+                        $currentTime = $clock->addMinute()->format('H:i');
+                    }
+                    if ($currentTime > $dayStart) $dayStart = $currentTime;
+                }
+
                 $busy = [];
                 foreach ($dayMeetings as $meeting) {
                     $start = substr((string) $meeting->start_time, 0, 5);
@@ -116,7 +139,7 @@ class MeetingSlotSuggestionController extends Controller
 
                 $slots = MeetingSlotSuggestionPolicy::suggest(
                     $busy,
-                    $hours['start'],
+                    $dayStart,
                     $hours['end'],
                     (int) $validated['duration'],
                     30,
