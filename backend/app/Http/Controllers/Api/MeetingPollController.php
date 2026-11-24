@@ -7,6 +7,7 @@ use App\Models\Meeting;
 use App\Models\MeetingPoll;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Support\MeetingPollPolicy;
 
 class MeetingPollController extends Controller
 {
@@ -14,8 +15,7 @@ class MeetingPollController extends Controller
     {
         $user = $request->user();
 
-        return (int) $meeting->organizer_id === (int) $user->id
-            || in_array($user->role, ['admin', 'moderator'], true);
+        return MeetingPollPolicy::canManage((int) $meeting->organizer_id, (int) $user->id, (string) $user->role);
     }
 
     private function ensureMeetingAccess(Request $request, Meeting $meeting): ?\Illuminate\Http\JsonResponse
@@ -85,11 +85,7 @@ class MeetingPollController extends Controller
             'options.*' => 'required|string|max:120',
         ]);
 
-        $options = collect($validated['options'])
-            ->map(fn ($option) => trim($option))
-            ->filter(fn ($option) => $option !== '')
-            ->unique(fn ($option) => mb_strtolower($option))
-            ->values();
+        $options = collect(MeetingPollPolicy::normalizeOptions($validated['options']));
 
         if ($options->count() < 2) {
             return response()->json(['message' => 'Укажите не менее двух разных вариантов ответа'], 422);
@@ -120,7 +116,7 @@ class MeetingPollController extends Controller
             'option_index' => 'required|integer|min:0|max:9',
         ]);
 
-        if (!array_key_exists($validated['option_index'], $poll->options ?? [])) {
+        if (!MeetingPollPolicy::canVote(true, $poll->isClosed(), count($poll->options ?? []), (int) $validated['option_index'])) {
             return response()->json(['message' => 'Выбранный вариант не существует'], 422);
         }
 
