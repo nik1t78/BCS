@@ -37,6 +37,9 @@ jobs:
       - name: Frontend performance code-splitting smoke checks
         run: node scripts/frontend-performance-smoke.mjs
 
+      - name: Frontend API error redaction smoke checks
+        run: node scripts/api-error-redaction-smoke.mjs
+
       - name: Verify Docker frontend dependency policy
         run: node scripts/docker-build-policy-smoke.mjs
 
@@ -98,6 +101,9 @@ jobs:
 
       - name: Run security hardening smoke tests
         run: php tests/security-hardening-smoke.php
+
+      - name: Run API error redaction regression smoke tests
+        run: php tests/api-error-redaction-smoke.php
 
       - name: Run calendar regression smoke tests
         run: php tests/calendar-smoke.php
