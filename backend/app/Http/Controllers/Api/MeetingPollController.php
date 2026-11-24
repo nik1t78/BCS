@@ -20,7 +20,9 @@ class MeetingPollController extends Controller
 
     private function ensureMeetingAccess(Request $request, Meeting $meeting): ?\Illuminate\Http\JsonResponse
     {
-        if (!$meeting->hasAccess($request->user())) {
+        $user = $request->user();
+        $isModerator = in_array($user->role, ['admin', 'moderator'], true);
+        if (!$meeting->hasAccess($user) && !$isModerator) {
             return response()->json(['message' => 'Доступ запрещён'], 403);
         }
 
