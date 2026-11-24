@@ -139,18 +139,12 @@ return Application::configure(basePath: dirname(__DIR__))
             fn ($request) => $request->is('api/*') || $request->expectsJson()
         );
 
-        // Глобальный обработчик ошибок API. Без него любая фатальная ошибка
-        // внутри /api/* (например, на этапе подготовки ответа после того, как
-        // валидация и запись в БД уже прошли успешно) отдаётся Laravel как
-        // безликий 500 {"message":"Server Error"} — пользователь видит только
-        // «не удалось сохранить конференцию» без причины, а админ гадает по
-        // логам. Здесь:
-        //  1) пишем в laravel.log строку [API-ERROR] POST/GET <url> => класс:
-        //     сообщение @файл:строка — её можно найти одной командой;
-        //  2) для api-запросов добавляем в JSON-ответ поле detail с текстом
-        //     исключения — фронт показывает его вместо «Server Error», и
-        //     причина видна сразу в браузере (F12 → Console).
-        // Ничего не скрываем от логов: report() штатно пишет трассировку.
+        // Глобальный обработчик ошибок API:
+        //  1) подробная диагностика записывается в закрытый laravel.log;
+        //  2) клиент получает только безопасное сообщение и error_id для поиска
+        //     записи в журнале — SQL, stack trace и пути файлов не раскрываются;
+        //  3) администраторское MAX-оповещение при 5xx сохраняет технические
+        //     подробности, если канал оповещений настроен.
         $exceptions->render(function (\Throwable $e, $request) {
             if (!$request->is('api/*') && !$request->expectsJson()) {
                 return null; // обычные веб-страницы — стандартный рендер Laravel
@@ -162,12 +156,19 @@ return Application::configure(basePath: dirname(__DIR__))
                 return response()->json(['message' => 'Unauthenticated.'], 401);
             }
 
+            // Подробности остаются только в серверном журнале. Не включаем
+            // query string в URL: там могут находиться одноразовые билеты.
+            $errorId = (string) \Illuminate\Support\Str::uuid();
             \Illuminate\Support\Facades\Log::error(
-                '[API-ERROR] ' . $request->method() . ' ' . $request->fullUrl() .
-                ' => ' . get_class($e) . ': ' . $e->getMessage() .
-                ' @ ' . $e->getFile() . ':' . $e->getLine()
+                '[API-ERROR] ' . $request->method() . ' ' . $request->path(),
+                [
+                    'error_id' => $errorId,
+                    'exception' => get_class($e),
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                ]
             );
-
             // Алерт админу в MAX при 5xx на API (только когда настроен чат —
             // см. ADMIN_ALERT_CHAT_ID). Дедуп по signature: одна и та же ошибка
             // не будет спамить чаще, чем раз в 10 минут. Статус берём из
@@ -204,8 +205,10 @@ return Application::configure(basePath: dirname(__DIR__))
             }
 
             return response()->json([
-                'message' => $e->getMessage() ?: 'Server Error',
-                'detail' => get_class($e) . ': ' . $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine(),
+                'message' => $status >= 500
+                    ? 'Внутренняя ошибка сервера.'
+                    : 'Не удалось выполнить запрос.',
+                'error_id' => $errorId,
             ], $status);
         });
     })->create();
