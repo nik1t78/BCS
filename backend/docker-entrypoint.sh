@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-APP_DIR=/var/www/html
+APP_DIR=${APP_DIR:-/var/www/html}
 cd "$APP_DIR"
 
 # Named Docker volumes can outlive the image. Recreate writable Laravel paths
