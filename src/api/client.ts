@@ -97,41 +97,18 @@ export const apiRequest = async (endpoint: string, options: RequestInit = {}, _r
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}) as any);
-      // Laravel при валидации (422) возвращает { message, errors: { field: [msgs] } },
-      // а не поле "message" с текстом ошибки — достаём текст из errors
+      // Ошибки 5xx не должны раскрывать исключения, SQL, пути и stack details.
+      // Сервер пишет полную диагностику в laravel.log и возвращает только error_id.
       let message = typeof error.message === "string" ? error.message : undefined;
-      if (!message && error.errors) {
+      if (response.status >= 500) {
+        const errorId = typeof error.error_id === "string" ? error.error_id : undefined;
+        message = errorId
+          ? `Внутренняя ошибка сервера. Код ошибки: ${errorId}`
+          : "Внутренняя ошибка сервера. Подробности доступны в журнале сервера.";
+      } else if (!message && error.errors) {
+        // Laravel при валидации (422) возвращает ошибки по полям.
         const firstMessages = Object.values(error.errors).flat() as string[];
-        if (firstMessages.length > 0) {
-          message = firstMessages.join("; ");
-        }
-      }
-      // Кастомный рендер ошибок бэкенда (bootstrap/app.php) кладёт точную
-      // причину в поле detail — показываем её, если message неинформативен.
-      if ((!message || message === "Server Error") && typeof error.detail === "string" && error.detail) {
-        message = error.detail;
-      }
-      // 5xx: Laravel при APP_DEBUG=false отдаёт {"message":"Server Error"} без
-      // деталей — пользователь видел только «проверьте поля». Пытаемся вытащить
-      // реальную причину из нетипичных форм ответа (exception / message в виде
-      // объекта / текстовый ответ nginx/PHP-FPM).
-      if (!message && response.status >= 500) {
-        if (typeof error.message === "object" && error.message) {
-          message = String((error.message as any).message ?? "");
-        } else if (typeof error.exception === "string") {
-          message = error.exception;
-        } else if (typeof error.error === "string") {
-          message = error.error;
-        }
-        if (!message) {
-          try {
-            const text = typeof response.clone === "function" ? await response.clone().text() : "";
-            const m = text.match(/Undefined array key[^<"]*|Column not found[^<"]*|SQLSTATE\[\d+\][^<"]*|Data too long[^<"]*|Base table or view not found[^<"]*/i);
-            if (m) message = m[0];
-          } catch {
-            /* не критично */
-          }
-        }
+        if (firstMessages.length > 0) message = firstMessages.join("; ");
       }
       const err: any = new Error(message || `Ошибка сервера (HTTP ${response.status}). Подробности — в логах: docker compose logs backend`);
       // Пробрасываем объект errors целиком: store-api извлекает конкретную
