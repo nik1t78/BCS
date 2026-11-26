@@ -90,7 +90,7 @@ const MeetingCountdown = React.memo(function MeetingCountdown({
 export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [currentTime, setCurrentTime] = useState(serverCalendarDate());
+  const [currentTime, setCurrentTime] = useState(serverCalendarDate);
   // Outlook-вид расписания аудиторий на главной: день / неделя / месяц
   const [calView, setCalView] = useState<OutlookView>("day");
   const [calDate, setCalDate] = useState(serverCalendarDate());
