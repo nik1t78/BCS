@@ -43,7 +43,7 @@ Http::fake(function (Request $request) use (&$requests) {
     $requests[] = [
         'method' => $request->method(),
         'url' => $request->url(),
-        'authorization' => $request->header('Authorization'),
+        'authorization' => implode(', ', (array) $request->header('Authorization')),
         'data' => $request->data(),
     ];
 
