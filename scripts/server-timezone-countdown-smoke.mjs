@@ -42,11 +42,11 @@ assert.ok(
 );
 
 const calendarMatch = source.match(
-  /export function serverCalendarDate\(\): Date \{([\\s\\S]*?)\\n\}/
+  /export function serverCalendarDate\(\): Date \{([\s\S]*?)\n\}/
 );
 assert.ok(calendarMatch, "serverCalendarDate must remain an exported function");
 const calendarDate = vm.runInNewContext(
-  `() => { ${calendarMatch[1]}\\n}`,
+  `() => { ${calendarMatch[1]}\n}`,
   {
     serverTodayKey: () => "2026-11-26",
     serverNowHm: () => "10:05",
