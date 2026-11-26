@@ -46,7 +46,20 @@ class MaxMessengerService
 
     public static function apiUrl(): string
     {
-        return rtrim((string) config('services.max.api_url', env('MAX_API_URL', 'https://maxapi.ru/v1')), '/');
+        $url = rtrim((string) config('services.max.api_url', env('MAX_API_URL', 'https://platform-api2.max.ru')), '/');
+
+        // Старые шаблоны BCS использовали неофициальный maxapi.ru/v1 и
+        // прежний platform-api.max.ru. Переводим именно эти legacy defaults
+        // на актуальный официальный endpoint, сохраняя пользовательские URL.
+        if ($url === '' || in_array($url, [
+            'https://maxapi.ru/v1',
+            'https://platform-api.max.ru',
+            'https://platform-api.max.ru/v1',
+        ], true)) {
+            return 'https://platform-api2.max.ru';
+        }
+
+        return $url;
     }
 
     public static function botLink(): string
@@ -65,12 +78,14 @@ class MaxMessengerService
             return false;
         }
 
-        $url = self::apiUrl() . '/sendmessage';
-        $payload = ['chat_id' => $chatId, 'text' => $text];
-        $headers = ['Authorization' => 'Bearer ' . self::token()];
+        // Официальный Bot API: POST /messages?chat_id=... и токен
+        // передаётся напрямую в Authorization (без префикса Bearer).
+        $url = self::apiUrl() . '/messages?' . http_build_query(['chat_id' => $chatId]);
+        $payload = ['text' => mb_substr($text, 0, 4000)];
+        $headers = ['Authorization' => self::token()];
 
         try {
-            $response = Http::timeout(5)->withHeaders($headers)->post($url, $payload);
+            $response = Http::timeout(10)->withHeaders($headers)->post($url, $payload);
 
             if ($response->successful()) {
                 return true;
@@ -81,7 +96,7 @@ class MaxMessengerService
                 'body' => substr($response->body(), 0, 300),
             ]);
             return false;
-        } catch (\Throwable $e) {
+        } catch (\\Throwable $e) {
             Log::warning('MAX: исключение при отправке: ' . $e->getMessage());
             return false;
         }
@@ -97,28 +112,71 @@ class MaxMessengerService
             return false;
         }
 
-        $url = self::apiUrl() . '/upload_file';
-        $headers = ['Authorization' => 'Bearer ' . self::token()];
+        $headers = ['Authorization' => self::token()];
 
         try {
-            $response = Http::timeout(20)
-                ->attach('file', file_get_contents($filePath), $fileName)
+            // MAX сначала выдаёт временный URL и token через POST /uploads.
+            $uploadInit = Http::timeout(10)
                 ->withHeaders($headers)
-                ->post($url, array_filter([
-                    'chat_id' => $chatId,
-                    'caption' => $caption ?: null,
-                ]));
+                ->post(self::apiUrl() . '/uploads?type=file');
 
-            if ($response->successful()) {
+            if (!$uploadInit->successful()) {
+                Log::warning('MAX: не удалось начать загрузку файла', [
+                    'status' => $uploadInit->status(),
+                    'body' => substr($uploadInit->body(), 0, 300),
+                ]);
+                return false;
+            }
+
+            $uploadUrl = (string) $uploadInit->json('url');
+            $uploadToken = (string) $uploadInit->json('token');
+            if ($uploadUrl === '' || $uploadToken === '') {
+                Log::warning('MAX: API загрузки не вернул url/token');
+                return false;
+            }
+
+            $contents = file_get_contents($filePath);
+            if ($contents === false) {
+                Log::warning('MAX: не удалось прочитать файл для загрузки');
+                return false;
+            }
+
+            // Multipart upload выполняется на выданный URL. Токен авторизации
+            // не пересылаем на сторонний upload host.
+            $uploaded = Http::timeout(60)
+                ->attach('data', $contents, $fileName)
+                ->post($uploadUrl);
+
+            if (!$uploaded->successful()) {
+                Log::warning('MAX: ошибка загрузки файла', [
+                    'status' => $uploaded->status(),
+                    'body' => substr($uploaded->body(), 0, 300),
+                ]);
+                return false;
+            }
+
+            // Отправляем загруженный файл как attachment к сообщению.
+            $payload = [
+                'text' => $caption !== '' ? mb_substr($caption, 0, 4000) : $fileName,
+                'attachments' => [[
+                    'type' => 'file',
+                    'payload' => ['token' => $uploadToken],
+                ]],
+            ];
+            $sent = Http::timeout(15)
+                ->withHeaders($headers)
+                ->post(self::apiUrl() . '/messages?' . http_build_query(['chat_id' => $chatId]), $payload);
+
+            if ($sent->successful()) {
                 return true;
             }
 
-            Log::warning('MAX: ошибка отправки файла', [
-                'status' => $response->status(),
-                'body' => substr($response->body(), 0, 300),
+            Log::warning('MAX: ошибка отправки файла в чат', [
+                'status' => $sent->status(),
+                'body' => substr($sent->body(), 0, 300),
             ]);
             return false;
-        } catch (\Throwable $e) {
+        } catch (\\Throwable $e) {
             Log::warning('MAX: исключение при отправке файла: ' . $e->getMessage());
             return false;
         }
