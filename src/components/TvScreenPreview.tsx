@@ -26,10 +26,7 @@ export default function TvScreenPreview() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const room = useMemo(
-    () => rooms.find((r) => String(r.id) === selectedId),
-    [rooms, selectedId]
-  );
+  const room = useMemo(() => rooms.find((r) => String(r.id) === selectedId), [rooms, selectedId]);
 
   // Путь строим от id зала — экран поллит /api/tv/{id}/next, названия с пробелами больше не ломают запрос.
   const src = room
@@ -73,16 +70,11 @@ export default function TvScreenPreview() {
         <p className="p-4 text-sm text-gray-500">Загрузка залов…</p>
       ) : rooms.length === 0 ? (
         <p className="p-4 text-sm text-gray-500">
-          У залов ещё нет токенов экрана. Откройте вкладку «Комнаты» — токен
-          генерируется автоматически при просмотре списка админом.
+          У залов ещё нет токенов экрана. Откройте вкладку «Комнаты» — токен генерируется автоматически при просмотре
+          списка админом.
         </p>
       ) : (
-        <iframe
-          title="Предпросмотр экрана ТВ"
-          src={src}
-          className="w-full h-[480px] border-0 bg-slate-900"
-
-        />
+        <iframe title="Предпросмотр экрана ТВ" src={src} className="w-full h-[480px] border-0 bg-slate-900" />
       )}
     </div>
   );

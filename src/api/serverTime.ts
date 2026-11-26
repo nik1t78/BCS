@@ -25,8 +25,8 @@
 import { API_BASE_URL } from "./client";
 
 const OFFSET_KEY = "vks_time_offset_sec"; // смещение серверных часов, секунды
-const TZ_KEY = "vks_server_tz";           // таймзона сервера из /api/time
-const MAX_OFFSET_SEC = 6 * 3600;          // больше полусуток — явный мусор
+const TZ_KEY = "vks_server_tz"; // таймзона сервера из /api/time
+const MAX_OFFSET_SEC = 6 * 3600; // больше полусуток — явный мусор
 const SYNC_TTL_MS = 5 * 60_000;
 
 let offsetSec = 0;

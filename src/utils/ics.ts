@@ -19,8 +19,12 @@ const toIcsUtc = (dateStr: string, timeStr: string): string => {
     const fmt = (tz: string, hour12: boolean) =>
       new Intl.DateTimeFormat("en-GB", {
         timeZone: tz,
-        year: "numeric", month: "2-digit", day: "2-digit",
-        hour: "2-digit", minute: "2-digit", second: "2-digit",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
         hourCycle: hour12 ? "h11" : "h23",
       }).format(ref);
     // Собираем строки в одном формате, чтобы вычесть минуты из epoch

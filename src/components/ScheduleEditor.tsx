@@ -1,10 +1,5 @@
 import { useState } from "react";
-import {
-  DAY_KEYS,
-  DAY_LABELS,
-  normalizeSchedule,
-  type RoomSchedule,
-} from "../utils/roomSchedule";
+import { DAY_KEYS, DAY_LABELS, normalizeSchedule, type RoomSchedule } from "../utils/roomSchedule";
 
 /**
  * Редактор гибкого графика зала: рабочие часы по дням недели + нерабочие дни
@@ -47,7 +42,8 @@ export default function ScheduleEditor({
         className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
       >
         <i className="fas fa-business-time mr-1.5 text-blue-500"></i>
-        График работы {isDefault ? "(по умолчанию)" : `— ${sch.closed.length ? `${sch.closed.length} нераб. дн.` : "по дням недели"}`}
+        График работы{" "}
+        {isDefault ? "(по умолчанию)" : `— ${sch.closed.length ? `${sch.closed.length} нераб. дн.` : "по дням недели"}`}
         <i className={`fas fa-chevron-${open ? "up" : "down"} ml-2 text-xs`}></i>
       </button>
 

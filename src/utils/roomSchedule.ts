@@ -3,7 +3,10 @@
 //   { days: { mon:{start,end}|null, ... sun }, closed: ["YYYY-MM-DD", ...] }
 // null-график у зала = стандартный диапазон 08:00–20:00; на главной выходные не блокируют бронирование.
 
-export interface DayHours { start: string; end: string } // "HH:MM"
+export interface DayHours {
+  start: string;
+  end: string;
+} // "HH:MM"
 export interface RoomSchedule {
   days: Record<string, DayHours | null>;
   closed: string[]; // ISO-даты (праздники / сантехника и т.п.)
@@ -11,7 +14,13 @@ export interface RoomSchedule {
 
 export const DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 export const DAY_LABELS: Record<string, string> = {
-  mon: "Пн", tue: "Вт", wed: "Ср", thu: "Чт", fri: "Пт", sat: "Сб", sun: "Вс",
+  mon: "Пн",
+  tue: "Вт",
+  wed: "Ср",
+  thu: "Чт",
+  fri: "Пт",
+  sat: "Сб",
+  sun: "Вс",
 };
 
 /** Ключ даты YYYY-MM-DD → ключ дня недели mon..sun (ISO: 1=пн) */
@@ -34,7 +43,8 @@ export function normalizeSchedule(raw?: Partial<RoomSchedule> | null): RoomSched
   for (const k of DAY_KEYS) {
     const v = raw?.days?.[k];
     if (v === null) days[k] = null;
-    else if (v && /^\d{2}:\d{2}$/.test(v.start) && /^\d{2}:\d{2}$/.test(v.end)) days[k] = { start: v.start, end: v.end };
+    else if (v && /^\d{2}:\d{2}$/.test(v.start) && /^\d{2}:\d{2}$/.test(v.end))
+      days[k] = { start: v.start, end: v.end };
     else days[k] = def.days[k];
   }
   const closed = (raw?.closed ?? []).filter((c) => /^\d{4}-\d{2}-\d{2}$/.test(c));

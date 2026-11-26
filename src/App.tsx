@@ -252,7 +252,9 @@ function App() {
             </h2>
           </div>
           <div className="flex items-center gap-3">
-            <Suspense fallback={null}><GlobalSearch user={user} /></Suspense>
+            <Suspense fallback={null}>
+              <GlobalSearch user={user} />
+            </Suspense>
             <ThemeToggle />
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center overflow-hidden">
@@ -288,7 +290,11 @@ function App() {
               />
             )}
             {currentPage === "schedule" && (
-              <Schedule user={user} onNavigate={(page: string) => setCurrentPage(page as Page)} onPickSlot={handleBookSlot} />
+              <Schedule
+                user={user}
+                onNavigate={(page: string) => setCurrentPage(page as Page)}
+                onPickSlot={handleBookSlot}
+              />
             )}
             {currentPage === "meetings" && (
               <UserPanel
