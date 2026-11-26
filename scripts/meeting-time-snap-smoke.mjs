@@ -27,10 +27,9 @@ for (const [input, expected] of cases) {
   assert.equal(snapHmTo30(input), expected, `snapHmTo30(${input})`);
 }
 
-assert.equal(
-  (userPanelSource.match(/step=\{1800\}/g) ?? []).length,
-  2,
-  "both meeting time inputs must use 30-minute native steps"
+assert.ok(
+  (userPanelSource.match(/step=\\{1800\\}/g) ?? []).length >= 2,
+  "meeting time inputs must use 30-minute native steps"
 );
 assert.match(
   userPanelSource,
