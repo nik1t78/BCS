@@ -180,6 +180,21 @@ export function serverDateTimeToEpoch(date: string, hm: string): number {
     candidate = next;
   }
 
+  // Daylight-saving transitions can make a wall-clock time nonexistent.
+  // Do not silently shift a meeting to another time: require an exact round trip.
+  const finalParts = formatter.formatToParts(new Date(candidate));
+  const finalValue = (type: string) =>
+    Number(finalParts.find((part) => part.type === type)?.value ?? 0);
+  if (
+    finalValue("year") !== year ||
+    finalValue("month") !== month ||
+    finalValue("day") !== day ||
+    finalValue("hour") !== hour ||
+    finalValue("minute") !== minute
+  ) {
+    return Number.NaN;
+  }
+
   return candidate;
 }
 
