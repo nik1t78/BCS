@@ -215,6 +215,17 @@ function keyAt(at: Date): string {
   return `${g("year")}-${g("month")}-${g("day")}`;
 }
 
+/**
+ * Date surrogate whose LOCAL calendar fields represent the server wall clock.
+ * Use it for calendar widgets that rely on getDate()/setDate(); do not use
+ * getTime() for absolute comparisons (use serverNowDate() for those).
+ */
+export function serverCalendarDate(): Date {
+  const [year, month, day] = serverTodayKey().split("-").map(Number);
+  const [hour, minute] = serverNowHm().split(":").map(Number);
+  return new Date(year, month - 1, day, hour, minute, 0, 0);
+}
+
 /** «Сегодня» на сервере: YYYY-MM-DD. */
 export function serverTodayKey(): string {
   return keyAt(serverNowDate());
