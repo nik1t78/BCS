@@ -46,8 +46,8 @@ const calendarMatch = source.match(
 );
 assert.ok(calendarMatch, "serverCalendarDate must remain an exported function");
 const calendarBody = calendarMatch[1]
-  .replace(/: Intl\\.DateTimeFormatOptions/g, "")
-  .replace(/: Intl\\.DateTimeFormat/g, "");
+  .replace(/: Intl\.DateTimeFormatOptions/g, "")
+  .replace(/: Intl\.DateTimeFormat/g, "");
 const originalTimezone = process.env.TZ;
 for (const browserTimezone of ["UTC", "America/Los_Angeles", "Asia/Tokyo"]) {
   process.env.TZ = browserTimezone;
