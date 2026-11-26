@@ -877,3 +877,18 @@ export const pushAPI = {
   unsubscribe: (id: string | number) => apiRequest(`/push/subscribe/${id}`, { method: "DELETE" }),
   test: () => apiRequest("/push/test", { method: "POST" }),
 };
+
+
+// Голосования внутри встречи.
+export const meetingPollsAPI = {
+  list: (meetingId: string | number) => apiRequest(`/meetings/${meetingId}/polls`),
+  create: (meetingId: string | number, data: { question: string; options: string[] }) =>
+    apiRequest(`/meetings/${meetingId}/polls`, { method: "POST", body: JSON.stringify(data) }),
+  vote: (meetingId: string | number, pollId: string | number, optionIndex: number) =>
+    apiRequest(`/meetings/${meetingId}/polls/${pollId}/vote`, {
+      method: "POST",
+      body: JSON.stringify({ option_index: optionIndex }),
+    }),
+  close: (meetingId: string | number, pollId: string | number) =>
+    apiRequest(`/meetings/${meetingId}/polls/${pollId}/close`, { method: "POST" }),
+};

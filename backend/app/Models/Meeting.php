@@ -238,6 +238,11 @@ class Meeting extends Model
         };
     }
 
+    public function polls(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(MeetingPoll::class);
+    }
+
     /**
      * Проверка: пользователь является участником
      */

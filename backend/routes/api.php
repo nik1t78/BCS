@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\TemplateController;
 use App\Http\Controllers\Api\AttachmentController;
 use App\Http\Controllers\Api\MeetingHistoryController;
 use App\Http\Controllers\Api\MeetingMinuteController;
+use App\Http\Controllers\Api\MeetingPollController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -222,6 +223,12 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
     // Meeting History
     Route::get('/meetings/{meetingId}/history', [MeetingHistoryController::class, 'index']);
+
+    // Голосования по вопросам встречи: один актуальный голос на пользователя, результаты агрегированы.
+    Route::get('/meetings/{meeting}/polls', [MeetingPollController::class, 'index']);
+    Route::post('/meetings/{meeting}/polls', [MeetingPollController::class, 'store']);
+    Route::post('/meetings/{meeting}/polls/{poll}/vote', [MeetingPollController::class, 'vote']);
+    Route::post('/meetings/{meeting}/polls/{poll}/close', [MeetingPollController::class, 'close']);
 
     // Протокол встречи (minutes) и задачи/action items
     Route::get('/meetings/{meeting}/minutes', [MeetingMinuteController::class, 'minutesIndex']);

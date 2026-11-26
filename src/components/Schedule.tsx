@@ -8,6 +8,7 @@ import {
   updateMeeting,
 } from "../store-api";
 import { roomsAPI } from "../api/client";
+import MeetingPolls from "./MeetingPolls";
 import { serverNowDate } from "../api/serverTime";
 import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { occursOn } from "../utils/recurrence";
@@ -431,6 +432,14 @@ export default function Schedule({ user, onNavigate, onPickSlot }: ScheduleProps
                       >
                         <i className="fas fa-video mr-1"></i>Войти в ВКС
                       </a>
+                    )}
+                    {canSee && (
+                      <MeetingPolls
+                        meetingId={selectedMeeting.id}
+                        canManage={
+                          Number(selectedMeeting.organizerId) === Number(user.id) || isAdminLike
+                        }
+                      />
                     )}
                     {!canSee && (
                       <p className="text-gray-400 italic pt-2">
