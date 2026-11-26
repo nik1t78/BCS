@@ -83,7 +83,7 @@ x-backend-env: &backend-env
   BOT_TOKENS: "${BOT_TOKENS:-}"
   MESSENGER: "${MESSENGER:-max}"
   MAX_ENABLED: "${MAX_ENABLED:-true}"
-  MAX_API_URL: "${MAX_API_URL:-https://maxapi.ru/v1}"
+  MAX_API_URL: "${MAX_API_URL:-https://platform-api2.max.ru}"
   MAX_BOT_TOKEN: "${MAX_BOT_TOKEN:-}"
   MAX_BOT_LINK: "${MAX_BOT_LINK:-https://max.ru/id0070719725_bot}"
 
