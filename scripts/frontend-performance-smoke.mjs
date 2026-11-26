@@ -4,6 +4,17 @@ import { readFileSync } from "node:fs";
 const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
 const dashboard = readFileSync(new URL("../src/components/Dashboard.tsx", import.meta.url), "utf8");
 
+// The regular-user meeting filter must be memoized: its array is an effect
+// dependency and a fresh array on every render can create a render loop.
+assert.ok(
+  dashboard.includes("const visibleMeetings = useMemo("),
+  "Dashboard visible meetings must be memoized to keep effect dependencies stable"
+);
+assert.ok(
+  dashboard.includes("[meetings, user.id, user.role]"),
+  "Dashboard visible-meetings memo must track its actual inputs"
+);
+
 for (const [name, staticImport, lazyImport] of [
   ["Schedule", 'import Schedule from "./components/Schedule";', 'const Schedule = lazy(() => import("./components/Schedule"));'],
   ["Profile", 'import Profile from "./components/Profile";', 'const Profile = lazy(() => import("./components/Profile"));'],
