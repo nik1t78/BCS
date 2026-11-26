@@ -14,7 +14,7 @@ for (const [name, staticImport, lazyImport] of [
 
 assert.ok(app.includes("<Suspense"), "App must provide a Suspense boundary for lazy pages");
 assert.ok(app.includes('const GlobalSearch = lazy(() => import("./components/GlobalSearch"));'), "Global search overlay must be lazy-loaded");
-assert.ok(app.includes("<Suspense fallback={null}><GlobalSearch user={user} /></Suspense>"), "Global search must render inside a Suspense boundary");
+assert.match(app, /<Suspense\\s+fallback=\\{null\\}>\\s*<GlobalSearch user=\\{user\\} \/>\\s*<\\/Suspense>/, "Global search must render inside a Suspense boundary");
 assert.ok(dashboard.includes('const UserPanel = lazy(() => import("./UserPanel"));'), "Dashboard meeting form must stay lazy");
 assert.ok(dashboard.includes('const RoomBookingModal = lazy(() => import("./RoomBookingModal"));'), "Room booking modal must be lazy");
 assert.ok(dashboard.includes("{bookingOpen && ("), "Room booking modal must mount only when requested");
