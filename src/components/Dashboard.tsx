@@ -12,6 +12,7 @@ import { icsAPI, meetingsAPI } from "../api/client";
 import {
   syncServerTime,
   serverNowDate,
+  serverCalendarDate,
   serverDateTimeToEpoch,
   serverTodayKey as serverTodayKeyTz,
   serverNowHm as serverNowHmTz,
@@ -89,10 +90,10 @@ const MeetingCountdown = React.memo(function MeetingCountdown({
 export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [currentTime, setCurrentTime] = useState(nowForUi());
+  const [currentTime, setCurrentTime] = useState(serverCalendarDate());
   // Outlook-вид расписания аудиторий на главной: день / неделя / месяц
   const [calView, setCalView] = useState<OutlookView>("day");
-  const [calDate, setCalDate] = useState(nowForUi());
+  const [calDate, setCalDate] = useState(serverCalendarDate());
   // В одно время может быть несколько конференций — храним все «следующие» (с тем же датой/временем старта)
   const [nextMeetings, setNextMeetings] = useState<Meeting[]>([]);
   // Экспорт «Мой календарь ВКС» в .ics
@@ -230,7 +231,7 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
     // Обновляем родительскую страницу раз в минуту, а секундный countdown
     // вынесен в отдельный memo-компонент ниже — иначе каждую секунду заново
     // рендерились календарь, статистика, свободные залы и все карточки.
-    const timer = setInterval(() => setCurrentTime(nowForUi()), 60000);
+    const timer = setInterval(() => setCurrentTime(serverCalendarDate()), 60000);
     // Фоновое обновление данных — ТОЛЬКО когда вкладка видна. Раньше поллинг
     // работал и в фоновых вкладках: у пользователей открыто по несколько
     // вкладок/страниц и каждая каждые 30 с тянула ВСЕ встречи со страницы 1
