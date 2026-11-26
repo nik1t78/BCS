@@ -36,5 +36,9 @@ assert.equal(
 );
 assert.ok(Number.isNaN(convert("2026-02-31", "10:00", "Europe/Moscow")));
 assert.ok(Number.isNaN(convert("2026-11-26", "25:90", "Europe/Moscow")));
+assert.ok(
+  Number.isNaN(convert("2026-03-29", "02:30", "Europe/Berlin")),
+  "Nonexistent local times during the spring DST jump must be rejected"
+);
 
 console.log("Server timezone countdown regression checks passed.");
