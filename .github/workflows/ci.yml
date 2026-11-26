@@ -38,6 +38,9 @@ jobs:
       - name: Meeting time 30-minute snapping regression checks
         run: node scripts/meeting-time-snap-smoke.mjs
 
+      - name: Server timezone countdown regression checks
+        run: node scripts/server-timezone-countdown-smoke.mjs
+
       - name: Frontend API error redaction smoke checks
         run: node scripts/api-error-redaction-smoke.mjs
 
