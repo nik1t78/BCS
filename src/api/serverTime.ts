@@ -165,15 +165,14 @@ export function serverDateTimeToEpoch(date: string, hm: string): number {
   let candidate = wallClockUtc;
   for (let i = 0; i < 4; i += 1) {
     const parts = formatter.formatToParts(new Date(candidate));
-    const value = (type: string) =>
-      Number(parts.find((part) => part.type === type)?.value ?? 0);
+    const value = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? 0);
     const representedUtc = Date.UTC(
       value("year"),
       value("month") - 1,
       value("day"),
       value("hour"),
       value("minute"),
-      value("second"),
+      value("second")
     );
     const next = wallClockUtc - (representedUtc - candidate);
     if (next === candidate) break;
@@ -183,8 +182,7 @@ export function serverDateTimeToEpoch(date: string, hm: string): number {
   // Daylight-saving transitions can make a wall-clock time nonexistent.
   // Do not silently shift a meeting to another time: require an exact round trip.
   const finalParts = formatter.formatToParts(new Date(candidate));
-  const finalValue = (type: string) =>
-    Number(finalParts.find((part) => part.type === type)?.value ?? 0);
+  const finalValue = (type: string) => Number(finalParts.find((part) => part.type === type)?.value ?? 0);
   if (
     finalValue("year") !== year ||
     finalValue("month") !== month ||
@@ -243,15 +241,7 @@ export function serverCalendarDate(): Date {
   const parts = formatter.formatToParts(now);
   const value = (type: string) =>
     Number(parts.find((part) => part.type === type)?.value ?? 0);
-  return new Date(
-    value("year"),
-    value("month") - 1,
-    value("day"),
-    value("hour"),
-    value("minute"),
-    0,
-    0,
-  );
+  return new Date(value("year"), value("month") - 1, value("day"), value("hour"), value("minute"), 0, 0);
 }
 
 /** «Сегодня» на сервере: YYYY-MM-DD. */
