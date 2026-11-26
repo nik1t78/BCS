@@ -19,7 +19,7 @@
 
 | Слой           | Технологии                                                                         |
 | -------------- | ---------------------------------------------------------------------------------- |
-| Frontend       | React 18 + TypeScript, Vite 6, Tailwind CSS 4 (PWA; ExcelJS — ленивая загрузка)    |
+| Frontend       | React 19 + TypeScript, Vite 8, Tailwind CSS 4 (PWA; ExcelJS — ленивая загрузка)    |
 | Backend        | PHP 8.4 / Laravel, Sanctum (Bearer-токены + refresh), MySQL 8, Redis (queue/cache) |
 | VKS-бот        | Python 3.12 + Selenium (headless Chromium) — автосоздание ссылок на salutejazz.ru   |
 | Инфраструктура | Docker Compose: nginx, php-fpm, mysql, redis, queue-worker, scheduler, vks-bot      |
@@ -109,7 +109,7 @@
 - [Подробная инструкция запуска и эксплуатации на русском](docs/START-AND-OPERATIONS-RU.md) — рекомендуемый порядок для Windows 10/11 + Docker Desktop, обновление, остановка, бэкапы, диагностика.
 - [Полная документация проекта](DOCS.md) — архитектура, функции, MAX, безопасность, эксплуатация и Linux.
 
-Для этой ветки разработки сначала прочитайте [инструкцию запуска](docs/START-AND-OPERATIONS-RU.md): она объясняет, как получить именно `vks/phase36-dashboard-performance`, не затрагивая `main`.
+Для локальной проверки до слияния PR [#173](https://github.com/nik1t78/BCS/pull/173) используйте ветку `vks/phase46-fix-frontend-peer-deps`: в ней исправлена совместимость npm-зависимостей и проверен полный CI. Подробные безопасные команды приведены в [инструкции запуска](docs/START-AND-OPERATIONS-RU.md). После слияния PR #173 используйте `main`.
 
 ### Продакшен (Docker) — кратко
 
