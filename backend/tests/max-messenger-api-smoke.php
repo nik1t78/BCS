@@ -115,7 +115,7 @@ assertMaxApi(
 assertMaxApi(
     count($fileUploadRequests) === 1
         && $fileUploadRequests[0]['method'] === 'POST'
-        && $fileUploadRequests[0]['authorization'] === null,
+        && $fileUploadRequests[0]['authorization'] === '',
     'multipart upload does not forward the bot token to the upload host'
 );
 $attachmentData = $messageRequests[1]['data'];
