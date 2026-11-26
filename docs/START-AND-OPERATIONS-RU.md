@@ -168,7 +168,7 @@ git status --short
 
 ```powershell
 git fetch origin
-git pull --ff-only origin vks/phase46-fix-frontend-peer-deps
+git pull --ff-only origin vks/phase55-main-integration
 docker compose config --quiet
 docker compose up -d --build
 docker compose run --rm --no-deps backend-assets
