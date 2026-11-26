@@ -38,26 +38,37 @@ assertMaxApi(
 );
 config(['services.max.api_url' => 'https://platform-api2.max.ru']);
 
-Http::fake([
-    'https://platform-api2.max.ru/messages*' => Http::response(['message' => ['mid' => 'test-message']], 200),
-    'https://platform-api2.max.ru/uploads*' => Http::response([
-        'url' => 'https://uploads.example.test/file',
-        'token' => 'test-upload-token',
-    ], 200),
-    'https://uploads.example.test/*' => Http::response([], 200),
-]);
+$requests = [];
+Http::fake(function (Request $request) use (&$requests) {
+    $requests[] = [
+        'method' => $request->method(),
+        'url' => $request->url(),
+        'authorization' => $request->header('Authorization'),
+        'data' => $request->data(),
+    ];
+
+    if (str_starts_with($request->url(), 'https://platform-api2.max.ru/uploads?type=file')) {
+        return Http::response([
+            'url' => 'https://uploads.example.test/file',
+            'token' => 'test-upload-token',
+        ], 200);
+    }
+
+    if ($request->url() === 'https://uploads.example.test/file') {
+        return Http::response([], 200);
+    }
+
+    if (str_starts_with($request->url(), 'https://platform-api2.max.ru/messages?chat_id=')) {
+        return Http::response(['message' => ['mid' => 'test-message']], 200);
+    }
+
+    return Http::response(['error' => 'unexpected request'], 404);
+});
 
 assertMaxApi(
     MaxMessengerService::sendMessage('123456', 'Тестовое уведомление'),
     'sendMessage accepts successful official API response'
 );
-Http::assertSent(function (Request $request): bool {
-    return $request->method() === 'POST'
-        && $request->url() === 'https://platform-api2.max.ru/messages?chat_id=123456'
-        && $request->hasHeader('Authorization', 'ci-max-test-token')
-        && ($request->data()['text'] ?? null) === 'Тестовое уведомление';
-});
-echo "[PASS] sendMessage uses POST /messages?chat_id and raw Authorization token" . PHP_EOL;
 
 $tempFile = tempnam(sys_get_temp_dir(), 'bcs-max-upload-');
 if ($tempFile === false) {
@@ -70,29 +81,51 @@ try {
         MaxMessengerService::sendFile('123456', $tempFile, 'protocol.txt', 'Протокол встречи'),
         'sendFile completes upload and message flow'
     );
-
-    Http::assertSent(function (Request $request): bool {
-        return $request->method() === 'POST'
-            && str_starts_with($request->url(), 'https://platform-api2.max.ru/uploads?type=file')
-            && $request->hasHeader('Authorization', 'ci-max-test-token');
-    });
-    Http::assertSent(function (Request $request): bool {
-        return $request->method() === 'POST'
-            && $request->url() === 'https://uploads.example.test/file'
-            && !$request->hasHeader('Authorization');
-    });
-    Http::assertSent(function (Request $request): bool {
-        $data = $request->data();
-        return $request->method() === 'POST'
-            && $request->url() === 'https://platform-api2.max.ru/messages?chat_id=123456'
-            && $request->hasHeader('Authorization', 'ci-max-test-token')
-            && ($data['text'] ?? null) === 'Протокол встречи'
-            && ($data['attachments'][0]['type'] ?? null) === 'file'
-            && ($data['attachments'][0]['payload']['token'] ?? null) === 'test-upload-token';
-    });
-    echo "[PASS] sendFile uses official upload token and file attachment flow" . PHP_EOL;
 } finally {
     @unlink($tempFile);
 }
+
+$messageRequests = array_values(array_filter(
+    $requests,
+    fn (array $request): bool => str_starts_with($request['url'], 'https://platform-api2.max.ru/messages?')
+));
+$uploadInitRequests = array_values(array_filter(
+    $requests,
+    fn (array $request): bool => str_starts_with($request['url'], 'https://platform-api2.max.ru/uploads?')
+));
+$fileUploadRequests = array_values(array_filter(
+    $requests,
+    fn (array $request): bool => $request['url'] === 'https://uploads.example.test/file'
+));
+
+assertMaxApi(count($messageRequests) === 2, 'text and file are sent through POST /messages');
+assertMaxApi(
+    $messageRequests[0]['method'] === 'POST'
+        && $messageRequests[0]['url'] === 'https://platform-api2.max.ru/messages?chat_id=123456'
+        && $messageRequests[0]['authorization'] === 'ci-max-test-token'
+        && ($messageRequests[0]['data']['text'] ?? null) === 'Тестовое уведомление',
+    'sendMessage uses official endpoint and raw Authorization token'
+);
+assertMaxApi(
+    count($uploadInitRequests) === 1
+        && $uploadInitRequests[0]['method'] === 'POST'
+        && $uploadInitRequests[0]['authorization'] === 'ci-max-test-token',
+    'file upload initialization uses authenticated POST /uploads'
+);
+assertMaxApi(
+    count($fileUploadRequests) === 1
+        && $fileUploadRequests[0]['method'] === 'POST'
+        && $fileUploadRequests[0]['authorization'] === null,
+    'multipart upload does not forward the bot token to the upload host'
+);
+$attachmentData = $messageRequests[1]['data'];
+assertMaxApi(
+    $messageRequests[1]['url'] === 'https://platform-api2.max.ru/messages?chat_id=123456'
+        && $messageRequests[1]['authorization'] === 'ci-max-test-token'
+        && ($attachmentData['text'] ?? null) === 'Протокол встречи'
+        && ($attachmentData['attachments'][0]['type'] ?? null) === 'file'
+        && ($attachmentData['attachments'][0]['payload']['token'] ?? null) === 'test-upload-token',
+    'file is sent as an official MAX file attachment token'
+);
 
 echo "All BCS MAX Bot API smoke checks passed." . PHP_EOL;
