@@ -21,7 +21,7 @@ jobs:
         run: npm ci
 
       - name: Audit npm dependencies (block high and critical advisories)
-        run: npm audit --audit-level=high
+        run: npm audit --audit-level=low
 
       - name: Lint (ESLint)
         run: npm run lint
