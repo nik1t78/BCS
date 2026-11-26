@@ -110,7 +110,9 @@ export const apiRequest = async (endpoint: string, options: RequestInit = {}, _r
         const firstMessages = Object.values(error.errors).flat() as string[];
         if (firstMessages.length > 0) message = firstMessages.join("; ");
       }
-      const err: any = new Error(message || `Ошибка сервера (HTTP ${response.status}). Подробности — в логах: docker compose logs backend`);
+      const err: any = new Error(
+        message || `Ошибка сервера (HTTP ${response.status}). Подробности — в логах: docker compose logs backend`
+      );
       // Пробрасываем объект errors целиком: store-api извлекает конкретную
       // причину валидации («время уже прошло» и т.п.) для сообщения в UI.
       err.errors = error.errors ?? null;
@@ -282,10 +284,11 @@ export const meetingsAPI = {
     participant_ids: number[];
     room_id?: number;
     limit?: number;
-  }) => apiRequest("/meetings/suggest-slots", {
-    method: "POST",
-    body: JSON.stringify(data),
-  }),
+  }) =>
+    apiRequest("/meetings/suggest-slots", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 
   // Проверка конфликтов расписания: пересекающиеся встречи у тех же людей
   checkConflicts: (params: {
@@ -402,8 +405,7 @@ export const rsvpAPI = {
       body: JSON.stringify({ response }),
     }),
 
-  exportCsv: (meetingId: string) =>
-    downloadBlob(`/meetings/${meetingId}/rsvp/export`),
+  exportCsv: (meetingId: string) => downloadBlob(`/meetings/${meetingId}/rsvp/export`),
 };
 
 // NOTIFICATIONS API
@@ -422,9 +424,7 @@ export const notificationsAPI = {
     if (!response?.ticket) return null;
 
     // При reconnect нужен новый билет: предыдущий уже был использован.
-    return new EventSource(
-      `${API_BASE_URL}/notifications/stream?ticket=${encodeURIComponent(response.ticket)}`
-    );
+    return new EventSource(`${API_BASE_URL}/notifications/stream?ticket=${encodeURIComponent(response.ticket)}`);
   },
 
   getAll: (params?: { type?: string; unread?: boolean; all?: boolean; per_page?: number }) => {
@@ -641,7 +641,10 @@ export async function syncServerTime(force = false): Promise<void> {
     // браузер могли отдать закешированный ответ /api/time вчерашней выдержки —
     // offset получался смещённым на сутки, «серверное сегодня» отставало, и
     // форма молча подставляла в заявку предыдущий день.
-    const res = await fetch(timeUrl, { headers: { Accept: "application/json", "Cache-Control": "no-cache" }, cache: "no-store" });
+    const res = await fetch(timeUrl, {
+      headers: { Accept: "application/json", "Cache-Control": "no-cache" },
+      cache: "no-store",
+    });
     if (!res.ok) return;
     const t1 = Date.now();
     const data = await res.json();
@@ -840,7 +843,9 @@ export const roomsAPI = {
 // Управление неудачными задачами очереди (только администратор).
 export const failedJobsAPI = {
   list: (page = 1, perPage = 25) =>
-    apiRequest(`/admin/failed-jobs?${new URLSearchParams({ page: String(page), per_page: String(perPage) }).toString()}`),
+    apiRequest(
+      `/admin/failed-jobs?${new URLSearchParams({ page: String(page), per_page: String(perPage) }).toString()}`
+    ),
   retry: (id: number) => apiRequest(`/admin/failed-jobs/${id}/retry`, { method: "POST" }),
   remove: (id: number) => apiRequest(`/admin/failed-jobs/${id}`, { method: "DELETE" }),
 };
@@ -877,7 +882,6 @@ export const pushAPI = {
   unsubscribe: (id: string | number) => apiRequest(`/push/subscribe/${id}`, { method: "DELETE" }),
   test: () => apiRequest("/push/test", { method: "POST" }),
 };
-
 
 // Голосования внутри встречи.
 export const meetingPollsAPI = {

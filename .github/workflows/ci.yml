@@ -26,9 +26,8 @@ jobs:
       - name: Lint (ESLint)
         run: npm run lint
 
-      - name: Format check (Prettier — existing repository debt)
+      - name: Format check (Prettier)
         run: npm run format:check --if-present
-        continue-on-error: true
 
       - name: Type-check
         run: npx tsc --noEmit
@@ -197,3 +196,14 @@ jobs:
           APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
           REDIS_PASSWORD: ci-test-redis-password
         run: docker compose config --quiet
+
+  runtime:
+    name: Docker full-stack runtime smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - name: Boot isolated Compose stack and verify critical paths
+        env:
+          BCS_CI_RUNTIME_SMOKE: "1"
+        run: bash scripts/docker-runtime-smoke.sh

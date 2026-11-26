@@ -53,7 +53,6 @@ export default function MeetingRsvp({ meeting, user }: Props) {
     if (ok) setData(await getMeetingRsvp(meeting.id));
   };
 
-
   const handleExport = async () => {
     setExporting(true);
     setExportError("");
@@ -143,29 +142,33 @@ export default function MeetingRsvp({ meeting, user }: Props) {
               {exporting ? "Формирование CSV…" : "Скачать список участников (CSV)"}
             </button>
           </div>
-          {exportError && <p role="alert" className="text-xs text-red-600">{exportError}</p>}
+          {exportError && (
+            <p role="alert" className="text-xs text-red-600">
+              {exportError}
+            </p>
+          )}
           <ul className="space-y-1 max-h-40 overflow-y-auto">
-          {(data?.rsvps ?? []).length === 0 && (
-            <li className="text-xs text-gray-400">Пока никто не ответил на приглашение.</li>
-          )}
-          {(data?.rsvps ?? []).map((r) => (
-            <li key={r.userId} className="flex items-center justify-between text-xs">
-              <span className="text-gray-700 dark:text-gray-200">{r.name || `Участник #${r.userId}`}</span>
-              <span
-                className={
-                  r.response === "yes" ? "text-green-600" : r.response === "no" ? "text-red-600" : "text-amber-600"
-                }
-              >
-                <i
-                  className={`fas ${r.response === "yes" ? "fa-check-circle" : r.response === "no" ? "fa-times-circle" : "fa-question-circle"} mr-1`}
-                ></i>
-                {r.response === "yes" ? "придёт" : r.response === "no" ? "не придёт" : "под вопросом"}
-              </span>
-            </li>
-          ))}
-          {summary && summary.pending > 0 && (
-            <li className="text-xs text-gray-400 italic">+ {summary.pending} без ответа</li>
-          )}
+            {(data?.rsvps ?? []).length === 0 && (
+              <li className="text-xs text-gray-400">Пока никто не ответил на приглашение.</li>
+            )}
+            {(data?.rsvps ?? []).map((r) => (
+              <li key={r.userId} className="flex items-center justify-between text-xs">
+                <span className="text-gray-700 dark:text-gray-200">{r.name || `Участник #${r.userId}`}</span>
+                <span
+                  className={
+                    r.response === "yes" ? "text-green-600" : r.response === "no" ? "text-red-600" : "text-amber-600"
+                  }
+                >
+                  <i
+                    className={`fas ${r.response === "yes" ? "fa-check-circle" : r.response === "no" ? "fa-times-circle" : "fa-question-circle"} mr-1`}
+                  ></i>
+                  {r.response === "yes" ? "придёт" : r.response === "no" ? "не придёт" : "под вопросом"}
+                </span>
+              </li>
+            ))}
+            {summary && summary.pending > 0 && (
+              <li className="text-xs text-gray-400 italic">+ {summary.pending} без ответа</li>
+            )}
           </ul>
         </div>
       )}

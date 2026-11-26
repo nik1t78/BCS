@@ -178,8 +178,7 @@ export default function MeetingMinutes({ meetingId, user, users, canWrite }: Mee
       );
   };
 
-  const isOverdue = (t: MeetingTask) =>
-    !!t.deadline && t.status !== "done" && t.deadline < guessServerTodayKey();
+  const isOverdue = (t: MeetingTask) => !!t.deadline && t.status !== "done" && t.deadline < guessServerTodayKey();
 
   const doneCount = tasks.filter((t) => t.status === "done").length;
 
@@ -347,7 +346,6 @@ export default function MeetingMinutes({ meetingId, user, users, canWrite }: Mee
                                 </span>
                               </div>
                             )}
-
                           </div>
                           {canWrite && (
                             <div className="flex gap-1 shrink-0">
@@ -485,21 +483,18 @@ export default function MeetingMinutes({ meetingId, user, users, canWrite }: Mee
                       {/* Ответственные: показываем все ФИО (каждое — отдельным переносимым чипом,
                           длинное ФИО не обрезается в маленьком блоке).
                           Раньше при >1 человеке выводилось только первое имя + «и др.» */}
-                      {(t.assigneeNames?.length
-                        ? t.assigneeNames
-                        : t.assigneeName
-                          ? [t.assigneeName]
-                          : []
-                      ).map((name, i) => (
-                        <span
-                          key={i}
-                          title={name}
-                          className="inline-flex items-center max-w-full px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
-                        >
-                          <i className="fas fa-user mr-1 shrink-0"></i>
-                          <span className="break-words min-w-0">{name}</span>
-                        </span>
-                      ))}
+                      {(t.assigneeNames?.length ? t.assigneeNames : t.assigneeName ? [t.assigneeName] : []).map(
+                        (name, i) => (
+                          <span
+                            key={i}
+                            title={name}
+                            className="inline-flex items-center max-w-full px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+                          >
+                            <i className="fas fa-user mr-1 shrink-0"></i>
+                            <span className="break-words min-w-0">{name}</span>
+                          </span>
+                        )
+                      )}
                       {t.deadline && (
                         <span className={isOverdue(t) ? "text-red-500 font-medium" : ""}>
                           <i className="fas fa-calendar mr-1"></i>

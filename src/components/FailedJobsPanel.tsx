@@ -70,7 +70,9 @@ export default function FailedJobsPanel() {
           <h3 className="font-bold text-gray-800 dark:text-gray-100">
             <i className="fas fa-triangle-exclamation text-amber-500 mr-2"></i>Ошибки очереди
           </h3>
-          <p className="text-xs text-gray-500 mt-1">Задачи, завершившиеся ошибкой. Payload и секретные данные не показываются.</p>
+          <p className="text-xs text-gray-500 mt-1">
+            Задачи, завершившиеся ошибкой. Payload и секретные данные не показываются.
+          </p>
         </div>
         <button
           onClick={() => void load(page)}
@@ -103,7 +105,9 @@ export default function FailedJobsPanel() {
                       {job.failed_at ? new Date(job.failed_at).toLocaleString("ru-RU") : "—"}
                     </span>
                   </div>
-                  <p className="text-sm text-gray-700 dark:text-gray-200 break-words">{job.exception_summary || "Причина не указана"}</p>
+                  <p className="text-sm text-gray-700 dark:text-gray-200 break-words">
+                    {job.exception_summary || "Причина не указана"}
+                  </p>
                   <p className="text-[11px] text-gray-400 font-mono break-all">{job.uuid}</p>
                 </div>
                 <div className="flex shrink-0 gap-2">
@@ -126,7 +130,9 @@ export default function FailedJobsPanel() {
             ))}
           </div>
           <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between text-xs text-gray-500">
-            <span>Страница {page} из {lastPage}</span>
+            <span>
+              Страница {page} из {lastPage}
+            </span>
             <div className="flex gap-2">
               <button
                 onClick={() => void load(page - 1)}

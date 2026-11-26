@@ -9,7 +9,13 @@ import type { MeetingPrefill } from "./UserPanel";
 import { buildJoinUrl, extractPswFromAny } from "../utils/vksLink";
 import { toDateKey, formatRuDate } from "../utils/dateKey";
 import { icsAPI, meetingsAPI } from "../api/client";
-import { syncServerTime, serverNowDate, serverTodayKey as serverTodayKeyTz, serverNowHm as serverNowHmTz, serverTodayKey as guessServerTodayKey } from "../api/serverTime";
+import {
+  syncServerTime,
+  serverNowDate,
+  serverTodayKey as serverTodayKeyTz,
+  serverNowHm as serverNowHmTz,
+  serverTodayKey as guessServerTodayKey,
+} from "../api/serverTime";
 
 const UserPanel = lazy(() => import("./UserPanel"));
 const RoomBookingModal = lazy(() => import("./RoomBookingModal"));
@@ -176,7 +182,8 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
 
   useEffect(() => {
     let cancelled = false;
-    icsAPI.status()
+    icsAPI
+      .status()
       .then((result) => {
         if (!cancelled) setIcsFeedActive(Boolean(result?.active));
       })
@@ -200,7 +207,9 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
         setUsers(u);
         // Пока сервер создаёт реальную ссылку SaluteJazz, обновляем список
         // раз в 10 секунд. В обычном режиме сохраняем редкий 5-минутный поллинг.
-        const nextDelay = m.some((meeting) => meeting.vksLinkStatus === "pending" || meeting.vksLinkStatus === "creating")
+        const nextDelay = m.some(
+          (meeting) => meeting.vksLinkStatus === "pending" || meeting.vksLinkStatus === "creating"
+        )
           ? 10000
           : 300000;
         if (nextDelay !== pollDelay) {
@@ -308,12 +317,11 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
     // Берём все конференции, совпадающие по дате и времени старта с ближайшей —
     // в одно время может быть несколько конференций.
     const first = upcoming[0] || null;
-    const firstDate = first ? first._occDate ?? first.date : "";
+    const firstDate = first ? (first._occDate ?? first.date) : "";
     const simultaneous = first
       ? upcoming.filter((m) => (m._occDate ?? m.date) === firstDate && m.startTime === first.startTime)
       : [];
     setNextMeetings(simultaneous);
-
   }, [currentTime, visibleMeetings]);
 
   const todayMeetings = (() => {
@@ -775,8 +783,7 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
                 </div>
                 <p className="text-gray-600 dark:text-gray-300 mb-1">
                   <i className="far fa-clock mr-2 text-blue-500"></i>
-                  {formatRuDate(detailMeeting.date)} • {detailMeeting.startTime}–
-                  {detailMeeting.endTime}
+                  {formatRuDate(detailMeeting.date)} • {detailMeeting.startTime}–{detailMeeting.endTime}
                 </p>
                 <p className="text-gray-600 dark:text-gray-300 mb-1">
                   <i className="fas fa-map-marker-alt mr-2 text-purple-500"></i>
@@ -810,8 +817,12 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
                       </button>
                     </>
                   )}
-                  {canSee && !detailMeeting.link && detailMeeting.vksLinkStatus === "failed" &&
-                    (Number(detailMeeting.organizerId) === Number(user.id) || user.role === "admin" || user.role === "moderator") && (
+                  {canSee &&
+                    !detailMeeting.link &&
+                    detailMeeting.vksLinkStatus === "failed" &&
+                    (Number(detailMeeting.organizerId) === Number(user.id) ||
+                      user.role === "admin" ||
+                      user.role === "moderator") && (
                       <button
                         onClick={async () => {
                           try {
@@ -863,8 +874,8 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
             Мой календарь ВКС
           </h3>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Скачайте файл .ics для разового импорта или создайте секретную ссылку подписки.
-            Подписанный календарь автоматически получает изменения расписания в Outlook, Google Calendar и других приложениях.
+            Скачайте файл .ics для разового импорта или создайте секретную ссылку подписки. Подписанный календарь
+            автоматически получает изменения расписания в Outlook, Google Calendar и других приложениях.
           </p>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -873,20 +884,35 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
             disabled={icsLoading}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
-            {icsLoading ? <><i className="fas fa-circle-notch fa-spin mr-1"></i> Формирование…</> : <><i className="fas fa-download mr-1"></i> Скачать .ics</>}
+            {icsLoading ? (
+              <>
+                <i className="fas fa-circle-notch fa-spin mr-1"></i> Формирование…
+              </>
+            ) : (
+              <>
+                <i className="fas fa-download mr-1"></i> Скачать .ics
+              </>
+            )}
           </button>
           <button
             onClick={handleCreateIcsFeed}
             disabled={icsFeedLoading}
             className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50"
           >
-            {icsFeedLoading ? "Создание…" : <><i className="fas fa-link mr-1"></i> {icsFeedUrl ? "Обновить ссылку" : "Создать ссылку подписки"}</>}
+            {icsFeedLoading ? (
+              "Создание…"
+            ) : (
+              <>
+                <i className="fas fa-link mr-1"></i> {icsFeedUrl ? "Обновить ссылку" : "Создать ссылку подписки"}
+              </>
+            )}
           </button>
         </div>
         {icsFeedActive && (
           <div className="mt-3 rounded-lg border border-indigo-200 dark:border-indigo-800 p-3 space-y-2">
             <p className="text-xs text-gray-600 dark:text-gray-300">
-              Секретная ссылка даёт доступ только на чтение к вашему календарю. Не публикуйте её: любой, у кого есть ссылка, сможет просматривать доступные вам встречи.
+              Секретная ссылка даёт доступ только на чтение к вашему календарю. Не публикуйте её: любой, у кого есть
+              ссылка, сможет просматривать доступные вам встречи.
             </p>
             {icsFeedUrl ? (
               <>
@@ -897,17 +923,25 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
                   onFocus={(event) => event.currentTarget.select()}
                   className="w-full text-xs rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-200 px-2 py-2"
                 />
-                <button onClick={handleCopyIcsFeed} className="px-3 py-1.5 rounded bg-gray-100 dark:bg-gray-700 text-sm text-gray-700 dark:text-gray-200">
+                <button
+                  onClick={handleCopyIcsFeed}
+                  className="px-3 py-1.5 rounded bg-gray-100 dark:bg-gray-700 text-sm text-gray-700 dark:text-gray-200"
+                >
                   <i className="fas fa-copy mr-1"></i>Скопировать
                 </button>
               </>
             ) : (
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Подписка активна, но адрес не сохранён на этом экране. Создайте новую ссылку, чтобы получить адрес; предыдущая ссылка перестанет работать.
+                Подписка активна, но адрес не сохранён на этом экране. Создайте новую ссылку, чтобы получить адрес;
+                предыдущая ссылка перестанет работать.
               </p>
             )}
             <div className="flex flex-wrap gap-2">
-              <button onClick={handleRevokeIcsFeed} disabled={icsFeedRevoking} className="px-3 py-1.5 rounded border border-red-300 text-red-600 text-sm disabled:opacity-50">
+              <button
+                onClick={handleRevokeIcsFeed}
+                disabled={icsFeedRevoking}
+                className="px-3 py-1.5 rounded border border-red-300 text-red-600 text-sm disabled:opacity-50"
+              >
                 {icsFeedRevoking ? "Отключение…" : "Отключить ссылку"}
               </button>
             </div>

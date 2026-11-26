@@ -152,18 +152,18 @@ export function mapMeeting(raw: any): Meeting {
 function normalizeCalendarDate(value: unknown): unknown {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     const year = value.getFullYear();
-    const month = String(value.getMonth() + 1).padStart(2, '0');
-    const day = String(value.getDate()).padStart(2, '0');
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
   }
 
-  if (typeof value !== 'string') return value;
+  if (typeof value !== "string") return value;
   const trimmed = value.trim();
   const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
 
   const ru = trimmed.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
-  if (ru) return `${ru[3]}-${String(Number(ru[2])).padStart(2, '0')}-${String(Number(ru[1])).padStart(2, '0')}`;
+  if (ru) return `${ru[3]}-${String(Number(ru[2])).padStart(2, "0")}-${String(Number(ru[1])).padStart(2, "0")}`;
   return value;
 }
 
@@ -470,9 +470,7 @@ export async function getMeetings(params?: {
           // метку meetings:changed — если в кеше уже есть «завершённые» позже
           // момента сохранения кеша, считаем кеш устаревшим.
           const cacheHasLateCompleted =
-            entry.serverStamp !== null &&
-            lastSeenCompletedUpdated > 0 &&
-            lastSeenCompletedUpdated >= entry.savedAt;
+            entry.serverStamp !== null && lastSeenCompletedUpdated > 0 && lastSeenCompletedUpdated >= entry.savedAt;
           if ((stamp === null || stamp === entry.serverStamp) && !cacheHasLateCompleted) {
             return entry.data;
           }

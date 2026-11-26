@@ -346,7 +346,9 @@ function LoadDashboard() {
 export default function AdminPanel({ user }: AdminPanelProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
-  const [activeTab, setActiveTab] = useState<"users" | "meetings" | "rooms" | "stats" | "trash" | "audit" | "botlog" | "status">("users");
+  const [activeTab, setActiveTab] = useState<
+    "users" | "meetings" | "rooms" | "stats" | "trash" | "audit" | "botlog" | "status"
+  >("users");
   // Количество переговорных комнат — бейдж на вкладке «Комнаты» (как у
   // «Пользователи» и «Конференции»).
   const [roomsCount, setRoomsCount] = useState<number | undefined>(undefined);
@@ -418,8 +420,22 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     timezone?: string;
     php?: { version?: string; uptime_s?: number | null };
     services?: Record<string, any>;
-    vks_bot?: { expected?: boolean; auto?: boolean; events_24h?: number; success_rate_24h?: number | null; recent?: any[] };
-    backup?: { ok?: boolean; last_file?: string | null; last_at?: string | null; age_hours?: number | null; size_mb?: number | null; verified?: boolean; count?: number };
+    vks_bot?: {
+      expected?: boolean;
+      auto?: boolean;
+      events_24h?: number;
+      success_rate_24h?: number | null;
+      recent?: any[];
+    };
+    backup?: {
+      ok?: boolean;
+      last_file?: string | null;
+      last_at?: string | null;
+      age_hours?: number | null;
+      size_mb?: number | null;
+      verified?: boolean;
+      count?: number;
+    };
     tv_screens?: { room: string; screen_id?: string | null; ip?: string; last_seen?: string }[];
   }
   const [sysStatus, setSysStatus] = useState<SystemStatus | null>(null);
@@ -692,7 +708,11 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       return;
     }
 
-    if (confirm("Удалить пользователя? Если у него есть встречи или история участия, аккаунт нужно отключить, а не удалять.")) {
+    if (
+      confirm(
+        "Удалить пользователя? Если у него есть встречи или история участия, аккаунт нужно отключить, а не удалять."
+      )
+    ) {
       const result = await deleteUser(id);
       if (!result.ok) {
         alert(result.message || "Не удалось удалить пользователя");
@@ -2007,10 +2027,14 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 border-b border-gray-200 dark:border-gray-700">
               <div className="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg">
                 <div className="text-xs text-gray-500 dark:text-gray-400">Успешность ссылок</div>
-                <div className={`text-xl font-bold ${Number(botSla.success_rate) >= 90 ? "text-green-600" : Number(botSla.success_rate) >= 70 ? "text-yellow-600" : "text-red-600"}`}>
+                <div
+                  className={`text-xl font-bold ${Number(botSla.success_rate) >= 90 ? "text-green-600" : Number(botSla.success_rate) >= 70 ? "text-yellow-600" : "text-red-600"}`}
+                >
                   {botSla.success_rate != null ? `${botSla.success_rate}%` : "—"}
                 </div>
-                <div className="text-xs text-gray-400">{botSla.successful}/{botSla.total_attempts} попыток</div>
+                <div className="text-xs text-gray-400">
+                  {botSla.successful}/{botSla.total_attempts} попыток
+                </div>
               </div>
               <div className="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg">
                 <div className="text-xs text-gray-500 dark:text-gray-400">Ср. время создания</div>
@@ -2020,7 +2044,9 @@ export default function AdminPanel({ user }: AdminPanelProps) {
               </div>
               <div className="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg">
                 <div className="text-xs text-gray-500 dark:text-gray-400">Ручных вмешательств</div>
-                <div className="text-xl font-bold text-gray-800 dark:text-gray-100">{botSla.manual_interventions ?? 0}</div>
+                <div className="text-xl font-bold text-gray-800 dark:text-gray-100">
+                  {botSla.manual_interventions ?? 0}
+                </div>
               </div>
               <div className="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg col-span-2 md:col-span-1">
                 <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Топ причин ошибок</div>
@@ -2043,13 +2069,27 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             <table className="w-full">
               <thead className="bg-gray-50 dark:bg-gray-700/50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Время</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Встреча</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Действие</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Запуск</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Результат</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Длит.</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Ссылка / ошибка</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                    Время
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                    Встреча
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                    Действие
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                    Запуск
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                    Результат
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                    Длит.
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                    Ссылка / ошибка
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -2079,7 +2119,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     </td>
                     <td className="px-4 py-3 text-xs max-w-md">
                       {log.success && log.link ? (
-                        <a href={log.link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline truncate block">
+                        <a
+                          href={log.link}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue-600 hover:underline truncate block"
+                        >
                           {log.link}
                         </a>
                       ) : (
@@ -2126,133 +2171,187 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       )}
 
       {/* Вкладка «Статус системы»: health-карточки + журнал ТВ + предпросмотр экрана */}
-      {activeTab === "status" && user.role === "admin" && (() => {
-        const svc = sysStatus?.services ?? {};
-        const fmtUp = (s?: number | null) => {
-          if (s == null) return "—";
-          const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
-          return (d ? `${d}д ` : "") + `${h}ч ${m}м`;
-        };
-        const pill = (ok: boolean, text: string) => (
-          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${ok ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"}`}>
-            <i className={`fas ${ok ? "fa-check-circle" : "fa-exclamation-circle"}`}></i>{text}
-          </span>
-        );
-        return (
-          <div className="space-y-4">
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold text-gray-800 dark:text-gray-100">
-                  <i className="fas fa-heartbeat text-rose-500 mr-2"></i>Статус системы
-                </h3>
-                <button onClick={loadSystemStatus} disabled={sysLoading}
-                  className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-gray-700 dark:text-gray-200">
-                  <i className={`fas fa-sync-alt mr-1 ${sysLoading ? "fa-spin" : ""}`}></i>Обновить
-                </button>
-              </div>
-              {!sysStatus ? (
-                <p className="text-sm text-gray-500">{sysLoading ? "Загрузка…" : "Нет данных (проверьте, что бэкенд обновлён)"}</p>
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-1">Время сервера</p>
-                      <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-                        {sysStatus.server_time ? new Date(sysStatus.server_time).toLocaleString("ru-RU") : "—"}
-                      </p>
-                      <p className="text-xs text-gray-400">{sysStatus.timezone}</p>
-                    </div>
-                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-1">PHP / uptime</p>
-                      <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{sysStatus.php?.version ?? "—"}</p>
-                      <p className="text-xs text-gray-400">{fmtUp(sysStatus.php?.uptime_s)}</p>
-                    </div>
-                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-1">MySQL</p>
-                      {pill(!!svc.mysql?.ok, svc.mysql?.ok ? `OK · ${svc.mysql.size_mb ?? "?"} МБ` : "Ошибка")}
-                    </div>
-                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-1">Кэш</p>
-                      {pill(!!svc.cache?.ok, svc.cache?.ok ? `OK · ${svc.cache.driver}` : String(svc.cache?.error ?? "Ошибка").slice(0, 24))}
-                    </div>
-                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-1">Queue-worker</p>
-                      {pill(!!svc.queue_worker?.ok, svc.queue_worker?.ok ? `OK · heartbeat ${svc.queue_worker.heartbeat_age_s ?? "?"} с` : (svc.queue_worker?.heartbeat_age_s == null ? "Нет heartbeat" : `Молчит ${svc.queue_worker.heartbeat_age_s} с`))}
-                    </div>
-                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-1">Очередь</p>
-                      {pill(!!svc.queue?.ok, svc.queue?.ok ? `${svc.queue.pending ?? 0} в ожидании · ${svc.queue.failed_24h ?? 0} ошибок/24ч` : "Ошибка")}
-                    </div>
-                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-1">Планировщик</p>
-                      {pill(!!svc.scheduler?.ok, svc.scheduler?.ok ? `Активен · цикл ${svc.scheduler.cron_age_s ?? "?"} с назад` : (svc.scheduler?.emergency_heartbeat ? "Жив (аварийный heartbeat web-процесса)" : (svc.scheduler?.cron_age_s == null ? "Ещё не запускался" : `Молчит ${Math.round(svc.scheduler.cron_age_s / 60)} мин`)))}
-                    </div>
-                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-1">ВКС-бот (24ч)</p>
-                      {pill(true, `${sysStatus.vks_bot?.events_24h ?? 0} событий · успех ${sysStatus.vks_bot?.success_rate_24h ?? "—"}%`)}
-                    </div>
-                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-1">Резервные копии БД</p>
-                      {pill(!!sysStatus.backup?.ok, sysStatus.backup?.ok ? `Проверена · ${sysStatus.backup.age_hours ?? "?"} ч назад` : "Нет свежей проверенной копии")}
-                      <p className="text-[11px] text-gray-400 mt-1">{sysStatus.backup?.count ?? 0} копий · {sysStatus.backup?.size_mb ?? "—"} МБ</p>
-                    </div>
-                  </div>
-                  <p className="text-xs text-gray-500 mb-2">
-                    <i className="fas fa-tv mr-1"></i>Живые экраны ТВ (за 15 мин):{" "}
-                    {sysStatus.tv_screens?.length
-                      ? sysStatus.tv_screens.map((s) => s.room).join(", ")
-                      : "нет подключённых экранов"}
-                  </p>
-                </>
-              )}
-            </div>
-
-            <FailedJobsPanel />
-
-            {/* Журнал посещаемости экранов ТВ */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
-              <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-                <h3 className="font-bold text-gray-800 dark:text-gray-100">
-                  <i className="fas fa-history text-blue-600 mr-2"></i>Журнал посещаемости ТВ (7 дней)
-                </h3>
-              </div>
-              {tvViews.length === 0 ? (
-                <p className="p-4 text-sm text-gray-500">Записей нет — экраны ещё не опрашивали API после обновления.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead className="bg-gray-50 dark:bg-gray-700/50 text-left">
-                      <tr>
-                        <th className="px-4 py-2 font-medium text-gray-500">Зал</th>
-                        <th className="px-4 py-2 font-medium text-gray-500">IP</th>
-                        <th className="px-4 py-2 font-medium text-gray-500">Подключился</th>
-                        <th className="px-4 py-2 font-medium text-gray-500">Последний сигнал</th>
-                        <th className="px-4 py-2 font-medium text-gray-500">Длит., мин</th>
-                        <th className="px-4 py-2 font-medium text-gray-500">Статус</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tvViews.slice(0, 30).map((r) => (
-                        <tr key={r.id} className="border-t border-gray-100 dark:border-gray-700">
-                          <td className="px-4 py-2 text-gray-800 dark:text-gray-100">{r.room}</td>
-                          <td className="px-4 py-2 text-gray-500">{r.ip ?? "—"}</td>
-                          <td className="px-4 py-2 text-gray-500">{r.first_seen ? new Date(r.first_seen).toLocaleString("ru-RU") : "—"}</td>
-                          <td className="px-4 py-2 text-gray-500">{r.last_seen ? new Date(r.last_seen).toLocaleString("ru-RU") : "—"}</td>
-                          <td className="px-4 py-2 text-gray-500">{r.duration_min ?? "—"}</td>
-                          <td className="px-4 py-2">{r.online ? pill(true, "онлайн") : pill(false, "офлайн")}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+      {activeTab === "status" &&
+        user.role === "admin" &&
+        (() => {
+          const svc = sysStatus?.services ?? {};
+          const fmtUp = (s?: number | null) => {
+            if (s == null) return "—";
+            const d = Math.floor(s / 86400),
+              h = Math.floor((s % 86400) / 3600),
+              m = Math.floor((s % 3600) / 60);
+            return (d ? `${d}д ` : "") + `${h}ч ${m}м`;
+          };
+          const pill = (ok: boolean, text: string) => (
+            <span
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${ok ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"}`}
+            >
+              <i className={`fas ${ok ? "fa-check-circle" : "fa-exclamation-circle"}`}></i>
+              {text}
+            </span>
+          );
+          return (
+            <div className="space-y-4">
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-bold text-gray-800 dark:text-gray-100">
+                    <i className="fas fa-heartbeat text-rose-500 mr-2"></i>Статус системы
+                  </h3>
+                  <button
+                    onClick={loadSystemStatus}
+                    disabled={sysLoading}
+                    className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-gray-700 dark:text-gray-200"
+                  >
+                    <i className={`fas fa-sync-alt mr-1 ${sysLoading ? "fa-spin" : ""}`}></i>Обновить
+                  </button>
                 </div>
-              )}
-            </div>
+                {!sysStatus ? (
+                  <p className="text-sm text-gray-500">
+                    {sysLoading ? "Загрузка…" : "Нет данных (проверьте, что бэкенд обновлён)"}
+                  </p>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                        <p className="text-xs text-gray-500 mb-1">Время сервера</p>
+                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                          {sysStatus.server_time ? new Date(sysStatus.server_time).toLocaleString("ru-RU") : "—"}
+                        </p>
+                        <p className="text-xs text-gray-400">{sysStatus.timezone}</p>
+                      </div>
+                      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                        <p className="text-xs text-gray-500 mb-1">PHP / uptime</p>
+                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                          {sysStatus.php?.version ?? "—"}
+                        </p>
+                        <p className="text-xs text-gray-400">{fmtUp(sysStatus.php?.uptime_s)}</p>
+                      </div>
+                      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                        <p className="text-xs text-gray-500 mb-1">MySQL</p>
+                        {pill(!!svc.mysql?.ok, svc.mysql?.ok ? `OK · ${svc.mysql.size_mb ?? "?"} МБ` : "Ошибка")}
+                      </div>
+                      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                        <p className="text-xs text-gray-500 mb-1">Кэш</p>
+                        {pill(
+                          !!svc.cache?.ok,
+                          svc.cache?.ok ? `OK · ${svc.cache.driver}` : String(svc.cache?.error ?? "Ошибка").slice(0, 24)
+                        )}
+                      </div>
+                      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                        <p className="text-xs text-gray-500 mb-1">Queue-worker</p>
+                        {pill(
+                          !!svc.queue_worker?.ok,
+                          svc.queue_worker?.ok
+                            ? `OK · heartbeat ${svc.queue_worker.heartbeat_age_s ?? "?"} с`
+                            : svc.queue_worker?.heartbeat_age_s == null
+                              ? "Нет heartbeat"
+                              : `Молчит ${svc.queue_worker.heartbeat_age_s} с`
+                        )}
+                      </div>
+                      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                        <p className="text-xs text-gray-500 mb-1">Очередь</p>
+                        {pill(
+                          !!svc.queue?.ok,
+                          svc.queue?.ok
+                            ? `${svc.queue.pending ?? 0} в ожидании · ${svc.queue.failed_24h ?? 0} ошибок/24ч`
+                            : "Ошибка"
+                        )}
+                      </div>
+                      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                        <p className="text-xs text-gray-500 mb-1">Планировщик</p>
+                        {pill(
+                          !!svc.scheduler?.ok,
+                          svc.scheduler?.ok
+                            ? `Активен · цикл ${svc.scheduler.cron_age_s ?? "?"} с назад`
+                            : svc.scheduler?.emergency_heartbeat
+                              ? "Жив (аварийный heartbeat web-процесса)"
+                              : svc.scheduler?.cron_age_s == null
+                                ? "Ещё не запускался"
+                                : `Молчит ${Math.round(svc.scheduler.cron_age_s / 60)} мин`
+                        )}
+                      </div>
+                      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                        <p className="text-xs text-gray-500 mb-1">ВКС-бот (24ч)</p>
+                        {pill(
+                          true,
+                          `${sysStatus.vks_bot?.events_24h ?? 0} событий · успех ${sysStatus.vks_bot?.success_rate_24h ?? "—"}%`
+                        )}
+                      </div>
+                      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                        <p className="text-xs text-gray-500 mb-1">Резервные копии БД</p>
+                        {pill(
+                          !!sysStatus.backup?.ok,
+                          sysStatus.backup?.ok
+                            ? `Проверена · ${sysStatus.backup.age_hours ?? "?"} ч назад`
+                            : "Нет свежей проверенной копии"
+                        )}
+                        <p className="text-[11px] text-gray-400 mt-1">
+                          {sysStatus.backup?.count ?? 0} копий · {sysStatus.backup?.size_mb ?? "—"} МБ
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-500 mb-2">
+                      <i className="fas fa-tv mr-1"></i>Живые экраны ТВ (за 15 мин):{" "}
+                      {sysStatus.tv_screens?.length
+                        ? sysStatus.tv_screens.map((s) => s.room).join(", ")
+                        : "нет подключённых экранов"}
+                    </p>
+                  </>
+                )}
+              </div>
 
-            {/* Предпросмотр экрана ТВ */}
-            <TvScreenPreview />
-          </div>
-        );
-      })()}
+              <FailedJobsPanel />
+
+              {/* Журнал посещаемости экранов ТВ */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
+                <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                  <h3 className="font-bold text-gray-800 dark:text-gray-100">
+                    <i className="fas fa-history text-blue-600 mr-2"></i>Журнал посещаемости ТВ (7 дней)
+                  </h3>
+                </div>
+                {tvViews.length === 0 ? (
+                  <p className="p-4 text-sm text-gray-500">
+                    Записей нет — экраны ещё не опрашивали API после обновления.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-gray-50 dark:bg-gray-700/50 text-left">
+                        <tr>
+                          <th className="px-4 py-2 font-medium text-gray-500">Зал</th>
+                          <th className="px-4 py-2 font-medium text-gray-500">IP</th>
+                          <th className="px-4 py-2 font-medium text-gray-500">Подключился</th>
+                          <th className="px-4 py-2 font-medium text-gray-500">Последний сигнал</th>
+                          <th className="px-4 py-2 font-medium text-gray-500">Длит., мин</th>
+                          <th className="px-4 py-2 font-medium text-gray-500">Статус</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tvViews.slice(0, 30).map((r) => (
+                          <tr key={r.id} className="border-t border-gray-100 dark:border-gray-700">
+                            <td className="px-4 py-2 text-gray-800 dark:text-gray-100">{r.room}</td>
+                            <td className="px-4 py-2 text-gray-500">{r.ip ?? "—"}</td>
+                            <td className="px-4 py-2 text-gray-500">
+                              {r.first_seen ? new Date(r.first_seen).toLocaleString("ru-RU") : "—"}
+                            </td>
+                            <td className="px-4 py-2 text-gray-500">
+                              {r.last_seen ? new Date(r.last_seen).toLocaleString("ru-RU") : "—"}
+                            </td>
+                            <td className="px-4 py-2 text-gray-500">{r.duration_min ?? "—"}</td>
+                            <td className="px-4 py-2">{r.online ? pill(true, "онлайн") : pill(false, "офлайн")}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Предпросмотр экрана ТВ */}
+              <TvScreenPreview />
+            </div>
+          );
+        })()}
 
       {/* Password Reset Modal */}
       {showPasswordModal && passwordUserId && (

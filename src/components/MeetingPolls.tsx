@@ -12,13 +12,7 @@ type MeetingPoll = {
   closed_at: string | null;
 };
 
-export default function MeetingPolls({
-  meetingId,
-  canManage,
-}: {
-  meetingId: string | number;
-  canManage: boolean;
-}) {
+export default function MeetingPolls({ meetingId, canManage }: { meetingId: string | number; canManage: boolean }) {
   const [polls, setPolls] = useState<MeetingPoll[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -68,7 +62,7 @@ export default function MeetingPolls({
     try {
       const response = await meetingPollsAPI.vote(meetingId, poll.id, optionIndex);
       const updated = response?.data as MeetingPoll | undefined;
-      if (updated) setPolls((current) => current.map((item) => item.id === poll.id ? updated : item));
+      if (updated) setPolls((current) => current.map((item) => (item.id === poll.id ? updated : item)));
       else await load();
     } catch (e: any) {
       setError(e?.message || "Не удалось сохранить голос");
@@ -84,7 +78,7 @@ export default function MeetingPolls({
     try {
       const response = await meetingPollsAPI.close(meetingId, poll.id);
       const updated = response?.data as MeetingPoll | undefined;
-      if (updated) setPolls((current) => current.map((item) => item.id === poll.id ? updated : item));
+      if (updated) setPolls((current) => current.map((item) => (item.id === poll.id ? updated : item)));
       else await load();
     } catch (e: any) {
       setError(e?.message || "Не удалось закрыть голосование");
@@ -119,7 +113,9 @@ export default function MeetingPolls({
             <div key={poll.id} className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-2">
               <div className="flex items-start justify-between gap-2">
                 <p className="font-medium text-gray-800 dark:text-gray-100">{poll.question}</p>
-                <span className={`shrink-0 text-xs rounded-full px-2 py-1 ${poll.is_closed ? "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300" : "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300"}`}>
+                <span
+                  className={`shrink-0 text-xs rounded-full px-2 py-1 ${poll.is_closed ? "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300" : "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300"}`}
+                >
                   {poll.is_closed ? "Закрыто" : "Открыто"}
                 </span>
               </div>
@@ -135,8 +131,13 @@ export default function MeetingPolls({
                       className={`w-full text-left rounded-md border px-3 py-2 text-sm transition-colors disabled:cursor-default ${selected ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20" : "border-gray-200 dark:border-gray-700 hover:border-blue-300"}`}
                     >
                       <span className="flex items-center justify-between gap-2">
-                        <span>{option.label}{selected ? " · Ваш выбор" : ""}</span>
-                        <span className="text-xs text-gray-500">{option.votes} ({percent}%)</span>
+                        <span>
+                          {option.label}
+                          {selected ? " · Ваш выбор" : ""}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {option.votes} ({percent}%)
+                        </span>
                       </span>
                     </button>
                     <div className="h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
@@ -177,7 +178,9 @@ export default function MeetingPolls({
             <div key={index} className="flex gap-2">
               <input
                 value={option}
-                onChange={(event) => setOptions((current) => current.map((item, i) => i === index ? event.target.value : item))}
+                onChange={(event) =>
+                  setOptions((current) => current.map((item, i) => (i === index ? event.target.value : item)))
+                }
                 maxLength={120}
                 placeholder={`Вариант ${index + 1}`}
                 className="min-w-0 flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
@@ -216,7 +219,11 @@ export default function MeetingPolls({
         </div>
       )}
 
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {error && (
+        <p role="alert" className="text-sm text-red-600">
+          {error}
+        </p>
+      )}
     </section>
   );
 }
