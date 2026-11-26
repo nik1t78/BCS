@@ -221,11 +221,38 @@ function keyAt(at: Date): string {
  * getTime() for absolute comparisons (use serverNowDate() for those).
  */
 export function serverCalendarDate(): Date {
-  const [year, month, day] = serverTodayKey().split("-").map(Number);
-  const [hour, minute] = serverNowHm().split(":").map(Number);
-  return new Date(year, month - 1, day, hour, minute, 0, 0);
+  const now = serverNowDate();
+  const options: Intl.DateTimeFormatOptions = {
+    timeZone: getServerTimezone(),
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  };
+  let formatter: Intl.DateTimeFormat;
+  try {
+    formatter = new Intl.DateTimeFormat("en-CA", options);
+  } catch {
+    formatter = new Intl.DateTimeFormat("en-CA", {
+      ...options,
+      timeZone: "Europe/Moscow",
+    });
+  }
+  const parts = formatter.formatToParts(now);
+  const value = (type: string) =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+  return new Date(
+    value("year"),
+    value("month") - 1,
+    value("day"),
+    value("hour"),
+    value("minute"),
+    0,
+    0,
+  );
 }
-
 /** «Сегодня» на сервере: YYYY-MM-DD. */
 export function serverTodayKey(): string {
   return keyAt(serverNowDate());
