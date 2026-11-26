@@ -28,7 +28,7 @@ for (const [input, expected] of cases) {
 }
 
 assert.ok(
-  (userPanelSource.match(/step=\\{1800\\}/g) ?? []).length >= 2,
+  (userPanelSource.match(/step=\{1800\}/g) ?? []).length >= 2,
   "meeting time inputs must use 30-minute native steps"
 );
 assert.match(
