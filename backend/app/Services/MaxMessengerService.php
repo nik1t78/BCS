@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Log;
 /**
  * Отправка уведомлений в мессенджер MAX (max.ru) через Bot API.
  *
- * В .env: MAX_ENABLED=true, MAX_BOT_TOKEN=..., MAX_API_URL=https://maxapi.ru/v1
+ * В .env: MAX_ENABLED=true, MAX_BOT_TOKEN=..., MAX_API_URL=https://platform-api2.max.ru
  * Пользователь должен привязать chat_id в профиле (users.max_chat_id).
  */
 class MaxMessengerService
@@ -96,7 +96,7 @@ class MaxMessengerService
                 'body' => substr($response->body(), 0, 300),
             ]);
             return false;
-        } catch (\\Throwable $e) {
+        } catch (\Throwable $e) {
             Log::warning('MAX: исключение при отправке: ' . $e->getMessage());
             return false;
         }
@@ -176,7 +176,7 @@ class MaxMessengerService
                 'body' => substr($sent->body(), 0, 300),
             ]);
             return false;
-        } catch (\\Throwable $e) {
+        } catch (\Throwable $e) {
             Log::warning('MAX: исключение при отправке файла: ' . $e->getMessage());
             return false;
         }
