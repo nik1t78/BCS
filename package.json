@@ -34,6 +34,9 @@
     "vite": "^8.3.8"
   },
   "overrides": {
-    "uuid": "^11.0.0"
+    "uuid": "^11.0.0",
+    "workbox-build": {
+      "glob": "^14.0.3"
+    }
   }
 }
