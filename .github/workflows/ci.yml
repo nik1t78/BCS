@@ -20,22 +20,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Audit npm dependencies (report existing findings without skipping build checks)
-        run: npm audit --audit-level=high
-        continue-on-error: true
+      - name: Audit npm dependencies (block high and critical advisories)
+        run: npm audit --audit-level=low
 
       - name: Lint (ESLint)
         run: npm run lint
 
-      - name: Format check (Prettier — existing repository debt)
+      - name: Format check (Prettier)
         run: npm run format:check --if-present
-        continue-on-error: true
 
       - name: Type-check
         run: npx tsc --noEmit
 
       - name: Frontend performance code-splitting smoke checks
         run: node scripts/frontend-performance-smoke.mjs
+
+      - name: Meeting time 30-minute snapping regression checks
+        run: node scripts/meeting-time-snap-smoke.mjs
 
       - name: Frontend API error redaction smoke checks
         run: node scripts/api-error-redaction-smoke.mjs
@@ -75,9 +76,8 @@ jobs:
       - name: Install dependencies
         run: composer install --prefer-dist --no-progress --no-interaction
 
-      - name: Audit Composer dependencies (report existing findings without skipping backend checks)
+      - name: Audit Composer dependencies (block any known advisory)
         run: composer audit --locked --no-interaction
-        continue-on-error: true
 
       - name: Verify composer.lock is in sync with composer.json
         # Лок-файл обязателен: без него docker-build идёт на packagist за
@@ -113,6 +113,9 @@ jobs:
 
       - name: Run notification access regression smoke tests
         run: php tests/notification-access-smoke.php
+
+      - name: Run MAX Bot API contract smoke tests
+        run: php tests/max-messenger-api-smoke.php
 
       - name: Run notification stream ticket regression smoke tests
         run: php tests/notification-stream-ticket-smoke.php
@@ -199,3 +202,14 @@ jobs:
           APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
           REDIS_PASSWORD: ci-test-redis-password
         run: docker compose config --quiet
+
+  runtime:
+    name: Docker full-stack runtime smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - name: Boot isolated Compose stack and verify critical paths
+        env:
+          BCS_CI_RUNTIME_SMOKE: "1"
+        run: bash scripts/docker-runtime-smoke.sh

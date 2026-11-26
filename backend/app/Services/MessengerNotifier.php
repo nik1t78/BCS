@@ -15,7 +15,7 @@ use App\Models\User;
  *   MESSENGER=max                 # max | none
  *   MAX_ENABLED=true
  *   MAX_BOT_TOKEN=...
- *   MAX_API_URL=https://maxapi.ru/v1
+ *   MAX_API_URL=https://platform-api2.max.ru
  *   users.max_chat_id             # привязывается в профиле
  */
 class MessengerNotifier

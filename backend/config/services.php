@@ -17,7 +17,7 @@ return [
         // Мессенджер MAX (max.ru): доставка уведомлений через Bot API.
         'enabled'  => env('MAX_ENABLED', false),
         'token'    => env('MAX_BOT_TOKEN', ''),
-        'api_url'  => env('MAX_API_URL', 'https://maxapi.ru/v1'),
+        'api_url'  => env('MAX_API_URL', 'https://platform-api2.max.ru'),
         'bot_link' => env('MAX_BOT_LINK', 'https://max.ru/masterbot'),
         // Чат администраторов для системных алертов (упал бот, ошибка БД и т.п.)
         'admin_chat_id' => env('ADMIN_ALERT_CHAT_ID', ''),

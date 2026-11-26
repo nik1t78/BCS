@@ -120,7 +120,9 @@ export const serverNowHm = (): string => serverNowHmTz();
 
 /** «Серверное сейчас» в минутах от полуночи (0..1439) — для округлений слотов. */
 const serverTotalMinutesNow = (): number => {
-  const [h, m] = serverNowHm().split(":").map((x) => parseInt(x, 10) || 0);
+  const [h, m] = serverNowHm()
+    .split(":")
+    .map((x) => parseInt(x, 10) || 0);
   return h * 60 + m;
 };
 
@@ -847,7 +849,9 @@ export default function UserPanel({
         ...emptyMeeting,
         date: initialPrefill.date ?? emptyMeeting.date,
         startTime: initialPrefill.startTime ?? emptyMeeting.startTime,
-        endTime: initialPrefill.endTime ?? (initialPrefill.startTime ? addMinToHm(initialPrefill.startTime, 30) : emptyMeeting.endTime),
+        endTime:
+          initialPrefill.endTime ??
+          (initialPrefill.startTime ? addMinToHm(initialPrefill.startTime, 30) : emptyMeeting.endTime),
         room: initialPrefill.room || emptyMeeting.room,
         // Ссылка: либо готовая из prefill (например, вставленная вручную),
         // либо пустая — живая комната создаётся Selenium-ботом при сохранении.
@@ -904,9 +908,7 @@ export default function UserPanel({
       if (!isTimeSynced()) return;
       setFormData((f) => {
         const untouchedDefault =
-          !f.title.trim() &&
-          f.startTime === emptyMeeting.startTime &&
-          f.endTime === emptyMeeting.endTime;
+          !f.title.trim() && f.startTime === emptyMeeting.startTime && f.endTime === emptyMeeting.endTime;
         if (!untouchedDefault) return f;
         if (f.startTime >= minStartHm(f.date) && f.endTime > f.startTime) return f;
         const clamped = clampFormTimes(f.date, f.startTime, f.endTime);
@@ -1099,11 +1101,7 @@ export default function UserPanel({
     const timeSynced = isTimeSynced();
     return sortMeetings(
       expandRecurringUpcoming(
-        filteredMeetings.filter(
-          (m) =>
-            !timeSynced ||
-            `${m.date}T${m.endTime || m.startTime || "23:59"}` >= nowIso()
-        )
+        filteredMeetings.filter((m) => !timeSynced || `${m.date}T${m.endTime || m.startTime || "23:59"}` >= nowIso())
       ),
       sortMode
     );
@@ -1815,8 +1813,8 @@ export default function UserPanel({
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                       После сохранения встречи сервер поставит создание реальной комнаты SaluteJazz в очередь. Ссылка
-                      появится автоматически после завершения; при желании можно вставить свою ссылку вручную.
-                      Данные для приглашения участников показаны ниже.
+                      появится автоматически после завершения; при желании можно вставить свою ссылку вручную. Данные
+                      для приглашения участников показаны ниже.
                     </p>
                     {isVksLink(formData.link) && vksHint && (
                       <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2">

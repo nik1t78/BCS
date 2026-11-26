@@ -75,12 +75,19 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
   // прошедшее время не предлагалось для брони без перезагрузки страницы.
   useEffect(() => {
     let stopped = false;
-    const refresh = () => { if (!stopped) setNowMin(serverNowMin()); };
+    const refresh = () => {
+      if (!stopped) setNowMin(serverNowMin());
+    };
     // При загрузке сверяемся с серверными часами (/api/time) — иначе при
     // расхождении часов устройства все окна дня ошибочно станут «прошедшими».
     syncServerTime().finally(refresh);
-    const t = setInterval(() => { syncServerTime().finally(refresh); }, 60000);
-    return () => { stopped = true; clearInterval(t); };
+    const t = setInterval(() => {
+      syncServerTime().finally(refresh);
+    }, 60000);
+    return () => {
+      stopped = true;
+      clearInterval(t);
+    };
   }, []);
 
   // Тик «сейчас»: меняется раз в минуту — на нём пересчитываем слоты,
@@ -109,7 +116,11 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
         // (один запрос вместо N+1). Используем его как ОСНОВНОЙ источник —
         // так виджет работает одинаково у admin/moderator/user и не зависит
         // от прав на справочник GET /rooms.
-        const fetchAggregated = async (): Promise<{ active: Room[]; busyById: Record<string, any[]>; hoursById: Record<string, DayHours | null | undefined> }> => {
+        const fetchAggregated = async (): Promise<{
+          active: Room[];
+          busyById: Record<string, any[]>;
+          hoursById: Record<string, DayHours | null | undefined>;
+        }> => {
           const av: any = await meetingsAPI.roomsAvailability({ date });
           // Backend can return a degraded response if DB/recurrence calculation
           // failed. Such a response is NOT proof that every room is free.
@@ -166,7 +177,9 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
               hoursById = {};
             } catch (e2: any) {
               if (e2?.status === 401) throw new Error("Сессия истекла — обновите страницу");
-              throw new Error(aggregateError?.message || "Не удалось получить расписание залов. Проверьте подключение к серверу.");
+              throw new Error(
+                aggregateError?.message || "Не удалось получить расписание залов. Проверьте подключение к серверу."
+              );
             }
           }
           cacheRef.current = { date, active, busyById, hoursById };
@@ -285,16 +298,25 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
             </span>
           </h3>
           <div className="flex flex-wrap items-center gap-2 mt-2">
-            <button type="button" onClick={() => setDate(serverTodayKeyTz())}
-              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${date === serverTodayKeyTz() ? "bg-blue-600 text-white border-blue-600" : "bg-white dark:bg-slate-700 text-gray-600 dark:text-gray-200 border-gray-200 dark:border-slate-600"}`}>
+            <button
+              type="button"
+              onClick={() => setDate(serverTodayKeyTz())}
+              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${date === serverTodayKeyTz() ? "bg-blue-600 text-white border-blue-600" : "bg-white dark:bg-slate-700 text-gray-600 dark:text-gray-200 border-gray-200 dark:border-slate-600"}`}
+            >
               Сегодня
             </button>
-            <button type="button" onClick={() => setDate(shiftDateKey(serverTodayKeyTz(), 1))}
-              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${date === shiftDateKey(serverTodayKeyTz(), 1) ? "bg-blue-600 text-white border-blue-600" : "bg-white dark:bg-slate-700 text-gray-600 dark:text-gray-200 border-gray-200 dark:border-slate-600"}`}>
+            <button
+              type="button"
+              onClick={() => setDate(shiftDateKey(serverTodayKeyTz(), 1))}
+              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${date === shiftDateKey(serverTodayKeyTz(), 1) ? "bg-blue-600 text-white border-blue-600" : "bg-white dark:bg-slate-700 text-gray-600 dark:text-gray-200 border-gray-200 dark:border-slate-600"}`}
+            >
               Завтра
             </button>
-            <button type="button" onClick={() => setDate(shiftDateKey(serverTodayKeyTz(), 2))}
-              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${date === shiftDateKey(serverTodayKeyTz(), 2) ? "bg-blue-600 text-white border-blue-600" : "bg-white dark:bg-slate-700 text-gray-600 dark:text-gray-200 border-gray-200 dark:border-slate-600"}`}>
+            <button
+              type="button"
+              onClick={() => setDate(shiftDateKey(serverTodayKeyTz(), 2))}
+              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${date === shiftDateKey(serverTodayKeyTz(), 2) ? "bg-blue-600 text-white border-blue-600" : "bg-white dark:bg-slate-700 text-gray-600 dark:text-gray-200 border-gray-200 dark:border-slate-600"}`}
+            >
               Послезавтра
             </button>
           </div>
@@ -353,7 +375,11 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
                       aria-hidden="true"
                     ></i>
                     {room.name}
-                    {availabilityError && <span className="block text-[10px] text-amber-600 dark:text-amber-400 font-normal">Не удалось проверить занятость</span>}
+                    {availabilityError && (
+                      <span className="block text-[10px] text-amber-600 dark:text-amber-400 font-normal">
+                        Не удалось проверить занятость
+                      </span>
+                    )}
                   </div>
 
                   {/* Полоса времени зала */}
@@ -372,12 +398,12 @@ export default function FreeRoomsWidget({ onPickSlot }: FreeRoomsWidgetProps) {
                       const visibleEnd = Math.min(scaleEnd, b.endMin);
                       if (visibleEnd <= visibleStart) return null;
                       return (
-                      <div
-                        key={`b${i}`}
-                        className="absolute top-0 bottom-0 bg-gray-300/80 dark:bg-slate-500/70 border-l-2 border-gray-400 dark:border-slate-400"
-                        style={{ left: `${spct(visibleStart)}%`, width: `${spct(visibleEnd) - spct(visibleStart)}%` }}
-                        title={`Занято ${minToHm(b.startMin)}–${minToHm(b.endMin)}${b.title ? `: ${b.title}` : ""}`}
-                      />
+                        <div
+                          key={`b${i}`}
+                          className="absolute top-0 bottom-0 bg-gray-300/80 dark:bg-slate-500/70 border-l-2 border-gray-400 dark:border-slate-400"
+                          style={{ left: `${spct(visibleStart)}%`, width: `${spct(visibleEnd) - spct(visibleStart)}%` }}
+                          title={`Занято ${minToHm(b.startMin)}–${minToHm(b.endMin)}${b.title ? `: ${b.title}` : ""}`}
+                        />
                       );
                     })}
                     {/* свободные окна, разбитые на блоки по 30 минут:

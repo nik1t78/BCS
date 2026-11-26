@@ -136,9 +136,9 @@ export default function RoomsManager({ isAdmin, userDepartment }: RoomsManagerPr
   const [onlyMine, setOnlyMine] = useState(false);
 
   // Список подразделений уникален по всем комнатам с department_id
-  const departments = Array.from(new Set<number>(rooms.map((r) => r.departmentId).filter((d): d is number => d != null))).sort(
-    (a, b) => a - b
-  );
+  const departments = Array.from(
+    new Set<number>(rooms.map((r) => r.departmentId).filter((d): d is number => d != null))
+  ).sort((a, b) => a - b);
 
   // RBAC-фильтр: комната публичная (без department_id) либо «своего» отдела.
   // Сопоставление отдела пользователя — по имени/номеру из справочника rooms.
@@ -257,7 +257,12 @@ export default function RoomsManager({ isAdmin, userDepartment }: RoomsManagerPr
   };
 
   const remove = async (id: string) => {
-    if (!confirm("Удалить комнату из справочника? Если с ней связаны встречи, система сохранит комнату и историю бронирований.")) return;
+    if (
+      !confirm(
+        "Удалить комнату из справочника? Если с ней связаны встречи, система сохранит комнату и историю бронирований."
+      )
+    )
+      return;
     try {
       await roomsAPI.remove(id);
       setError("");
@@ -395,9 +400,7 @@ export default function RoomsManager({ isAdmin, userDepartment }: RoomsManagerPr
                   ) : (
                     <span className="ml-auto text-xs text-green-600">свободна весь день</span>
                   ))}
-                {isAdmin && r.tvToken && (
-                  <TvScreenLinkButton roomName={r.name} token={r.tvToken} />
-                )}
+                {isAdmin && r.tvToken && <TvScreenLinkButton roomName={r.name} token={r.tvToken} />}
                 {!r.isActive && (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
                     Отключена

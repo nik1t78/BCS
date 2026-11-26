@@ -319,9 +319,10 @@ export default function Schedule({ user, onNavigate, onPickSlot }: ScheduleProps
           // Публичную встречу можно просматривать, но редактировать её могут
           // только организатор, участник или администратор/модератор.
           const canSee = selectedMeeting.isPrivate !== true || isAdminLike || hasAccessTo(selectedMeeting);
-          const canEdit = (isAdminLike || hasAccessTo(selectedMeeting))
-            && selectedMeeting.status !== "cancelled"
-            && selectedMeeting.status !== "completed";
+          const canEdit =
+            (isAdminLike || hasAccessTo(selectedMeeting)) &&
+            selectedMeeting.status !== "cancelled" &&
+            selectedMeeting.status !== "completed";
           return (
             <div
               className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
@@ -401,8 +402,7 @@ export default function Schedule({ user, onNavigate, onPickSlot }: ScheduleProps
                   <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
                     <p>
                       <i className="fas fa-calendar mr-2 text-blue-500"></i>
-                      {formatRuDate(selectedMeeting.date)},{" "}
-                      {selectedMeeting.startTime} – {selectedMeeting.endTime}
+                      {formatRuDate(selectedMeeting.date)}, {selectedMeeting.startTime} – {selectedMeeting.endTime}
                     </p>
                     <p>
                       <i className="fas fa-map-marker-alt mr-2 text-red-500"></i>
@@ -436,9 +436,7 @@ export default function Schedule({ user, onNavigate, onPickSlot }: ScheduleProps
                     {canSee && (
                       <MeetingPolls
                         meetingId={selectedMeeting.id}
-                        canManage={
-                          Number(selectedMeeting.organizerId) === Number(user.id) || isAdminLike
-                        }
+                        canManage={Number(selectedMeeting.organizerId) === Number(user.id) || isAdminLike}
                       />
                     )}
                     {!canSee && (
