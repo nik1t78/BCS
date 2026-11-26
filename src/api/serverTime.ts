@@ -173,7 +173,7 @@ export function serverDateTimeToEpoch(date: string, hm: string): number {
       value("day"),
       value("hour"),
       value("minute"),
-      value("second")
+      value("second"),
     );
     const next = wallClockUtc - (representedUtc - candidate);
     if (next === candidate) break;
