@@ -103,6 +103,86 @@ export function getServerTimezone(): string {
   }
 }
 
+
+/**
+ * Преобразовать дату/время настенных часов СЕРВЕРА в абсолютный timestamp.
+ * Не используем new Date(`${date}T${time}`): браузер трактует такую строку
+ * в часовом поясе пользователя, который может отличаться от пояса сервера.
+ */
+export function serverDateTimeToEpoch(date: string, hm: string): number {
+  const dateMatch = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(date);
+  const timeMatch = /^(\\d{2}):(\\d{2})$/.exec(hm);
+  if (!dateMatch || !timeMatch) return Number.NaN;
+
+  const [, yearText, monthText, dayText] = dateMatch;
+  const [, hourText, minuteText] = timeMatch;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const wallClockUtc = Date.UTC(year, month - 1, day, hour, minute);
+
+  // Reject normalized invalid values such as 2026-02-31 or 25:90.
+  const check = new Date(wallClockUtc);
+  if (
+    check.getUTCFullYear() !== year ||
+    check.getUTCMonth() !== month - 1 ||
+    check.getUTCDate() !== day ||
+    check.getUTCHours() !== hour ||
+    check.getUTCMinutes() !== minute
+  ) {
+    return Number.NaN;
+  }
+
+  let timeZone = getServerTimezone();
+  let formatter: Intl.DateTimeFormat;
+  try {
+    formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    });
+  } catch {
+    timeZone = "Europe/Moscow";
+    formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    });
+  }
+
+  // Iteratively subtract the server-zone offset from the requested wall time.
+  let candidate = wallClockUtc;
+  for (let i = 0; i < 4; i += 1) {
+    const parts = formatter.formatToParts(new Date(candidate));
+    const value = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? 0);
+    const representedUtc = Date.UTC(
+      value("year"),
+      value("month") - 1,
+      value("day"),
+      value("hour"),
+      value("minute"),
+      value("second")
+    );
+    const next = wallClockUtc - (representedUtc - candidate);
+    if (next === candidate) break;
+    candidate = next;
+  }
+
+  return candidate;
+}
+
 /** Абсолютный момент «сейчас на сервере». НЕ читайте из него getHours()/
  *  getDate() напрямую (это пояс браузера) — используйте функции ниже. */
 export function serverNowDate(): Date {
