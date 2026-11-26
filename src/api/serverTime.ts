@@ -239,8 +239,7 @@ export function serverCalendarDate(): Date {
     });
   }
   const parts = formatter.formatToParts(now);
-  const value = (type: string) =>
-    Number(parts.find((part) => part.type === type)?.value ?? 0);
+  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? 0);
   return new Date(value("year"), value("month") - 1, value("day"), value("hour"), value("minute"), 0, 0);
 }
 
