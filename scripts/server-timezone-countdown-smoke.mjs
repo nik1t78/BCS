@@ -45,11 +45,14 @@ const calendarMatch = source.match(
   /export function serverCalendarDate\(\): Date \{([\s\S]*?)\n\}/
 );
 assert.ok(calendarMatch, "serverCalendarDate must remain an exported function");
+const calendarBody = calendarMatch[1]
+  .replace(/: Intl\\.DateTimeFormatOptions/g, "")
+  .replace(/: Intl\\.DateTimeFormat/g, "");
 const originalTimezone = process.env.TZ;
 for (const browserTimezone of ["UTC", "America/Los_Angeles", "Asia/Tokyo"]) {
   process.env.TZ = browserTimezone;
   const calendarDate = vm.runInNewContext(
-    `() => { ${calendarMatch[1]}\n}`,
+    `() => { ${calendarBody}\n}`,
     {
       serverNowDate: () => new Date(Date.UTC(2026, 10, 26, 7, 5)),
       getServerTimezone: () => "Europe/Moscow",
