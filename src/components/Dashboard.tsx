@@ -12,6 +12,7 @@ import { icsAPI, meetingsAPI } from "../api/client";
 import {
   syncServerTime,
   serverNowDate,
+  serverDateTimeToEpoch,
   serverTodayKey as serverTodayKeyTz,
   serverNowHm as serverNowHmTz,
   serverTodayKey as guessServerTodayKey,
@@ -65,8 +66,8 @@ const MeetingCountdown = React.memo(function MeetingCountdown({
 
   useEffect(() => {
     const update = () => {
-      const target = new Date(`${date}T${startTime}`);
-      const diff = target.getTime() - nowForUi().getTime();
+      const target = serverDateTimeToEpoch(date, startTime);
+      const diff = target - nowForUi().getTime();
       if (diff <= 0) {
         setValue("Начинается");
         return;
