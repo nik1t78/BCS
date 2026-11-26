@@ -41,4 +41,27 @@ assert.ok(
   "Nonexistent local times during the spring DST jump must be rejected"
 );
 
+const calendarMatch = source.match(
+  /export function serverCalendarDate\(\): Date \{([\\s\\S]*?)\\n\}/
+);
+assert.ok(calendarMatch, "serverCalendarDate must remain an exported function");
+const calendarDate = vm.runInNewContext(
+  `() => { ${calendarMatch[1]}\\n}`,
+  {
+    serverTodayKey: () => "2026-11-26",
+    serverNowHm: () => "10:05",
+  }
+)();
+assert.deepEqual(
+  [
+    calendarDate.getFullYear(),
+    calendarDate.getMonth() + 1,
+    calendarDate.getDate(),
+    calendarDate.getHours(),
+    calendarDate.getMinutes(),
+  ],
+  [2026, 11, 26, 10, 5],
+  "Dashboard calendar date must expose server wall-clock fields in any browser timezone"
+);
+
 console.log("Server timezone countdown regression checks passed.");
