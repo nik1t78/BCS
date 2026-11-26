@@ -231,7 +231,13 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
     // Обновляем родительскую страницу раз в минуту, а секундный countdown
     // вынесен в отдельный memo-компонент ниже — иначе каждую секунду заново
     // рендерились календарь, статистика, свободные залы и все карточки.
-    const timer = setInterval(() => setCurrentTime(serverCalendarDate()), 60000);
+    const refreshServerTime = () => {
+      syncServerTime().finally(() => {
+        if (!cancelled) setCurrentTime(serverCalendarDate());
+      });
+    };
+    refreshServerTime();
+    const timer = setInterval(refreshServerTime, 60000);
     // Фоновое обновление данных — ТОЛЬКО когда вкладка видна. Раньше поллинг
     // работал и в фоновых вкладках: у пользователей открыто по несколько
     // вкладок/страниц и каждая каждые 30 с тянула ВСЕ встречи со страницы 1
