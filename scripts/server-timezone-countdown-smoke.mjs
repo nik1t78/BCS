@@ -13,7 +13,7 @@ function convert(date, hm, timezone) {
     .replace(/: Intl\.DateTimeFormat/g, "")
     .replace(/\(type: string\)/g, "(type)");
   const fn = vm.runInNewContext(
-    `(date, hm) => { ${executableBody}\\n}`,
+    `(date, hm) => { ${executableBody}\n}`,
     { getServerTimezone: () => timezone }
   );
   return fn(date, hm);
