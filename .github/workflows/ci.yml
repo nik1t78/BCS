@@ -196,3 +196,14 @@ jobs:
           APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
           REDIS_PASSWORD: ci-test-redis-password
         run: docker compose config --quiet
+
+  runtime:
+    name: Docker full-stack runtime smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - name: Boot isolated Compose stack and verify critical paths
+        env:
+          BCS_CI_RUNTIME_SMOKE: "1"
+        run: bash scripts/docker-runtime-smoke.sh
