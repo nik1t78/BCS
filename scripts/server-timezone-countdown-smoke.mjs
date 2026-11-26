@@ -9,8 +9,11 @@ const match = source.match(
 assert.ok(match, "serverDateTimeToEpoch must remain an exported function");
 
 function convert(date, hm, timezone) {
+  const executableBody = match[1]
+    .replace(/: Intl\.DateTimeFormat/g, "")
+    .replace(/\(type: string\)/g, "(type)");
   const fn = vm.runInNewContext(
-    `(date, hm) => { ${match[1]}\n}`,
+    `(date, hm) => { ${executableBody}\\n}`,
     { getServerTimezone: () => timezone }
   );
   return fn(date, hm);
