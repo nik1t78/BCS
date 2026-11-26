@@ -1,6 +1,6 @@
 # BCS — подробная инструкция по запуску и эксплуатации
 
-> Актуально для ветки `vks/phase46-fix-frontend-peer-deps` (PR [#173](https://github.com/nik1t78/BCS/pull/173)), в которой согласованы frontend-зависимости и успешно проходит CI. До слияния PR не используйте `main` для локальной сборки: в ней `npm ci` падает на несовместимых peer-зависимостях. После слияния PR #173 используйте `main`. Эта инструкция не означает, что версия уже развернута в production.
+> Актуально для интеграционной ветки `vks/phase55-main-integration` (PR [#185](https://github.com/nik1t78/BCS/pull/185)). В ней объединены доработки ВКС, обновлены зависимости и успешно пройдены CI и изолированная проверка полного Docker-стека. До слияния PR используйте именно эту ветку, а после слияния PR #185 — `main`. Это не означает, что версия уже развернута на production.
 
 ## 1. Что потребуется
 
@@ -21,7 +21,7 @@
 
 ```powershell
 cd D:\server
-git clone --branch vks/phase46-fix-frontend-peer-deps --single-branch https://github.com/nik1t78/BCS.git BCS
+git clone --branch vks/phase55-main-integration --single-branch https://github.com/nik1t78/BCS.git BCS
 cd D:\server\BCS
 ```
 
@@ -40,14 +40,14 @@ git status --short
 
 ```powershell
 git fetch origin
-git switch --track -c vks/phase46-fix-frontend-peer-deps origin/vks/phase46-fix-frontend-peer-deps
+git switch --track -c vks/phase55-main-integration origin/vks/phase55-main-integration
 ```
 
 Если ветка уже существует локально:
 
 ```powershell
-git switch vks/phase46-fix-frontend-peer-deps
-git pull --ff-only origin vks/phase46-fix-frontend-peer-deps
+git switch vks/phase55-main-integration
+git pull --ff-only origin vks/phase55-main-integration
 ```
 
 ## 3. Первый запуск на чистой локальной машине
@@ -313,7 +313,7 @@ docker compose exec backend php artisan queue:failed
 
 ## 14. Важные ограничения текущей ветки
 
-- Ветка `vks/phase46-fix-frontend-peer-deps` — отдельная ветка разработки, PR №139; не считать её автоматически установленной на production.
+- Ветка `vks/phase55-main-integration` содержит подготовленный интеграционный PR #185; до его слияния не считать эту версию установленной на production.
 - Этап 36 меняет загрузку формы создания ВКС: форма загружается динамически при открытии. Измерения CPU/LCP/INP на вашем сервере ещё нужно провести отдельно.
 - CI проверяет код и сборку, но не заменяет проверку реальных Docker-контейнеров, браузера, MAX и SaluteJazz.
 - Не сливайте ветку и не обновляйте production до проверки PR и согласования.
