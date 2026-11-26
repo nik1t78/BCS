@@ -112,6 +112,9 @@ jobs:
       - name: Run notification access regression smoke tests
         run: php tests/notification-access-smoke.php
 
+      - name: Run MAX Bot API contract smoke tests
+        run: php tests/max-messenger-api-smoke.php
+
       - name: Run notification stream ticket regression smoke tests
         run: php tests/notification-stream-ticket-smoke.php
 
