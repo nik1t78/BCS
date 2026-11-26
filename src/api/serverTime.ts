@@ -165,15 +165,14 @@ export function serverDateTimeToEpoch(date: string, hm: string): number {
   let candidate = wallClockUtc;
   for (let i = 0; i < 4; i += 1) {
     const parts = formatter.formatToParts(new Date(candidate));
-    const value = (type: string) =>
-      Number(parts.find((part) => part.type === type)?.value ?? 0);
+    const value = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? 0);
     const representedUtc = Date.UTC(
       value("year"),
       value("month") - 1,
       value("day"),
       value("hour"),
       value("minute"),
-      value("second"),
+      value("second")
     );
     const next = wallClockUtc - (representedUtc - candidate);
     if (next === candidate) break;
