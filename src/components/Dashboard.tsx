@@ -1,4 +1,4 @@
-import React, { useState, useEffect, lazy, Suspense } from "react";
+import React, { useState, useEffect, useMemo, lazy, Suspense } from "react";
 import { User, Meeting } from "../types";
 import { getMeetings, getUsersForDisplay, updateMeeting } from "../store-api";
 import { occursOn, withDate, MEETING_OCCURRENCES_LIMIT_DAYS } from "../utils/recurrence";
@@ -268,8 +268,20 @@ export default function Dashboard({ user, onNavigate, onBookSlot }: DashboardPro
   // На главной («Обзор») обычный пользователь видит ТОЛЬКО свои ВКС —
   // организованные им или где он участник. Все остальные конференции —
   // в разделе «Расписание». Админ/модератор видят всё.
-  const visibleMeetings =
-    user.role === "admin" || user.role === "moderator" ? meetings : meetings.filter((m) => hasAccessTo(m));
+  // Для обычного пользователя filter() создаёт новый массив при каждом рендере.
+  // Эффект расчёта ближайших встреч зависит от visibleMeetings и обновляет state;
+  // без memoization это вызывало повторный цикл рендеров и лишнюю нагрузку CPU.
+  const visibleMeetings = useMemo(
+    () =>
+      user.role === "admin" || user.role === "moderator"
+        ? meetings
+        : meetings.filter(
+            (m) =>
+              Number(m.organizerId) === Number(user.id) ||
+              (m.participants ?? []).some((p) => Number(p) === Number(user.id))
+          ),
+    [meetings, user.id, user.role]
+  );
 
   useEffect(() => {
     const today = toDateKey(currentTime);
