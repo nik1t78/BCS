@@ -226,7 +226,7 @@ docker compose logs --tail=100 vks-bot
 
 ## 11. MAX-уведомления
 
-В корневом `.env` настройте `MESSENGER=max`, `MAX_ENABLED=true`, `MAX_API_URL`, `MAX_BOT_TOKEN` и `MAX_BOT_LINK` согласно настройкам вашего MAX-бота. После изменения:
+В корневом `.env` настройте `MESSENGER=max`, `MAX_ENABLED=true`, `MAX_API_URL=https://platform-api2.max.ru`, `MAX_BOT_TOKEN` и `MAX_BOT_LINK` согласно настройкам вашего MAX-бота. Важно: актуальный Bot API использует `POST /messages?chat_id=...` и заголовок `Authorization: <токен>` без `Bearer`. Если в уже существующем `.env` остался старый адрес `https://maxapi.ru/v1` или `https://platform-api.max.ru`, замените его на `https://platform-api2.max.ru`. После изменения:
 
 ```powershell
 docker compose restart backend queue scheduler
