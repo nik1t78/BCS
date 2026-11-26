@@ -109,8 +109,8 @@ export function getServerTimezone(): string {
  * в часовом поясе пользователя, который может отличаться от пояса сервера.
  */
 export function serverDateTimeToEpoch(date: string, hm: string): number {
-  const dateMatch = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(date);
-  const timeMatch = /^(\\d{2}):(\\d{2})$/.exec(hm);
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  const timeMatch = /^(\d{2}):(\d{2})$/.exec(hm);
   if (!dateMatch || !timeMatch) return Number.NaN;
 
   const [, yearText, monthText, dayText] = dateMatch;
