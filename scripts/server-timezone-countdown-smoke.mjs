@@ -45,23 +45,32 @@ const calendarMatch = source.match(
   /export function serverCalendarDate\(\): Date \{([\s\S]*?)\n\}/
 );
 assert.ok(calendarMatch, "serverCalendarDate must remain an exported function");
-const calendarDate = vm.runInNewContext(
-  `() => { ${calendarMatch[1]}\n}`,
-  {
-    serverTodayKey: () => "2026-11-26",
-    serverNowHm: () => "10:05",
-  }
-)();
-assert.deepEqual(
-  [
-    calendarDate.getFullYear(),
-    calendarDate.getMonth() + 1,
-    calendarDate.getDate(),
-    calendarDate.getHours(),
-    calendarDate.getMinutes(),
-  ],
-  [2026, 11, 26, 10, 5],
-  "Dashboard calendar date must expose server wall-clock fields in any browser timezone"
-);
+const originalTimezone = process.env.TZ;
+for (const browserTimezone of ["UTC", "America/Los_Angeles", "Asia/Tokyo"]) {
+  process.env.TZ = browserTimezone;
+  const calendarDate = vm.runInNewContext(
+    `() => { ${calendarMatch[1]}\n}`,
+    {
+      serverNowDate: () => new Date(Date.UTC(2026, 10, 26, 7, 5)),
+      getServerTimezone: () => "Europe/Moscow",
+    }
+  )();
+  assert.deepEqual(
+    [
+      calendarDate.getFullYear(),
+      calendarDate.getMonth() + 1,
+      calendarDate.getDate(),
+      calendarDate.getHours(),
+      calendarDate.getMinutes(),
+    ],
+    [2026, 11, 26, 10, 5],
+    `Dashboard calendar date must expose server wall-clock fields in ${browserTimezone}`
+  );
+}
+if (originalTimezone === undefined) {
+  delete process.env.TZ;
+} else {
+  process.env.TZ = originalTimezone;
+}
 
 console.log("Server timezone countdown regression checks passed.");
