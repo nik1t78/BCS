@@ -253,6 +253,7 @@ export function serverCalendarDate(): Date {
     0,
   );
 }
+
 /** «Сегодня» на сервере: YYYY-MM-DD. */
 export function serverTodayKey(): string {
   return keyAt(serverNowDate());
