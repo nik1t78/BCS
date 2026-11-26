@@ -43,6 +43,9 @@ jobs:
       - name: Verify Docker frontend dependency policy
         run: node scripts/docker-build-policy-smoke.mjs
 
+      - name: Verify Laravel writable storage bootstrap
+        run: node scripts/docker-entrypoint-storage-smoke.mjs
+
       - name: Build
         run: npm run build
 
